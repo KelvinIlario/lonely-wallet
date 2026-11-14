@@ -1,5 +1,5 @@
 services:
-  carteira:
+  lonely-wallet:
     build: .
     container_name: lonely-wallet
     restart: unless-stopped
@@ -12,3 +12,21 @@ services:
       TZ: America/Sao_Paulo
     volumes:
       - /DATA/AppData/lonely-wallet/data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 4GB
+          cpus: "1.00"
+        reservations:
+          memory: 256MB
+          cpus: "0.00"
+
+x-casaos:
+  hostname: ""
+  index: /
+  is_uncontrolled: false
+  main: lonely-wallet
+  port_map: "8085"
+  scheme: http
+  title:
+    custom: Lonely Wallet

@@ -34,7 +34,7 @@ Aplicação Flask + SQLite para controle pessoal de investimentos, preparada par
 2. Extraia esta versão em uma pasta de atualização.
 3. Confira se o volume `./data:/data` do `docker-compose.yml` aponta para a mesma pasta de dados usada pela instalação atual. Não substitua nem apague o banco existente.
 4. Na pasta do projeto, execute `docker compose up -d --build`.
-5. Acesse `http://IP_DO_ZIMAOS:8085` (porta 8085 no host, encaminhada para 8080 dentro do container).
+5. Acesse `http://IP_DO_ZIMAOS:8080`.
 
 ## Lançamentos e posição importada — v30
 - A aba Lançamentos agora separa o histórico em tabelas por classe: Ações, FIIs, ETFs, BDRs, internacionais, Stocks, REITs, Criptomoedas, Renda Fixa, Tesouro Direto, Fundos e Outros.
@@ -168,3 +168,12 @@ transcritas das capturas como compras/vendas individuais na tabela `operacoes`.
 
 A migração ocorre uma única vez na inicialização. Faça backup de `data/carteira.db` antes
 de atualizar o container. Não apague a pasta `data`.
+
+
+## v2.0.2 — instalação limpa
+
+A aplicação não importa mais automaticamente operações de arquivos de captura nem inclui uma carteira de demonstração. Em uma instalação nova, o banco começa sem operações, posições e proventos cadastrados. Preferências de distribuição podem vir com valores padrão, mas não representam patrimônio.
+
+No ZimaOS, a porta publicada é `8085` e a porta interna da aplicação é `8080`. Os dados persistentes ficam em `/DATA/AppData/lonely-wallet/data`.
+
+**Atenção:** atualizar a imagem mantendo um banco persistente não apaga registros que já existam nesse banco. Faça backup antes de qualquer limpeza; para começar do zero, use um banco/pasta de dados vazios.
