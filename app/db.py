@@ -34,6 +34,28 @@ def init():
         tipo TEXT,
         UNIQUE(ticker, data, valor_por_cota)
     );
+    CREATE TABLE IF NOT EXISTS movimentos_b3 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hash TEXT NOT NULL UNIQUE,
+        entrada_saida TEXT,
+        data TEXT,
+        movimentacao TEXT,
+        produto TEXT,
+        ticker TEXT,
+        instituicao TEXT,
+        quantidade REAL,
+        preco_unitario REAL,
+        valor_operacao REAL,
+        importado_em TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS metas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        valor_alvo REAL NOT NULL DEFAULT 0,
+        valor_atual REAL NOT NULL DEFAULT 0,
+        prazo TEXT,
+        observacao TEXT
+    );
     """)
     c.commit()
     c.close()
