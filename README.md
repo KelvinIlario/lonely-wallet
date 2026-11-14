@@ -189,3 +189,8 @@ No ZimaOS, a porta publicada é `8085` e a porta interna da aplicação é `8080
 - A porta do ZimaOS é 8085 (host) → 8080 (container).
 
 A importação não é automática: o usuário seleciona a planilha, confere a prévia e confirma a gravação.
+
+
+## v2.0.4
+- Correções visuais na aba Posições e exibição correta da contagem de oportunidades de compra.
+- Ícone integrado à configuração do CasaOS e ao container Docker.
