@@ -1,23 +1,19 @@
-# Lonely Wallet 1.1 — atualização de interface e importação B3
+# Lonely Wallet v1.1.0 — pacote corrigido
 
 ## O que mudou
-- Dashboard responsiva com navegação lateral, cartões de resumo e lista de ativos.
-- Importador passa a reconhecer o extrato B3 com as colunas Entrada/Saída, Data, Movimentação, Produto, Instituição, Quantidade, Preço unitário e Valor da Operação.
-- Todos os eventos são preservados na tabela `importacoes_b3` com hash único para evitar duplicação do mesmo registro.
-- Rendimentos, dividendos e JCP identificados são registrados na tabela de proventos.
-- Transferências, subscrições, atualizações e eventos ambíguos ficam no histórico para conferência. Eles NÃO alteram automaticamente posição/preço médio, pois crédito/débito por si só não prova compra/venda.
-- Mantida a rota `/api/importar` e a estrutura do banco existente. O banco é ampliado automaticamente sem apagar tabelas antigas.
+- Navegação real entre Dashboard, Carteira, Movimentações, Proventos e Importar B3.
+- Importador para o layout da B3 com as colunas `Entrada/Saída`, `Data`, `Movimentação`, `Produto`, `Quantidade`, `Preço unitário` e `Valor da Operação`.
+- Compras/vendas de `Transferência - Liquidação` entram na posição; rendimentos, dividendos e JCP vão para Proventos; eventos sem efeito de posição ficam no histórico.
+- Identificação de importações repetidas para evitar duplicidade.
+- Migrações SQLite aditivas; as tabelas existentes não são apagadas.
+- GitHub Actions publica `latest`, a tag da Release e uma tag SHA.
 
-## Atualização
-1. Faça backup da pasta persistente `/DATA/AppData/lonely-wallet/data`.
-2. Substitua os arquivos do repositório pelos arquivos desta pasta.
-3. Faça commit e push para `main`.
-4. Aguarde o GitHub Actions publicar `lonker/lonely-wallet:latest`.
-5. No ZimaOS, atualize/recrie o container usando a mesma imagem e mantenha a mesma montagem de volume e o mesmo `BRAPI_TOKEN`.
-6. Não apague a pasta de dados.
+## Atualização segura
+1. Faça backup da pasta de dados do container (`/data`, que no host é o volume mapeado no ZimaOS).
+2. Substitua os arquivos do repositório pelos deste ZIP e faça commit na `main`.
+3. Aguarde o GitHub Actions terminar com sucesso.
+4. Crie a Release `v1.1.0`; o workflow publica também a tag `v1.1.0`.
+5. No ZimaOS, atualize/recrie o container usando `lonker/lonely-wallet:latest`, mantendo exatamente o mesmo volume persistente e as variáveis atuais.
+6. Abra o app e teste primeiro a navegação. Faça a importação do extrato apenas uma vez; o importador evita duplicar as linhas se o mesmo arquivo for enviado novamente.
 
-## Observação importante sobre o extrato de exemplo
-O arquivo analisado contém 239 registros. O importador identificou 75 proventos (rendimentos, dividendos e JCP), 137 transferências que precisam ser conferidas, 14 eventos de subscrição, 12 atualizações e 1 evento rotulado como COMPRA / VENDA. Para evitar alterar seu patrimônio de forma incorreta, transferências não são convertidas automaticamente em compras/vendas nesta versão. Todos os registros ficam preservados e deduplicados para uma próxima etapa de conciliação/revisão.
-
-## Segurança dos dados
-O importador não apaga operações existentes e não transforma transferências ambíguas em negociações. Antes de usar em produção, faça backup do SQLite. O extrato deve ser exportado em `.xlsx`.
+**Importante:** não remova nem recrie a pasta de dados. A aplicação não apaga o banco, mas um backup é indispensável antes de atualizar.

@@ -1,31 +1,41 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#10131b"><link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/style.css"><title>Lonely Wallet</title>
-</head>
-<body>
-<div class="app">
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1220"><link rel="stylesheet" href="/style.css">
+<title>Lonely Wallet</title></head><body>
 <aside class="sidebar">
-  <div class="brand"><div class="brand-icon">L</div><div><b>Lonely Wallet</b><small>Seu patrimônio, em foco</small></div></div>
-  <nav><a class="active" href="#dashboard">▦ <span>Dashboard</span></a><a href="#carteira">◫ <span>Carteira</span></a><a href="#movimentacoes">⇄ <span>Movimentações</span></a><a href="#proventos">▤ <span>Proventos</span></a></nav>
-  <div class="sidebar-bottom"><span class="status-dot"></span> Dados locais no seu servidor</div>
+  <div class="brand"><div class="logo">L</div><div><b>Lonely Wallet</b><small>Seu patrimônio, em foco</small></div></div>
+  <nav id="nav">
+    <a href="#dashboard" data-page="dashboard" class="active">▦ <span>Dashboard</span></a>
+    <a href="#carteira" data-page="carteira">◫ <span>Carteira</span></a>
+    <a href="#movimentacoes" data-page="movimentacoes">⇄ <span>Movimentações</span></a>
+    <a href="#proventos" data-page="proventos">▤ <span>Proventos</span></a>
+    <a href="#importar" data-page="importar">⇧ <span>Importar B3</span></a>
+  </nav>
+  <small class="local">● Dados locais no seu servidor</small>
 </aside>
 <main>
-<header class="topbar"><div><span class="eyebrow">VISÃO GERAL</span><h1>Dashboard</h1></div><button id="btn-atualizar" class="secondary">↻ Atualizar cotações</button></header>
-<section class="welcome"><div><span class="eyebrow">SEU RESUMO FINANCEIRO</span><h2>Olá! Aqui está sua carteira.</h2><p>Acompanhe seus investimentos e movimentações em um só lugar.</p></div><div class="welcome-mark">LW</div></section>
-<section class="metrics" id="totais">
-<div class="metric"><small>Total investido</small><b>—</b><span>Capital aplicado</span></div><div class="metric"><small>Patrimônio atual</small><b>—</b><span>Valor de mercado</span></div><div class="metric"><small>Resultado</small><b>—</b><span>Ganho ou perda</span></div><div class="metric"><small>Proventos recebidos</small><b>—</b><span>Renda acumulada</span></div>
+<header><div><small id="eyebrow">VISÃO GERAL</small><h1 id="page-title">Dashboard</h1></div><button id="btn-atualizar" class="secondary">↻ Atualizar cotações</button></header>
+<section id="page-dashboard" class="page">
+  <div class="hero"><small>SEU RESUMO FINANCEIRO</small><h2>Olá! Aqui está sua carteira.</h2><p>Acompanhe seus investimentos e movimentações em um só lugar.</p></div>
+  <div class="cards" id="totais"></div>
+  <section class="panel"><div class="panel-head"><div><small>ACOMPANHAMENTO</small><h2>Minha carteira</h2></div><span id="ativos-count">0 ativos</span></div><div id="lista" class="empty">Sua carteira ainda não tem ativos cadastrados.</div></section>
+  <div class="two">
+    <section class="panel"><small>IMPORTAÇÃO</small><h2>Importar dados da B3</h2><p>Selecione o extrato de movimentações baixado da B3. O sistema separa compras, vendas, proventos e eventos.</p><div class="upload"><input type="file" id="arquivo" accept=".xlsx"><button id="btn-importar">Analisar e importar</button></div><div id="import-result"></div></section>
+    <section class="panel"><small>LANÇAMENTO MANUAL</small><h2>Nova operação</h2><form id="form-op" class="form-grid">
+      <input name="ticker" placeholder="Ticker (ex.: ITUB4)" required>
+      <select name="tipo"><option value="acao">Ação</option><option value="fii">FII</option><option value="etf">ETF</option></select>
+      <select name="mercado"><option value="BR">Brasil</option><option value="EXT">Exterior</option></select>
+      <input name="data" type="date" required>
+      <input name="qtd" type="number" step="any" placeholder="Quantidade (negativa = venda)" required>
+      <input name="preco" type="number" step="any" placeholder="Preço unitário" required>
+      <button class="wide" type="submit">Adicionar operação</button>
+    </form></section>
+  </div>
 </section>
-<section class="panel" id="carteira"><div class="section-head"><div><span class="eyebrow">ACOMPANHAMENTO</span><h2>Minha carteira</h2></div><span class="muted" id="qtd-ativos">—</span></div><div id="lista" class="asset-list"><div class="empty">Carregando seus ativos…</div></div></section>
-<div class="columns">
-<section class="panel" id="movimentacoes"><div class="section-head"><div><span class="eyebrow">IMPORTAÇÃO</span><h2>Importar dados da B3</h2></div><span class="tag">Excel .xlsx</span></div><p class="muted">Selecione o extrato de movimentações baixado da B3. O sistema identifica os eventos e evita importar o mesmo registro duas vezes.</p><div class="upload"><input type="file" id="arquivo" accept=".xlsx"><button id="btn-importar">Analisar e importar</button></div><div id="import-status" class="notice" hidden></div></section>
-<section class="panel"><div class="section-head"><div><span class="eyebrow">LANÇAMENTO MANUAL</span><h2>Nova operação</h2></div></div><form id="form-op" class="operation-form">
-<input name="ticker" placeholder="Ticker (ex.: ITUB4)" required><select name="tipo"><option value="acao">Ação</option><option value="fii">FII</option><option value="etf">ETF</option></select><select name="mercado"><option value="BR">Brasil</option><option value="EXT">Exterior</option></select><input name="data" type="date" required><input name="qtd" type="number" step="any" placeholder="Quantidade (venda negativa)" required><input name="preco" type="number" step="any" placeholder="Preço unitário" required><button type="submit">Adicionar operação</button>
-</form></section>
-</div>
-<footer>Lonely Wallet <span>• Seus dados permanecem no seu servidor</span></footer>
-</main></div>
-<script src="/app.js"></script>
-</body></html>
+<section id="page-carteira" class="page hidden"><section class="panel"><h2>Ativos da carteira</h2><div id="carteira-table"></div></section></section>
+<section id="page-movimentacoes" class="page hidden"><section class="panel"><h2>Histórico de movimentações</h2><div id="mov-table"></div></section></section>
+<section id="page-proventos" class="page hidden"><section class="panel"><h2>Dividendos, JCP e rendimentos</h2><div id="prov-table"></div></section></section>
+<section id="page-importar" class="page hidden"><section class="panel"><h2>Importar extrato da B3</h2><p>O importador reconhece o layout com as colunas Entrada/Saída, Data, Movimentação, Produto, Instituição, Quantidade, Preço unitário e Valor da Operação.</p><input type="file" id="arquivo2" accept=".xlsx"><button id="btn-importar2">Analisar e importar</button><div id="import-result2"></div><p class="muted">A importação é idempotente: o mesmo lançamento da planilha não é inserido novamente.</p></section></section>
+<footer>Lonely Wallet · Seus dados permanecem no seu servidor</footer>
+</main><script src="/app.js"></script></body></html>
