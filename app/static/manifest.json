@@ -3,8 +3,8 @@
   "short_name": "Lonely Wallet",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0e1420",
-  "theme_color": "#0e1420",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
   "icons": [
     {
       "src": "/icon.svg",

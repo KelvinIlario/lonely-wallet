@@ -6,8 +6,8 @@ services:
     ports:
       - "8085:8085"
     environment:
+      - BRAPI_TOKEN=COLOQUE_SEU_TOKEN_AQUI
       - DATA_DIR=/data
       - TZ=America/Sao_Paulo
-      # Configure BRAPI_TOKEN in ZimaOS if you already use a token.
     volumes:
       - /DATA/AppData/lonely-wallet/data:/data
