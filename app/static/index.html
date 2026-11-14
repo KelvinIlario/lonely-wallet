@@ -1,41 +1,18 @@
 <!doctype html>
-<html lang="pt-BR"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0b1220"><link rel="stylesheet" href="/style.css">
-<title>Lonely Wallet</title></head><body>
-<aside class="sidebar">
-  <div class="brand"><div class="logo">L</div><div><b>Lonely Wallet</b><small>Seu patrimônio, em foco</small></div></div>
-  <nav id="nav">
-    <a href="#dashboard" data-page="dashboard" class="active">▦ <span>Dashboard</span></a>
-    <a href="#carteira" data-page="carteira">◫ <span>Carteira</span></a>
-    <a href="#movimentacoes" data-page="movimentacoes">⇄ <span>Movimentações</span></a>
-    <a href="#proventos" data-page="proventos">▤ <span>Proventos</span></a>
-    <a href="#importar" data-page="importar">⇧ <span>Importar B3</span></a>
-  </nav>
-  <small class="local">● Dados locais no seu servidor</small>
-</aside>
-<main>
-<header><div><small id="eyebrow">VISÃO GERAL</small><h1 id="page-title">Dashboard</h1></div><button id="btn-atualizar" class="secondary">↻ Atualizar cotações</button></header>
-<section id="page-dashboard" class="page">
-  <div class="hero"><small>SEU RESUMO FINANCEIRO</small><h2>Olá! Aqui está sua carteira.</h2><p>Acompanhe seus investimentos e movimentações em um só lugar.</p></div>
-  <div class="cards" id="totais"></div>
-  <section class="panel"><div class="panel-head"><div><small>ACOMPANHAMENTO</small><h2>Minha carteira</h2></div><span id="ativos-count">0 ativos</span></div><div id="lista" class="empty">Sua carteira ainda não tem ativos cadastrados.</div></section>
-  <div class="two">
-    <section class="panel"><small>IMPORTAÇÃO</small><h2>Importar dados da B3</h2><p>Selecione o extrato de movimentações baixado da B3. O sistema separa compras, vendas, proventos e eventos.</p><div class="upload"><input type="file" id="arquivo" accept=".xlsx"><button id="btn-importar">Analisar e importar</button></div><div id="import-result"></div></section>
-    <section class="panel"><small>LANÇAMENTO MANUAL</small><h2>Nova operação</h2><form id="form-op" class="form-grid">
-      <input name="ticker" placeholder="Ticker (ex.: ITUB4)" required>
-      <select name="tipo"><option value="acao">Ação</option><option value="fii">FII</option><option value="etf">ETF</option></select>
-      <select name="mercado"><option value="BR">Brasil</option><option value="EXT">Exterior</option></select>
-      <input name="data" type="date" required>
-      <input name="qtd" type="number" step="any" placeholder="Quantidade (negativa = venda)" required>
-      <input name="preco" type="number" step="any" placeholder="Preço unitário" required>
-      <button class="wide" type="submit">Adicionar operação</button>
-    </form></section>
-  </div>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101722"><title>Lonely Wallet</title><link rel="stylesheet" href="/style.css"></head>
+<body><aside class="sidebar"><div class="brand"><span class="logo">L</span><div><b>Lonely Wallet</b><small>Seu patrimônio, em foco</small></div></div>
+<nav><button data-page="dashboard" class="nav active">▦ <span>Dashboard</span></button><button data-page="carteira" class="nav">◫ <span>Carteira</span></button><button data-page="movimentacoes" class="nav">⇄ <span>Movimentações</span></button><button data-page="proventos" class="nav">▤ <span>Proventos</span></button></nav><div class="local"><i></i> Dados locais no seu servidor</div></aside>
+<main><header><div><small class="eyebrow">VISÃO GERAL</small><h1 id="page-title">Dashboard</h1></div><button id="refresh" class="secondary">↻ Atualizar cotações</button></header>
+<section id="dashboard" class="page">
+<div class="hero"><small>SEU RESUMO FINANCEIRO</small><h2>Olá! Aqui está sua carteira.</h2><p>Acompanhe seus investimentos e movimentações em um só lugar.</p></div>
+<div class="kpis" id="kpis"></div>
+<div class="filters panel"><div><b>Filtros da carteira</b><small>Os indicadores e os gráficos acompanham os filtros selecionados.</small></div><div class="filter-controls"><select id="asset-filter"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">Fundos imobiliários</option><option value="renda_fixa">Renda fixa</option><option value="etf">ETFs</option><option value="cripto">Criptoativos</option></select><select id="period-filter"><option value="inicio">Desde o início</option><option value="30d">30 dias</option><option value="12m" selected>12 meses</option><option value="2a">2 anos</option><option value="5a">5 anos</option><option value="10a">10 anos</option></select></div></div>
+<div class="charts"><article class="panel"><div class="panel-head"><div><h3>Evolução do patrimônio</h3><small id="history-note">Evolução do capital aplicado</small></div><select id="period-chart"><option value="inicio">Desde o início</option><option value="30d">30 dias</option><option value="12m" selected>12 meses</option><option value="2a">2 anos</option><option value="5a">5 anos</option><option value="10a">10 anos</option></select></div><div id="bar-chart" class="chart"></div></article>
+<article class="panel"><div class="panel-head"><div><h3>Ativos na carteira</h3><small>Distribuição por classe</small></div></div><div id="donut-chart" class="donut-area"></div></article></div>
+<article class="panel holdings"><div class="panel-head"><div><h3>Meus ativos</h3><small>Posições atuais da carteira</small></div></div><div id="asset-list"></div></article>
 </section>
-<section id="page-carteira" class="page hidden"><section class="panel"><h2>Ativos da carteira</h2><div id="carteira-table"></div></section></section>
-<section id="page-movimentacoes" class="page hidden"><section class="panel"><h2>Histórico de movimentações</h2><div id="mov-table"></div></section></section>
-<section id="page-proventos" class="page hidden"><section class="panel"><h2>Dividendos, JCP e rendimentos</h2><div id="prov-table"></div></section></section>
-<section id="page-importar" class="page hidden"><section class="panel"><h2>Importar extrato da B3</h2><p>O importador reconhece o layout com as colunas Entrada/Saída, Data, Movimentação, Produto, Instituição, Quantidade, Preço unitário e Valor da Operação.</p><input type="file" id="arquivo2" accept=".xlsx"><button id="btn-importar2">Analisar e importar</button><div id="import-result2"></div><p class="muted">A importação é idempotente: o mesmo lançamento da planilha não é inserido novamente.</p></section></section>
-<footer>Lonely Wallet · Seus dados permanecem no seu servidor</footer>
-</main><script src="/app.js"></script></body></html>
+<section id="carteira" class="page hidden"><div class="panel"><h3>Carteira</h3><p class="muted">Posições atuais, preço médio, valor de mercado e resultado.</p><div id="portfolio-list"></div></div></section>
+<section id="movimentacoes" class="page hidden"><div class="panel"><div class="panel-head"><div><h3>Movimentações</h3><small>Histórico de operações cadastradas</small></div></div><form id="form-op" class="operation-form"><input name="ticker" placeholder="Ticker" required><select name="tipo"><option value="acao">Ação</option><option value="fii">FII</option><option value="renda_fixa">Renda fixa</option><option value="etf">ETF</option></select><select name="mercado"><option value="BR">Brasil</option><option value="EXT">Exterior</option></select><input name="data" type="date" required><input name="qtd" type="number" step="any" placeholder="Quantidade (+ compra / - venda)" required><input name="preco" type="number" step="any" placeholder="Preço unitário" required><button>Adicionar operação</button></form><div id="operations-list"></div></div></section>
+<section id="proventos" class="page hidden"><div class="panel"><div class="panel-head"><div><h3>Proventos</h3><small>Rendimentos cadastrados no banco</small></div><select id="prov-period"><option value="12">Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="60">Últimos 5 anos</option></select></div><div id="dividends-list"></div></div></section>
+<footer>Lonely Wallet · Seus dados permanecem no seu servidor</footer></main><script src="/app.js"></script></body></html>
