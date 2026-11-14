@@ -2,11 +2,8 @@ name: Publicar imagem
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
   workflow_dispatch:
-permissions:
-  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,17 +13,8 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: lonker/lonely-wallet
-          tags: |
-            type=raw,value=latest
-            type=ref,event=tag
-            type=sha,prefix=sha-
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: lonker/lonely-wallet:latest
