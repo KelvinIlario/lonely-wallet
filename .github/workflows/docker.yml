@@ -5,32 +5,26 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Baixar código
-        uses: actions/checkout@v4
-      - name: Preparar tags e metadados
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
         id: meta
-        uses: docker/metadata-action@v5
         with:
           images: lonker/lonely-wallet
           tags: |
             type=raw,value=latest
             type=ref,event=tag
             type=sha,prefix=sha-
-      - name: Login no Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Construir e publicar imagem
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
