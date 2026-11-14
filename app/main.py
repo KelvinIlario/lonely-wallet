@@ -1,4 +1,4 @@
-import os, io, hashlib
+import os, io, re, sqlite3
 from datetime import date, datetime, timedelta
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -13,190 +13,188 @@ db.init()
 
 class Operacao(BaseModel):
     ticker: str
-    tipo: str
-    mercado: str
+    tipo: str = "acao"
+    mercado: str = "BR"
     data: str
     qtd: float
     preco: float
 
-def _tipo_norm(value):
-    s = (value or "").lower()
-    if "fii" in s or "imobili" in s: return "fii"
-    if "renda fixa" in s or "tesouro" in s or "cdb" in s or "lci" in s or "lca" in s: return "renda_fixa"
-    if "etf" in s: return "etf"
-    if "cripto" in s: return "cripto"
-    return "acao"
+def tipo_label(t):
+    t=(t or "").lower()
+    if "fii" in t: return "FII"
+    if "fix" in t or "tesouro" in t or "cdb" in t or "lci" in t or "lca" in t: return "Renda fixa"
+    if "etf" in t: return "ETF"
+    if "crip" in t: return "Cripto"
+    return "Ações"
 
-def _ativos(c, filtro="todos"):
-    rows = c.execute("SELECT * FROM ativos ORDER BY ticker").fetchall()
-    return [a for a in rows if filtro in ("todos", "all", "", None) or _tipo_norm(a["tipo"]) == filtro]
-
-def _carteira(c, filtro="todos"):
-    saida=[]
-    hoje=date.today().isoformat()
-    for a in _ativos(c, filtro):
+def portfolio():
+    c=db.conn()
+    assets=c.execute("SELECT * FROM ativos ORDER BY ticker").fetchall()
+    result=[]
+    today=date.today().isoformat()
+    for a in assets:
         ops=c.execute("SELECT * FROM operacoes WHERE ticker=? ORDER BY data,id",(a["ticker"],)).fetchall()
-        qtd=custo=0.0
+        qty=cost=0.0
         for o in ops:
             q=float(o["qtd"] or 0); p=float(o["preco"] or 0)
             if q>0:
-                qtd += q; custo += q*p
-            elif q<0 and qtd>0:
-                pm=custo/qtd
-                venda=min(abs(q),qtd)
-                qtd-=venda; custo-=venda*pm
-        if qtd <= 1e-9: continue
-        pm=custo/qtd if qtd else 0
-        try: atual=float(quotes.preco_atual(a["ticker"],a["mercado"]))
-        except Exception: atual=pm
-        provs=c.execute("SELECT * FROM proventos WHERE ticker=? ORDER BY data",(a["ticker"],)).fetchall()
-        recebidos=0.0
-        for p in provs:
-            if p["data"] <= hoje:
-                recebidos += float(p["valor_por_cota"] or 0)*qtd
-        valor=atual*qtd
-        tipo=_tipo_norm(a["tipo"])
-        saida.append({"ticker":a["ticker"],"tipo":tipo,"mercado":a["mercado"],"qtd":qtd,
-          "preco_medio":pm,"preco_atual":atual,"investido":custo,"valor_atual":valor,
-          "lucro":valor-custo,"lucro_pct":((valor/custo)-1)*100 if custo else 0,
-          "proventos_recebidos":recebidos})
-    return saida
-
-@app.get("/api/health")
-def health():
-    return {"ok":True,"database":os.path.join(db.DATA_DIR,"carteira.db")}
+                qty += q; cost += q*p
+            elif qty>0:
+                avg=cost/qty
+                sold=min(abs(q),qty)
+                qty-=sold; cost-=avg*sold
+        if qty<=1e-9: continue
+        avg=cost/qty if qty else 0
+        try: current=float(quotes.preco_atual(a["ticker"],a["mercado"]))
+        except Exception: current=avg
+        dividends=c.execute("SELECT * FROM proventos WHERE ticker=? ORDER BY data",(a["ticker"],)).fetchall()
+        paid=due=0.0
+        # Estimativa com posição atual; não representa quantidade histórica na data-com.
+        for d in dividends:
+            value=float(d["valor_por_cota"] or 0)*qty
+            if d["data"]<=today: paid+=value
+            else: due+=value
+        result.append({"ticker":a["ticker"],"tipo":a["tipo"],"classe":tipo_label(a["tipo"]),
+          "mercado":a["mercado"],"qtd":qty,"preco_medio":avg,"preco_atual":current,
+          "investido":cost,"valor_atual":current*qty,"lucro":current*qty-cost,
+          "lucro_pct":((current/avg)-1)*100 if avg else 0,
+          "proventos_recebidos":paid,"proventos_a_receber":due,
+          "primeira_operacao":ops[0]["data"] if ops else None})
+    c.close()
+    return result
 
 @app.get("/api/carteira")
-def carteira(tipo: str="todos"):
-    c=db.conn()
-    try:
-        ativos=_carteira(c,tipo)
-        totals={"investido":sum(a["investido"] for a in ativos),
-          "atual":sum(a["valor_atual"] for a in ativos),
-          "lucro":sum(a["lucro"] for a in ativos),
-          "proventos":sum(a["proventos_recebidos"] for a in ativos)}
-        totals["rentabilidade"]=(totals["lucro"]/totals["investido"]*100) if totals["investido"] else 0
-        return {"ativos":ativos,"totais":totals}
-    finally: c.close()
-
-@app.get("/api/proventos")
-def listar_proventos(tipo: str="todos", meses: int=12):
-    c=db.conn()
-    try:
-        ativos={a["ticker"] for a in _ativos(c,tipo)}
-        limite=(date.today()-timedelta(days=meses*31)).isoformat()
-        rows=c.execute("SELECT * FROM proventos WHERE data>=? ORDER BY data DESC",(limite,)).fetchall()
-        return [dict(r) for r in rows if r["ticker"] in ativos]
-    finally: c.close()
+def carteira():
+    assets=portfolio()
+    invested=sum(x["investido"] for x in assets); current=sum(x["valor_atual"] for x in assets)
+    profit=current-invested; divs=sum(x["proventos_recebidos"] for x in assets)
+    return {"ativos":assets,"totais":{"investido":invested,"atual":current,"lucro":profit,
+      "lucro_pct":profit/invested*100 if invested else 0,"proventos":divs,
+      "rentabilidade":profit/invested*100 if invested else 0}}
 
 @app.get("/api/operacoes")
 def list_operacoes():
     c=db.conn()
-    try: return [dict(r) for r in c.execute("SELECT * FROM operacoes ORDER BY data DESC,id DESC")]
-    finally: c.close()
+    rows=[dict(r) for r in c.execute("SELECT o.*,a.tipo,a.mercado FROM operacoes o LEFT JOIN ativos a ON a.ticker=o.ticker ORDER BY o.data DESC,o.id DESC")]
+    c.close(); return rows
 
 @app.post("/api/operacoes")
 def add_operacao(op: Operacao):
-    t=op.ticker.upper().strip()
+    ticker=op.ticker.upper().strip()
+    if not ticker or op.qtd==0 or op.preco<0: raise HTTPException(400,"Confira ticker, quantidade e preço.")
     c=db.conn()
-    try:
-        c.execute("INSERT OR IGNORE INTO ativos(ticker,tipo,mercado) VALUES(?,?,?)",(t,_tipo_norm(op.tipo),op.mercado))
-        c.execute("INSERT INTO operacoes(ticker,data,qtd,preco) VALUES(?,?,?,?)",(t,op.data,op.qtd,op.preco))
-        c.commit()
-    finally: c.close()
+    c.execute("INSERT OR IGNORE INTO ativos(ticker,tipo,mercado) VALUES(?,?,?)",(ticker,op.tipo,op.mercado))
+    c.execute("INSERT INTO operacoes(ticker,data,qtd,preco) VALUES(?,?,?,?)",(ticker,op.data,op.qtd,op.preco))
+    c.commit(); c.close()
     return {"ok":True}
 
 @app.delete("/api/operacoes/{op_id}")
 def del_operacao(op_id:int):
-    c=db.conn()
-    try:
-        c.execute("DELETE FROM operacoes WHERE id=?",(op_id,)); c.commit()
-        return {"ok":True}
-    finally: c.close()
+    c=db.conn(); cur=c.execute("DELETE FROM operacoes WHERE id=?",(op_id,)); c.commit(); c.close()
+    if not cur.rowcount: raise HTTPException(404,"Lançamento não encontrado.")
+    return {"ok":True}
 
-@app.get("/api/historico")
-def historico(periodo:str="12m", tipo:str="todos"):
-    """Histórico de aportes líquidos. Não representa patrimônio de mercado histórico."""
+@app.get("/api/proventos")
+def list_proventos():
     c=db.conn()
-    try:
-        ativos=_ativos(c,tipo)
-        tickers={a["ticker"] for a in ativos}
-        rows=c.execute("SELECT ticker,data,qtd,preco FROM operacoes ORDER BY data").fetchall()
-        eventos=[]
-        for r in rows:
-            if r["ticker"] not in tickers: continue
-            try: dt=date.fromisoformat(r["data"][:10])
-            except Exception: continue
-            eventos.append((dt,float(r["qtd"] or 0)*float(r["preco"] or 0)))
-        hoje=date.today()
-        if periodo=="30d": inicio=hoje-timedelta(days=30)
-        elif periodo=="2a": inicio=hoje-timedelta(days=365*2)
-        elif periodo=="5a": inicio=hoje-timedelta(days=365*5)
-        elif periodo=="10a": inicio=hoje-timedelta(days=365*10)
-        elif periodo=="inicio": inicio=min([e[0] for e in eventos],default=hoje)
-        else: inicio=hoje-timedelta(days=365)
-        acumulado=sum(v for d,v in eventos if d<inicio)
-        por_mes=defaultdict(float)
-        cursor=date(inicio.year,inicio.month,1)
-        while cursor<=hoje:
-            por_mes[cursor.strftime("%Y-%m")]+=0
-            cursor=(date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1))
-        for d,v in eventos:
-            if d>=inicio:
-                por_mes[d.strftime("%Y-%m")]+=v
-        dados=[]
-        for mes in sorted(por_mes):
-            acumulado+=por_mes[mes]
-            dados.append({"mes":mes,"valor":round(acumulado,2)})
-        if not dados: dados=[{"mes":hoje.strftime("%Y-%m"),"valor":0}]
-        return {"periodo":periodo,"tipo":tipo,"base":"aportes_liquidos","aviso":"Série de capital aplicado; histórico de cotação não está armazenado, portanto não é patrimônio de mercado histórico.","dados":dados}
-    finally: c.close()
+    rows=[dict(r) for r in c.execute("""SELECT p.*,a.tipo FROM proventos p LEFT JOIN ativos a ON a.ticker=p.ticker ORDER BY p.data DESC""")]
+    c.close()
+    # Calcula estimativa usando posição atual, identificada como estimativa na interface.
+    positions={a["ticker"]:a["qtd"] for a in portfolio()}
+    for r in rows:
+        r["estimado"]=float(r["valor_por_cota"] or 0)*positions.get(r["ticker"],0)
+        r["status"]="Pago" if r["data"]<=date.today().isoformat() else "A receber"
+        r["classe"]=tipo_label(r.get("tipo"))
+    return rows
 
 @app.post("/api/atualizar-proventos")
 def atualizar_todos():
-    c=db.conn()
-    try: ativos=c.execute("SELECT * FROM ativos").fetchall()
-    finally: c.close()
-    for a in ativos:
+    c=db.conn(); assets=c.execute("SELECT * FROM ativos").fetchall(); c.close()
+    updated=0; errors=[]
+    for a in assets:
         try:
-            for data,valor,tipo in quotes.proventos(a["ticker"],a["mercado"]):
-                c2=db.conn()
-                try:
-                    c2.execute("INSERT OR IGNORE INTO proventos(ticker,data,valor_por_cota,tipo) VALUES(?,?,?,?)",(a["ticker"],data,valor,tipo)); c2.commit()
-                finally: c2.close()
-        except Exception as e: print("erro proventos",a["ticker"],e)
-    return {"ok":True}
+            for d,v,t in quotes.proventos(a["ticker"],a["mercado"]):
+                c=db.conn(); c.execute("INSERT OR IGNORE INTO proventos(ticker,data,valor_por_cota,tipo) VALUES(?,?,?,?)",(a["ticker"],d,v,t)); c.commit(); c.close(); updated+=1
+        except Exception as e: errors.append(a["ticker"])
+    return {"ok":True,"atualizados":updated,"falhas":errors}
 
 @app.post("/api/importar")
 async def importar(arquivo:UploadFile=File(...)):
-    wb=load_workbook(io.BytesIO(await arquivo.read()),data_only=True)
-    ws=wb.active
-    cab=[str(c.value or "").strip().lower() for c in next(ws.iter_rows(min_row=1,max_row=1))]
-    def col(*nomes):
-        for i,h in enumerate(cab):
-            if any(n in h for n in nomes): return i
-        return None
-    i_data=col("data"); i_tipo=col("tipo de movimenta","compra/venda")
-    i_cod=col("código","codigo","produto"); i_qtd=col("quantidade"); i_preco=col("preço","preco")
-    if None in (i_data,i_tipo,i_cod,i_qtd,i_preco):
-        raise HTTPException(400,"Não reconheci as colunas da planilha.")
-    novos=0
-    c=db.conn()
+    name=(arquivo.filename or "").lower()
+    if not name.endswith(".xlsx"): raise HTTPException(400,"Envie uma planilha .xlsx.")
     try:
-        for row in ws.iter_rows(min_row=2,values_only=True):
-            if not row[i_cod]: continue
-            ticker=str(row[i_cod]).split(" ")[0].upper().strip()
-            qtd=float(row[i_qtd] or 0)
-            if "venda" in str(row[i_tipo]).lower(): qtd=-abs(qtd)
-            d=row[i_data]
-            data=d.strftime("%Y-%m-%d") if hasattr(d,"strftime") else str(d)[:10]
-            tipo="fii" if ticker.endswith("11") else "acao"
-            c.execute("INSERT OR IGNORE INTO ativos(ticker,tipo,mercado) VALUES(?,?,?)",(ticker,tipo,"BR"))
-            c.execute("INSERT INTO operacoes(ticker,data,qtd,preco) VALUES(?,?,?,?)",(ticker,data,qtd,float(row[i_preco] or 0)))
-            novos+=1
-        c.commit()
-    finally: c.close()
-    return {"importadas":novos}
+        wb=load_workbook(io.BytesIO(await arquivo.read()),data_only=True)
+    except Exception: raise HTTPException(400,"Não consegui abrir o arquivo Excel.")
+    found=[]
+    for ws in wb.worksheets:
+        rows=ws.iter_rows(values_only=True)
+        first=next(rows,None)
+        if not first: continue
+        headers=[str(x or "").strip().lower() for x in first]
+        def find(*terms):
+            for i,h in enumerate(headers):
+                if any(term in h for term in terms): return i
+            return None
+        # Cabeçalhos comuns nos relatórios de negociação da B3.
+        ix_date=find("data do negócio","data negócio","data","data pregão")
+        ix_type=find("tipo de movimentação","tipo de movimentacao","compra/venda","natureza")
+        ix_ticker=find("código de negociação","codigo de negociacao","código","codigo","ticker","produto")
+        ix_qty=find("quantidade","qtde")
+        ix_price=find("preço","preco","valor unitário","valor unitario")
+        if None in (ix_date,ix_type,ix_ticker,ix_qty,ix_price): continue
+        for row in rows:
+            try:
+                ticker=str(row[ix_ticker] or "").strip().upper().split()[0]
+                if not ticker: continue
+                q=float(row[ix_qty] or 0)
+                if q<=0: continue
+                typ=str(row[ix_type] or "").lower()
+                if "venda" in typ or "saída" in typ or "saida" in typ: q=-q
+                rawdate=row[ix_date]
+                d=rawdate.strftime("%Y-%m-%d") if hasattr(rawdate,"strftime") else str(rawdate)[:10]
+                if "/" in d: d="-".join(reversed(d.split("/")))
+                price=float(row[ix_price] or 0)
+                found.append((ticker,d,q,price))
+            except Exception: continue
+        if found: break
+    if not found:
+        raise HTTPException(400,"Não encontrei operações nessa planilha. Use o extrato de negociação da B3 com data, tipo de movimentação, código, quantidade e preço. O arquivo enviado precisa conter linhas de operações.")
+    c=db.conn(); inserted=0
+    for ticker,d,q,price in found:
+        tipo="fii" if ticker.endswith("11") else "acao"
+        c.execute("INSERT OR IGNORE INTO ativos(ticker,tipo,mercado) VALUES(?,?,?)",(ticker,tipo,"BR"))
+        # Evita duplicar importações idênticas.
+        exists=c.execute("SELECT 1 FROM operacoes WHERE ticker=? AND data=? AND qtd=? AND preco=? LIMIT 1",(ticker,d,q,price)).fetchone()
+        if not exists:
+            c.execute("INSERT INTO operacoes(ticker,data,qtd,preco) VALUES(?,?,?,?)",(ticker,d,q,price)); inserted+=1
+    c.commit(); c.close()
+    return {"importadas":inserted,"linhas_lidas":len(found)}
+
+@app.get("/api/series")
+def series(periodo:str="12m",classe:str="todos"):
+    # Série de capital líquido aplicado, não valor de mercado histórico.
+    c=db.conn()
+    rows=c.execute("""SELECT o.data,o.qtd,o.preco,a.tipo FROM operacoes o LEFT JOIN ativos a ON a.ticker=o.ticker ORDER BY o.data""").fetchall()
+    c.close()
+    now=date.today()
+    days={"30d":30,"12m":365,"2a":730,"5a":1825,"10a":3650}
+    cutoff=now-timedelta(days=days.get(periodo,365)) if periodo!="inicio" else date.min
+    monthly=defaultdict(float)
+    for r in rows:
+        try: dt=date.fromisoformat(r["data"][:10])
+        except: continue
+        if dt<cutoff: continue
+        if classe!="todos" and tipo_label(r["tipo"]).lower()!=classe.lower(): continue
+        monthly[dt.strftime("%Y-%m")]+=float(r["qtd"])*float(r["preco"])
+    keys=sorted(monthly)
+    acc=0; out=[]
+    for k in keys:
+        acc+=monthly[k]
+        out.append({"periodo":k,"aportes":monthly[k],"capital_liquido":acc})
+    return {"pontos":out,"observacao":"Série de capital líquido aplicado; não é cotação histórica nem valor de mercado passado."}
+
+@app.get("/api/health")
+def health(): return {"ok":True}
 
 STATIC=os.path.join(os.path.dirname(__file__),"static")
 @app.get("/")
