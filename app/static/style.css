@@ -31,3 +31,47 @@ footer{font-size:10px;padding:20px 2px}
 @media(max-width:1100px){.sidebar{gap:14px;padding-left:16px;padding-right:16px}.sidebar nav button{padding:9px 6px}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:800px){.sidebar{position:static;display:block;padding:10px 14px}.brand{margin-bottom:9px}.sidebar nav{overflow-x:auto;flex-wrap:nowrap}.sidebar nav button{flex-shrink:0}.charts{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}main{width:calc(100% - 28px);padding-top:17px}header{align-items:flex-start;gap:12px;flex-direction:column}}
 @media(max-width:480px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stat strong{font-size:16px}.toolbar{align-items:flex-start;flex-direction:column;gap:9px}.toolbar div{flex-wrap:wrap}.actions{flex-wrap:wrap}.donut-wrap{gap:14px}.donut{width:112px;height:112px}.donut:after{inset:25px}}
+
+/* v1.8.1 — wider desktop layout and more readable navigation */
+@media(min-width:801px){
+  main{
+    width:calc(100% - 64px);
+    max-width:1800px;
+    margin-left:auto;
+    margin-right:auto;
+    padding-left:0;
+    padding-right:0;
+  }
+  .sidebar{
+    padding-left:max(32px,calc((100vw - 1800px)/2));
+    padding-right:max(32px,calc((100vw - 1800px)/2));
+    gap:36px;
+  }
+  .sidebar nav{gap:7px}
+  .sidebar nav button{
+    font-size:13px;
+    padding:11px 12px;
+    gap:8px;
+  }
+  .brand{font-size:17px}
+  .stats{gap:14px}
+  .stat{padding:16px 18px}
+  .stat .label{font-size:12px}
+  .stat strong{font-size:21px}
+  .stat small{font-size:11px}
+  .panel{padding:18px}
+  .panel h3{font-size:14px}
+  .sub{font-size:11px}
+  th{font-size:11px;padding:12px 11px}
+  td{font-size:12px;padding:12px 11px}
+  .section-title{font-size:17px}
+}
+@media(min-width:1400px){
+  main{width:calc(100% - 80px)}
+  .sidebar nav button{font-size:14px;padding:12px 14px}
+  .stat strong{font-size:23px}
+}
+@media(max-width:800px){
+  main{width:calc(100% - 28px)}
+  .sidebar nav button{font-size:12px}
+}
