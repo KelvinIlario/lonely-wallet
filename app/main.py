@@ -138,102 +138,45 @@ def carteira():
 
 @app.post("/api/importar")
 async def importar(arquivo: UploadFile = File(...)):
-    """Importa operações de uma planilha .xlsx exportada da B3."""
-    nome = (arquivo.filename or "").lower()
-    if not nome.endswith(".xlsx"):
-        raise HTTPException(400, "Envie uma planilha Excel no formato .xlsx.")
-    try:
-        wb = load_workbook(io.BytesIO(await arquivo.read()), data_only=True, read_only=True)
-        ws = wb.active
-        linhas = ws.iter_rows(values_only=True)
-        cabecalho = next(linhas, None)
-        if not cabecalho:
-            raise HTTPException(400, "A planilha está vazia.")
-        cab = [str(v or "").strip().lower() for v in cabecalho]
+    """Importa planilha .xlsx de negociacao da B3 (Portal do Investidor)."""
+    wb = load_workbook(io.BytesIO(await arquivo.read()), data_only=True)
+    ws = wb.active
+    cab = [str(c.value or "").strip().lower() for c in next(ws.iter_rows(min_row=1, max_row=1))]
 
-        def localizar(*termos):
-            for i, titulo in enumerate(cab):
-                if any(t in titulo for t in termos):
-                    return i
-            return None
+    def col(*nomes):
+        for i, h in enumerate(cab):
+            if any(n in h for n in nomes):
+                return i
+        return None
 
-        i_data = localizar("data")
-        i_mov = localizar("entrada/saída", "entrada/saida", "tipo de movimenta",
-                          "compra/venda", "movimentação", "movimentacao", "tipo")
-        i_prod = localizar("produto", "código de negociação", "codigo de negociacao",
-                           "código", "codigo", "ativo", "ticker")
-        i_qtd = localizar("quantidade")
-        i_preco = localizar("preço unitário", "preco unitario", "preço", "preco")
-        if None in (i_data, i_mov, i_prod, i_qtd, i_preco):
-            raise HTTPException(400, "Não reconheci as colunas. Confira se o arquivo é o extrato de negociações da B3.")
-
-        def numero(valor):
-            if valor is None or valor == "":
-                return 0.0
-            if isinstance(valor, (int, float)):
-                return float(valor)
-            txt = str(valor).strip().replace("R$", "").replace(" ", "")
-            if "," in txt:
-                txt = txt.replace(".", "").replace(",", ".")
-            return float(txt)
-
-        def data_iso(valor):
-            if hasattr(valor, "strftime"):
-                return valor.strftime("%Y-%m-%d")
-            from datetime import datetime
-            txt = str(valor).strip()
-            for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
-                try:
-                    return datetime.strptime(txt[:10], fmt).strftime("%Y-%m-%d")
-                except ValueError:
-                    pass
-            raise ValueError("data inválida")
-
-        c = db.conn()
-        novos = duplicados = ignorados = 0
-        try:
-            for row in linhas:
-                if not row or len(row) <= max(i_data, i_mov, i_prod, i_qtd, i_preco):
-                    ignorados += 1
-                    continue
-                produto = str(row[i_prod] or "").strip()
-                if not produto:
-                    continue
-                ticker = produto.split()[0].upper().strip()
-                movimento = str(row[i_mov] or "").strip().lower()
-                qtd = abs(numero(row[i_qtd]))
-                preco = numero(row[i_preco])
-                if not ticker or qtd <= 0 or preco < 0:
-                    ignorados += 1
-                    continue
-                if any(p in movimento for p in ("venda", "saída", "saida")):
-                    qtd = -qtd
-                elif not any(p in movimento for p in ("compra", "entrada")):
-                    ignorados += 1
-                    continue
-                data = data_iso(row[i_data])
-                tipo = "fii" if ticker.endswith("11") else "acao"
-                existente = c.execute(
-                    """SELECT 1 FROM operacoes WHERE ticker=? AND data=?
-                       AND ABS(qtd-?)<0.0000001 AND ABS(preco-?)<0.0000001 LIMIT 1""",
-                    (ticker, data, qtd, preco)
-                ).fetchone()
-                if existente:
-                    duplicados += 1
-                    continue
-                c.execute("INSERT OR IGNORE INTO ativos(ticker,tipo,mercado) VALUES(?,?,?)",
-                          (ticker, tipo, "BR"))
-                c.execute("INSERT INTO operacoes(ticker,data,qtd,preco) VALUES(?,?,?,?)",
-                          (ticker, data, qtd, preco))
-                novos += 1
-            c.commit()
-        finally:
-            c.close()
-        return {"importadas": novos, "duplicadas": duplicados, "ignoradas": ignorados}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(400, f"Não foi possível ler a planilha: {e}")
+    i_data = col("data")
+    i_tipo = col("tipo de movimenta", "compra/venda")
+    i_cod = col("código", "codigo", "produto")
+    i_qtd = col("quantidade")
+    i_preco = col("preço", "preco")
+    if None in (i_data, i_tipo, i_cod, i_qtd, i_preco):
+        raise HTTPException(400, "Não reconheci as colunas da planilha.")
+    novos = 0
+    c = db.conn()
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row[i_cod]:
+            continue
+        ticker = str(row[i_cod]).split(" ")[0].upper().strip()
+        qtd = float(row[i_qtd] or 0)
+        if "venda" in str(row[i_tipo]).lower():
+            qtd = -abs(qtd)
+        d = row[i_data]
+        data = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else "-".join(str(d)[:10].split("/")[::-1])
+        tipo = "fii" if ticker.endswith("11") else "acao"
+        c.execute("INSERT OR IGNORE INTO ativos(ticker,tipo,mercado) VALUES(?,?,?)", (ticker, tipo, "BR"))
+        c.execute(
+            "INSERT INTO operacoes(ticker,data,qtd,preco) VALUES(?,?,?,?)",
+            (ticker, data, qtd, float(row[i_preco] or 0)),
+        )
+        novos += 1
+    c.commit()
+    c.close()
+    return {"importadas": novos}
 
 
 @app.post("/api/atualizar-proventos")
