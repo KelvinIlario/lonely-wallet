@@ -34,6 +34,13 @@ def init():
         tipo TEXT,
         UNIQUE(ticker, data, valor_por_cota)
     );
+    CREATE TABLE IF NOT EXISTS importacoes_b3 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE NOT NULL,
+        linha INTEGER, entrada_saida TEXT, data TEXT, movimentacao TEXT,
+        produto TEXT, ticker TEXT, instituicao TEXT, quantidade REAL,
+        preco_unitario REAL, valor_operacao REAL, categoria TEXT,
+        importado_em TEXT DEFAULT CURRENT_TIMESTAMP
+    );
     """)
     c.commit()
     c.close()
