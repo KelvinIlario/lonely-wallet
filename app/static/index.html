@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1115">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/style.css">
+  <title>Lonely Wallet</title>
+</head>
+<body>
+  <header>
+    <h1>Lonely Wallet</h1>
+    <button id="btn-atualizar">Atualizar</button>
+  </header>
+
+  <section class="cards" id="totais"></section>
+
+  <section>
+    <h2>Ativos</h2>
+    <div id="lista"></div>
+  </section>
+
+  <section>
+    <h2>Nova operação</h2>
+    <form id="form-op">
+      <input name="ticker" placeholder="Ticker (ex: HGLG11, AAPL)" required>
+      <select name="tipo">
+        <option value="acao">Ação</option>
+        <option value="fii">FII</option>
+        <option value="etf">ETF</option>
+      </select>
+      <select name="mercado">
+        <option value="BR">Brasil</option>
+        <option value="EXT">Exterior</option>
+      </select>
+      <input name="data" type="date" required>
+      <input name="qtd" type="number" step="any" placeholder="Quantidade (negativo = venda)" required>
+      <input name="preco" type="number" step="any" placeholder="Preço" required>
+      <button type="submit">Adicionar</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Importar planilha da B3</h2>
+    <input type="file" id="arquivo" accept=".xlsx">
+    <button id="btn-importar">Importar</button>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>
