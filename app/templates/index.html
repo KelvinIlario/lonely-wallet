@@ -567,7 +567,7 @@ body.light-theme .tax-tabs button.active{background:#fff}
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
-<button class="pillbtn" onclick="openModal('op')">＋ Lançamento</button></div></header>
+<button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar B3</button></div></header>
 <nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="posicoes">▦ Posições</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="rentabilidade">⌁ Rentabilidade</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="metas">◎ Metas</button><button data-page="irpf">▣ IRPF</button><button data-page="darfs">▤ DARFs</button></nav>
 <main>
 <section id="page-resumo" class="page"><div class="pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
@@ -694,6 +694,7 @@ body.light-theme .tax-tabs button.active{background:#fff}
 </section>
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
+<div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
 <div class="modalback" id="modalback" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modalhead"><h2 id="modalTitle">Novo lançamento</h2><button class="close" onclick="closeModal()">×</button></div><form id="opForm" class="formgrid operation-form">
  <div class="operation-switch full">
   <button type="button" class="operation-side active" data-side="compra" onclick="setOperationSide('compra')">▣ Compra</button>
@@ -2086,5 +2087,41 @@ try{
  applyTheme(localStorage.getItem('lonelyWalletLightTheme')==='1');
  applyPrivacy(localStorage.getItem('lonelyWalletPrivacyMode')==='1');
 }catch(e){applyTheme(false);applyPrivacy(false)}
+
+
+let b3PreviewReady=false;
+function openB3Import(){
+ const back=document.getElementById('b3ImportBack');back.style.display='flex';
+ document.getElementById('b3File').value='';document.getElementById('b3Preview').textContent='Nenhum arquivo selecionado.';
+ document.getElementById('b3ConfirmButton').classList.add('hidden');document.getElementById('b3PreviewButton').classList.remove('hidden');b3PreviewReady=false;
+}
+function closeB3Import(){document.getElementById('b3ImportBack').style.display='none';}
+async function sendB3File(mode){
+ const file=document.getElementById('b3File').files[0];if(!file)throw new Error('Selecione uma planilha .xlsx da B3.');
+ const form=new FormData();form.append('arquivo',file);form.append('modo',mode);
+ const response=await fetch('/api/importar-b3',{method:'POST',body:form});
+ const data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.erro||data.error||data.mensagem||'Falha ao processar a planilha.');return data;
+}
+async function previewB3File(){
+ const button=document.getElementById('b3PreviewButton');button.disabled=true;button.textContent='Analisando…';
+ try{
+  const r=await sendB3File('preview');
+  document.getElementById('b3Preview').innerHTML=`<div class="grid stats"><div class="panel"><strong>${r.total}</strong><div class="mini">Movimentações reconhecidas</div></div><div class="panel"><strong>${r.operacoes}</strong><div class="mini">Lançamentos novos</div></div><div class="panel"><strong>${r.proventos}</strong><div class="mini">Proventos novos</div></div><div class="panel"><strong>${r.duplicados}</strong><div class="mini">Duplicados</div></div></div><p class="mini">Compras e vendas serão adicionadas em Lançamentos. Dividendos, JCP e rendimentos serão adicionados em Proventos. Eventos sem valor negociado ou sem classificação segura serão ignorados.</p>`;
+  b3PreviewReady=r.novos>0;document.getElementById('b3ConfirmButton').classList.toggle('hidden',!b3PreviewReady);
+  toast(r.novos?'Prévia pronta. Confira os números antes de importar.':'Nenhuma movimentação nova para importar.');
+ }catch(e){toast(e.message);document.getElementById('b3Preview').textContent=e.message;}
+ finally{button.disabled=false;button.textContent='Analisar planilha';}
+}
+async function confirmB3Import(){
+ if(!b3PreviewReady)return;
+ const button=document.getElementById('b3ConfirmButton');button.disabled=true;button.textContent='Importando…';
+ try{
+  const r=await sendB3File('importar');
+  await refresh();
+  document.getElementById('b3Preview').innerHTML=`<strong>Importação concluída!</strong><p>${r.operacoes} lançamentos e ${r.proventos} proventos adicionados. ${r.duplicados} duplicados ignorados.</p>`;
+  button.classList.add('hidden');b3PreviewReady=false;toast('Planilha B3 importada com sucesso.');
+ }catch(e){toast(e.message);}
+ finally{button.disabled=false;button.textContent='Confirmar importação';}
+}
 
 </script></body></html>

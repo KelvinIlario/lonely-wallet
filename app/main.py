@@ -1,8 +1,9 @@
-import os, sqlite3, time, json, threading
+import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata
 from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
 from zoneinfo import ZoneInfo
 import requests
+from openpyxl import load_workbook
 from flask import Flask, g, jsonify, render_template, request
 
 app = Flask(__name__)
@@ -108,6 +109,11 @@ def init_db():
     CREATE TABLE IF NOT EXISTS integracao_estado (
       chave TEXT PRIMARY KEY,
       valor TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS b3_importados (
+      fingerprint TEXT PRIMARY KEY,
+      categoria TEXT NOT NULL,
+      importado_em TEXT NOT NULL
     );
     ''')
     columns = [row[1] for row in con.execute('PRAGMA table_info(operacoes)').fetchall()]
@@ -510,6 +516,141 @@ def proventos():
 def sincronizar_proventos():
     result = sync_brapi_proventos(force=True, quote_items=carteira().json.get('itens', []))
     return jsonify(result)
+
+
+def _b3_normalize(value):
+    raw = unicodedata.normalize('NFKD', str(value or '').strip().lower())
+    return ''.join(ch for ch in raw if not unicodedata.combining(ch))
+
+
+def _b3_number(value):
+    if value is None or value == '-':
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    raw = str(value).strip().replace('R$', '').replace(' ', '')
+    if not raw or raw == '-':
+        return 0.0
+    if ',' in raw:
+        raw = raw.replace('.', '').replace(',', '.')
+    return float(raw)
+
+
+def _b3_date(value):
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    raw = str(value or '').strip()
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            pass
+    raise ValueError('Data inválida na planilha B3: ' + raw)
+
+
+def _b3_asset(product):
+    name = str(product or '').strip()
+    ticker = name.split(' - ', 1)[0].strip().upper()
+    if not ticker:
+        return '', 'outros'
+    if _b3_normalize(name).startswith(('lca ', 'lci ', 'cdb ', 'rdb ', 'tesouro ')) or ticker.startswith(('LCA', 'LCI', 'CDB', 'RDB')):
+        return ticker[:80], 'renda_fixa'
+    if re.fullmatch(r'[A-Z]{4}11', ticker):
+        return ticker, 'fii' if ('fii' in _b3_normalize(name) or 'imob' in _b3_normalize(name)) else 'etf'
+    if re.fullmatch(r'[A-Z]{4}(3[0-9]|[4-9][0-9])', ticker):
+        return ticker, 'bdr'
+    if re.fullmatch(r'[A-Z]{4}[0-9]{1,2}', ticker):
+        return ticker, 'acao'
+    return ticker[:80], 'outros'
+
+
+def _parse_b3_workbook(file_storage):
+    if not file_storage or not file_storage.filename.lower().endswith('.xlsx'):
+        raise ValueError('Selecione uma planilha Excel da B3 no formato .xlsx.')
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError('O arquivo selecionado está vazio.')
+    wb = load_workbook(io.BytesIO(raw), read_only=False, data_only=True)
+    ws = wb.active
+    rows = ws.iter_rows(values_only=True)
+    header = next(rows, None)
+    if not header:
+        raise ValueError('A planilha não contém cabeçalho.')
+    headers = {_b3_normalize(v): i for i, v in enumerate(header) if v is not None}
+    required = ['entrada/saida', 'data', 'movimentacao', 'produto', 'quantidade', 'preco unitario', 'valor da operacao']
+    missing = [h for h in required if h not in headers]
+    if missing:
+        raise ValueError('Não reconheci o formato da planilha. Confira se é a planilha de movimentações exportada pela B3.')
+    parsed=[]
+    for row_number, row in enumerate(rows, start=2):
+        if not row or not any(v is not None for v in row):
+            continue
+        get=lambda key: row[headers[key]] if headers[key] < len(row) else None
+        movement=str(get('movimentacao') or '').strip()
+        movement_norm=_b3_normalize(movement)
+        entry=_b3_normalize(get('entrada/saida'))
+        product=str(get('produto') or '').strip()
+        ticker, asset_type=_b3_asset(product)
+        if not ticker:
+            continue
+        dt=_b3_date(get('data'))
+        qty=_b3_number(get('quantidade'))
+        price=_b3_number(get('preco unitario'))
+        amount=_b3_number(get('valor da operacao'))
+        category=None; record=None
+        if movement_norm in ('rendimento','juros sobre capital proprio','dividendo'):
+            if amount <= 0:
+                continue
+            category='provento'
+            record={'ticker':ticker,'valor_total':amount,'data':dt,'tipo_evento':movement}
+        elif movement_norm in ('transferencia - liquidacao','compra / venda'):
+            if qty <= 0 or amount <= 0:
+                continue
+            side='venda' if entry in ('debito','saida','saída') else 'compra'
+            if movement_norm == 'compra / venda' and asset_type == 'renda_fixa':
+                side='compra' if entry not in ('debito','saida','saída') else 'venda'
+            category='operacao'
+            record={'ticker':ticker,'tipo':asset_type,'lado':side,'quantidade':qty,'preco':price if price > 0 else amount/qty,'data':dt,'custos':0.0,'status':'executada','detalhes':{'origem':'Importação B3','movimentacao':movement,'produto':product}}
+        else:
+            # Eventos sem valor negociado (atualização, transferência entre custódias,
+            # direitos de subscrição etc.) não viram compra/venda ou provento.
+            continue
+        fingerprint=hashlib.sha256(json.dumps([row_number, category, entry, dt, movement_norm, product, qty, price, amount],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+        parsed.append({'fingerprint':fingerprint,'categoria':category,'registro':record})
+    wb.close()
+    return parsed
+
+
+@app.route('/api/importar-b3', methods=['POST'])
+def importar_b3():
+    try:
+        parsed=_parse_b3_workbook(request.files.get('arquivo'))
+        mode=request.form.get('modo','preview')
+        existing={r['fingerprint'] for r in db().execute('SELECT fingerprint FROM b3_importados').fetchall()}
+        new_rows=[r for r in parsed if r['fingerprint'] not in existing]
+        if mode != 'importar':
+            return jsonify(ok=True,total=len(parsed),novos=len(new_rows),duplicados=len(parsed)-len(new_rows),
+                operacoes=sum(1 for r in new_rows if r['categoria']=='operacao'),
+                proventos=sum(1 for r in new_rows if r['categoria']=='provento'))
+        inserted_ops=inserted_provs=duplicates=0
+        con=db()
+        for item in parsed:
+            if con.execute('SELECT 1 FROM b3_importados WHERE fingerprint=?',(item['fingerprint'],)).fetchone():
+                duplicates+=1; continue
+            rec=item['registro']
+            if item['categoria']=='operacao':
+                con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (rec['ticker'],rec['tipo'],rec['lado'],rec['quantidade'],rec['preco'],rec['data'],0.0,'executada',rec['data'],rec['data']+'T10:00:00-03:00',json.dumps(rec['detalhes'],ensure_ascii=False)))
+                inserted_ops+=1
+            else:
+                con.execute('INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)',(rec['ticker'],rec['valor_total'],rec['data']))
+                inserted_provs+=1
+            con.execute('INSERT INTO b3_importados(fingerprint,categoria,importado_em) VALUES(?,?,?)',(item['fingerprint'],item['categoria'],datetime.now(TZ).isoformat(timespec='seconds')))
+        con.commit()
+        return jsonify(ok=True,importadas=inserted_ops+inserted_provs,operacoes=inserted_ops,proventos=inserted_provs,duplicados=duplicates)
+    except Exception as exc:
+        return json_error(str(exc) if isinstance(exc,ValueError) else 'Não foi possível ler a planilha B3. Confira o arquivo e tente novamente.')
 
 
 @app.route('/api/metas', methods=['GET','POST'])

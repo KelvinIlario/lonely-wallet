@@ -177,3 +177,15 @@ A aplicação não importa mais automaticamente operações de arquivos de captu
 No ZimaOS, a porta publicada é `8085` e a porta interna da aplicação é `8080`. Os dados persistentes ficam em `/DATA/AppData/lonely-wallet/data`.
 
 **Atenção:** atualizar a imagem mantendo um banco persistente não apaga registros que já existam nesse banco. Faça backup antes de qualquer limpeza; para começar do zero, use um banco/pasta de dados vazios.
+
+
+## v2.0.3 — Importação de movimentações B3
+
+- O botão superior agora abre a importação de planilhas Excel (.xlsx) exportadas pela B3.
+- A tela apresenta uma prévia com operações, proventos e duplicidades antes da confirmação.
+- Compras/vendas de liquidação são gravadas em Lançamentos; dividendos, JCP e rendimentos em Proventos.
+- A importação mantém uma chave por movimentação para evitar reimportação duplicada.
+- Eventos sem preço/valor negociado ou sem classificação segura são ignorados, em vez de criar operações incorretas.
+- A porta do ZimaOS é 8085 (host) → 8080 (container).
+
+A importação não é automática: o usuário seleciona a planilha, confere a prévia e confirma a gravação.
