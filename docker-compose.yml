@@ -1,13 +1,14 @@
 services:
-  lonely-wallet:
-    image: lonker/lonely-wallet:latest
-    container_name: lonely-wallet
+  carteira:
+    build: .
+    container_name: minha-carteira
     restart: unless-stopped
     ports:
-      - "8085:8085"
+      - "8080:8080"
     environment:
-      - BRAPI_TOKEN=COLOQUE_SEU_TOKEN_AQUI
-      - DATA_DIR=/data
-      - TZ=America/Sao_Paulo
+      DB_PATH: /data/carteira.db
+      BRAPI_TOKEN: ${BRAPI_TOKEN:-}
+      BRAPI_API_KEY: ${BRAPI_API_KEY:-}
+      TZ: America/Sao_Paulo
     volumes:
-      - /DATA/AppData/lonely-wallet/data:/data
+      - ./data:/data
