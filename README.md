@@ -34,7 +34,7 @@ Aplicação Flask + SQLite para controle pessoal de investimentos, preparada par
 2. Extraia esta versão em uma pasta de atualização.
 3. Confira se o volume `./data:/data` do `docker-compose.yml` aponta para a mesma pasta de dados usada pela instalação atual. Não substitua nem apague o banco existente.
 4. Na pasta do projeto, execute `docker compose up -d --build`.
-5. Acesse `http://IP_DO_ZIMAOS:8080`.
+5. Acesse `http://IP_DO_ZIMAOS:8085` (porta 8085 no host, encaminhada para 8080 dentro do container).
 
 ## Lançamentos e posição importada — v30
 - A aba Lançamentos agora separa o histórico em tabelas por classe: Ações, FIIs, ETFs, BDRs, internacionais, Stocks, REITs, Criptomoedas, Renda Fixa, Tesouro Direto, Fundos e Outros.
