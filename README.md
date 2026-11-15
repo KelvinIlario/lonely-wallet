@@ -1,4 +1,17 @@
-# Lonely Wallet — atualização de interface v2.0.41
+# Lonely Wallet — atualização de interface v2.0.42
+
+## Novidades da v2.0.42
+- O card **Resumo** da aba Proventos agora permite alternar o total recebido entre **Total do mês**, **Total do ano** e **Total últimos 12 meses**. O cálculo considera somente pagamentos efetivamente recebidos.
+- A média mensal de proventos pode ser vinculada à meta mensal cadastrada. O card mostra o valor-alvo, percentual de atingimento, barra de progresso e atalho para a meta.
+- O botão **Criar meta** abre um fluxo guiado com **Meta de Patrimônio**, **Meta de Ativos** e **Meta de Proventos**, com campos específicos para cada modalidade.
+- Metas agora armazenam categoria, ativo, variação anual estimada e classes de proventos selecionadas, com migração automática e preservação das metas existentes.
+- O progresso das metas é calculado a partir dos valores atuais da carteira, do ativo selecionado ou da média mensal de proventos recebidos nos últimos 12 meses.
+- Corrigido o estado selecionado dos botões **Mensal/Anual** para respeitar os temas claro e escuro.
+- Reforçada a renderização do painel de Proventos ao abrir a aba, para atualizar o gráfico e os elementos do resumo sem precisar alternar o período.
+- A distribuição detalhada de proventos utiliza uma paleta ampliada, evitando repetir cores entre os ativos e priorizando tons que não sejam vermelhos.
+- Os valores ao passar o mouse sobre os nomes na distribuição detalhada aparecem em um balão de informação, no mesmo padrão visual do gráfico.
+
+---
 
 ## Novidades da v2.0.41
 - Na aba **Lançamentos**, cada operação agora oferece **Editar lançamento** à esquerda de **Excluir**. A edição permite atualizar ativo, classe, compra/venda, quantidade, preço, custos, data e campos específicos, preservando o registro no banco.

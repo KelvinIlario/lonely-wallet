@@ -51,7 +51,8 @@ def init_db():
     );
     CREATE TABLE IF NOT EXISTS metas (
       id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL,
-      objetivo REAL NOT NULL, aporte REAL DEFAULT 0, tipo TEXT DEFAULT 'patrimonio'
+      objetivo REAL NOT NULL, aporte REAL DEFAULT 0, tipo TEXT DEFAULT 'patrimonio',
+      categoria TEXT DEFAULT '', ticker TEXT DEFAULT '', variacao_anual REAL DEFAULT 0, classes TEXT DEFAULT '[]'
     );
     CREATE TABLE IF NOT EXISTS distribuicao_alvo (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +119,10 @@ def init_db():
       importado_em TEXT NOT NULL
     );
     ''')
+    goal_columns = [row[1] for row in con.execute('PRAGMA table_info(metas)').fetchall()]
+    for name, definition in [('categoria', "TEXT DEFAULT ''"), ('ticker', "TEXT DEFAULT ''"), ('variacao_anual', 'REAL DEFAULT 0'), ('classes', "TEXT DEFAULT '[]'")]:
+        if name not in goal_columns:
+            con.execute(f'ALTER TABLE metas ADD COLUMN {name} {definition}')
     columns = [row[1] for row in con.execute('PRAGMA table_info(operacoes)').fetchall()]
     if 'custos' not in columns:
         con.execute('ALTER TABLE operacoes ADD COLUMN custos REAL NOT NULL DEFAULT 0')
@@ -856,9 +861,17 @@ def metas():
     j = request.get_json(silent=True) or {}
     try:
         nome = str(j['nome']).strip(); objetivo = float(j['objetivo']); aporte = float(j.get('aporte',0)); tipo = str(j.get('tipo','patrimonio'))
-        if not nome or objetivo <= 0 or aporte < 0: raise ValueError()
-    except Exception: return json_error('Informe nome e objetivo válidos.')
-    db().execute('INSERT INTO metas(nome,objetivo,aporte,tipo) VALUES(?,?,?,?)',(nome,objetivo,aporte,tipo)); db().commit()
+        categoria = str(j.get('categoria','')); ticker = str(j.get('ticker','')).strip().upper(); variacao = float(j.get('variacao_anual',0)); classes = j.get('classes','[]')
+        if not nome or objetivo <= 0 or aporte < 0 or not -100 <= variacao <= 1000: raise ValueError()
+        if isinstance(classes, list): classes = json.dumps(classes, ensure_ascii=False)
+        else:
+            parsed = json.loads(str(classes or '[]'))
+            if not isinstance(parsed, list): raise ValueError()
+            classes = json.dumps(parsed, ensure_ascii=False)
+        if tipo == 'ativos' and not ticker: raise ValueError()
+        if tipo == 'proventos' and not json.loads(classes): raise ValueError()
+    except Exception: return json_error('Informe os dados da meta corretamente.')
+    db().execute('INSERT INTO metas(nome,objetivo,aporte,tipo,categoria,ticker,variacao_anual,classes) VALUES(?,?,?,?,?,?,?,?)',(nome,objetivo,aporte,tipo,categoria,ticker,variacao,classes)); db().commit()
     return jsonify(ok=True)
 
 
