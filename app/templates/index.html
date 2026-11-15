@@ -995,6 +995,59 @@ body.light-theme .tax-tabs button.active{background:#fff}
 /* v2.0.15 — cores distintas para cada fatia da distribuição de ativos */
 .allocation-legend-row .allocation-dot{flex:0 0 10px;width:10px;height:10px;border-radius:3px}
 
+
+/* v2.0.16 — alinhamento de filtros, opções e movimentação */
+.toolbar select,
+.panelhead select,
+.field select{
+  box-sizing:border-box;
+  height:40px;
+  min-height:40px;
+  line-height:1.2;
+  padding:0 40px 0 14px!important;
+  appearance:none;
+  -webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23929baa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;
+  background-repeat:no-repeat!important;
+  background-position:right 14px center!important;
+  background-size:12px 12px!important;
+}
+.asset-category .data td.asset-options-cell{
+  width:48px;
+  min-width:48px;
+  padding-left:4px!important;
+  padding-right:4px!important;
+  text-align:center!important;
+  vertical-align:middle!important;
+}
+.asset-category .data td.asset-options-cell .asset-options-trigger{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:36px;
+  height:32px;
+  margin:0 auto;
+  padding:0;
+  line-height:1;
+  letter-spacing:2px;
+  text-align:center;
+}
+.summary-position-groups .category-drag-handle{
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
+  cursor:grab;
+}
+.summary-position-groups .summary-draggable-category.dragging{
+  opacity:.48;
+  border-color:var(--blue);
+}
+.summary-position-groups .summary-draggable-category.drag-over{
+  border-color:var(--blue);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 45%,transparent) inset;
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1350,6 +1403,61 @@ function endSummaryCategoryDrag(){
  summaryDraggedCategory='';
  clearSummaryDragStyles();
 }
+let summaryPointerDrag=null;
+function clearSummaryPointerDrag(){
+ document.querySelectorAll('#summaryGroups .asset-category').forEach(el=>el.classList.remove('dragging','drag-over'));
+}
+function finishSummaryCategoryPointer(event){
+ if(!summaryPointerDrag)return;
+ const drag=summaryPointerDrag;
+ const moved=drag.moved;
+ let target=null;
+ if(moved&&event&&Number.isFinite(event.clientX)&&Number.isFinite(event.clientY)){
+  target=document.elementFromPoint(event.clientX,event.clientY)?.closest('#summaryGroups .asset-category')||null;
+ }
+ document.removeEventListener('pointermove',moveSummaryCategoryPointer);
+ document.removeEventListener('pointerup',finishSummaryCategoryPointer);
+ document.removeEventListener('pointercancel',finishSummaryCategoryPointer);
+ summaryPointerDrag=null;
+ clearSummaryPointerDrag();
+ const targetKey=target?.dataset.categoryKey;
+ if(moved&&targetKey&&drag.key!==targetKey){
+  const order=getSummaryCategoryOrder();
+  const from=order.indexOf(drag.key),to=order.indexOf(targetKey);
+  if(from>=0&&to>=0){
+   const rect=target.getBoundingClientRect();
+   const after=event.clientY>rect.top+rect.height/2;
+   const [item]=order.splice(from,1);
+   let insertAt=order.indexOf(targetKey);
+   if(after)insertAt++;
+   order.splice(insertAt,0,item);
+   try{localStorage.setItem('lonelyWalletSummaryCategoryOrderV1',JSON.stringify(order));}catch(e){}
+   renderPositionGroups(state.itens||[],'summaryGroups',true);
+  }
+ }
+}
+function moveSummaryCategoryPointer(event){
+ if(!summaryPointerDrag||event.pointerId!==summaryPointerDrag.pointerId)return;
+ const drag=summaryPointerDrag;
+ const distance=Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY);
+ if(!drag.moved&&distance<5)return;
+ drag.moved=true;
+ event.preventDefault();
+ clearSummaryPointerDrag();
+ drag.source?.classList.add('dragging');
+ const target=document.elementFromPoint(event.clientX,event.clientY)?.closest('#summaryGroups .asset-category');
+ if(target&&target!==drag.source)target.classList.add('drag-over');
+}
+function startSummaryCategoryPointer(event,key){
+ if(event.button!==undefined&&event.button!==0)return;
+ event.preventDefault();
+ if(summaryPointerDrag)return;
+ const source=event.currentTarget.closest('.asset-category');
+ summaryPointerDrag={key,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,moved:false,source};
+ document.addEventListener('pointermove',moveSummaryCategoryPointer,{passive:false});
+ document.addEventListener('pointerup',finishSummaryCategoryPointer);
+ document.addEventListener('pointercancel',finishSummaryCategoryPointer);
+}
 function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
  const categories=[
   {key:'acao',name:'Ações',icon:'▣'},{key:'fii',name:'FIIs',icon:'▥'},{key:'stocks',name:'Stocks',icon:'◎'},
@@ -1412,10 +1520,9 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   const body=items.length?`<div class="tablewrap"><table class="data" data-position-table><thead><tr>${shown.map(([,label])=>`<th data-col="${shown.find(x=>x[1]===label)[0]}">${label}</th>`).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">Nenhum ativo cadastrado nesta categoria.</div>`;
   const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${items.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${items.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${items.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${items.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${pct(portfolioPct)} / ${pct(ideal)}</b></span><span class="asset-category-chevron">⌄</span>`;
   const header=summaryMode
-   ? `<div class="summary-category-head" ondragover="allowSummaryCategoryDrop(event)" ondrop="dropSummaryCategory(event,'${cat.key}')" ondragleave="this.closest('.asset-category')?.classList.remove('drag-over')"><button type="button" class="category-drag-handle" draggable="true" title="Arraste para mover esta categoria" aria-label="Mover ${cat.name}" ondragstart="startSummaryCategoryDrag(event,'${cat.key}')" ondragend="endSummaryCategoryDrag()">⠿</button><button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
+   ? `<div class="summary-category-head"><button type="button" class="category-drag-handle" title="Arraste para mover esta categoria" aria-label="Mover ${cat.name}" onpointerdown="startSummaryCategoryPointer(event,'${cat.key}')">⠿</button><button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
    : `<button type="button" class="asset-category-head position-group-toggle" onclick="toggleAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button>`;
-  const dragAttrs=summaryMode?`ondragover="allowSummaryCategoryDrop(event)" ondrop="dropSummaryCategory(event,'${cat.key}')" ondragend="endSummaryCategoryDrag()"`:'';
-  return `<section class="asset-category ${expanded?'':'collapsed'} ${summaryMode?'summary-draggable-category':''}" ${dragAttrs}>${header}<div class="asset-category-body">${body}</div></section>`;
+  return `<section class="asset-category ${expanded?'':'collapsed'} ${summaryMode?'summary-draggable-category':''}" ${summaryMode?`data-category-key="${cat.key}"`:``}>${header}<div class="asset-category-body">${body}</div></section>`;
  }).join('');
  applyPositionColumnPrefs();
 }
@@ -2359,7 +2466,7 @@ assetInput.addEventListener('blur',()=>{
  },180);
 });
 
-async function submitForm(id,url){document.getElementById(id).addEventListener('submit',async e=>{e.preventDefault();let data=Object.fromEntries(new FormData(e.target));if(id==='opForm'&&data.lado==='venda'){await loadSellableAssets();const ticker=String(data.ticker||'').trim().toUpperCase();if(!sellableAssets.some(item=>item.ticker.toUpperCase()===ticker)){alert('Só é permitido vender ativos que já estão na sua carteira.');return;}const holding=sellableAssets.find(item=>item.ticker.toUpperCase()===ticker);if(Number(data.quantidade)>Number(holding.quantidade)+1e-8){alert('A quantidade informada é maior que a quantidade disponível na carteira.');return;}}if(id==='opForm'){data.preco=String(parseLocalizedNumber(data.preco));data.custos=String(parseLocalizedNumber(data.custos));data.data=data.data_hora.slice(0,10);data.detalhes=Object.fromEntries(Object.entries(data).filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));Object.keys(data).filter(k=>k.startsWith('detail_')).forEach(k=>delete data[k]);}try{const saved=await api(url,{method:'POST',body:JSON.stringify(data)});e.target.reset();if(id==='opForm'){quantityInput.value='1';updateOperationTotal();}closeModal();await refresh();if(id==='opForm'&&saved.status==='agendada'){toast('Operação agendada para '+new Date(saved.data_execucao).toLocaleString('pt-BR')+'.')}else toast('Registro salvo com sucesso.')}catch(err){toast(err.message)}})}submitForm('opForm','/api/operacoes');submitForm('provForm','/api/proventos');submitForm('metaForm','/api/metas');
+async function submitForm(id,url){document.getElementById(id).addEventListener('submit',async e=>{e.preventDefault();let data=Object.fromEntries(new FormData(e.target));if(id==='opForm'&&data.lado==='venda'){await loadSellableAssets();const ticker=String(data.ticker||'').trim().toUpperCase();if(!sellableAssets.some(item=>item.ticker.toUpperCase()===ticker)){alert('Só é permitido vender ativos que já estão na sua carteira.');return;}const holding=sellableAssets.find(item=>item.ticker.toUpperCase()===ticker);if(Number(data.quantidade)>Number(holding.quantidade)+1e-8){alert('A quantidade informada é maior que a quantidade disponível na carteira.');return;}}if(id==='opForm'){data.preco=String(parseLocalizedNumber(data.preco));data.custos=String(parseLocalizedNumber(data.custos));data.data=data.data_hora.slice(0,10);data.detalhes=Object.fromEntries(Object.entries(data).filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));Object.keys(data).filter(k=>k.startsWith('detail_')).forEach(k=>delete data[k]);}try{const saved=await api(url,{method:'POST',body:JSON.stringify(data)});e.target.reset();if(id==='opForm'){quantityInput.value='1';updateOperationTotal();}closeModal();await refresh();if(id==='opForm'&&saved.status==='agendada'){toast('Operação agendada para '+new Date(saved.data_execucao).toLocaleString('pt-BR')+'.')}else if(id==='opForm'){toast('Lançamento salvo. Carteira, posições e gráficos atualizados.')}else toast('Registro salvo com sucesso.')}catch(err){toast(err.message)}})}submitForm('opForm','/api/operacoes');submitForm('provForm','/api/proventos');submitForm('metaForm','/api/metas');
 async function removeOperation(id){if(!confirm('Excluir este lançamento?'))return;try{await api('/api/operacoes/'+id,{method:'DELETE'});refresh()}catch(e){toast(e.message)}}async function removeGoal(id){if(!confirm('Excluir esta meta?'))return;await api('/api/metas/'+id,{method:'DELETE'});refresh()}
 
 // IRPF e DARFs: registros auxiliares separados das operações da carteira.
