@@ -202,3 +202,9 @@ A importação não é automática: o usuário seleciona a planilha, confere a p
 - A categoria Renda Fixa não exibe mais a coluna Proventos Recebidos.
 - Lançamentos antigos sem indexador/taxa não recebem rendimento estimado: precisam ter os dados contratuais preenchidos para cálculo correto.
 - Rendimentos exibidos são brutos, sem estimativa de IR/IOF ou taxas do emissor.
+
+
+## Padronização visual — v2.0.6
+- Cards e gráficos com espaçamento, alinhamento e dimensões consistentes.
+- Os quatro indicadores da aba Posições ficam em uma única linha em telas desktop largas; em telas menores há reorganização responsiva.
+- Setas, percentuais e indicadores numéricos alinhados de forma uniforme.

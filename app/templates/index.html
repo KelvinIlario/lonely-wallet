@@ -562,6 +562,54 @@ body.light-theme .tax-tabs button.active{background:#fff}
 .imported-balance-head span{font-size:11px;color:var(--muted)}
 .imported-balance-total{color:var(--green)!important;font-weight:750;white-space:nowrap}
 @media(max-width:760px){.operation-group-head,.imported-balance-head{align-items:flex-start;flex-direction:column}.operation-group-totals{gap:8px}.operation-group .data{min-width:900px}.imported-balance-class .data{min-width:760px}}
+
+
+/* v2.0.6 — sistema visual padronizado e cards de Posições em uma única linha */
+:root{--layout-gap:16px;--card-radius:10px}
+.grid,.charts,.prov-charts,.distribution-layout,.position-insights,.summary-investor10{gap:var(--layout-gap)}
+.card,.panel,.stat,.insight-card{border-radius:var(--card-radius)}
+.summary-investor10{grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch;justify-content:center;margin-left:auto;margin-right:auto}
+.summary-investor10>.stat{height:100%;min-width:0;display:flex;flex-direction:column;justify-content:flex-start}
+.position-insights{width:100%;max-width:100%;grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch;justify-content:center;margin:var(--layout-gap) auto 20px}
+.position-insights>.insight-card:nth-child(4){grid-column:auto}
+.position-insights>.insight-card{height:100%;min-width:0;display:flex;flex-direction:column;align-items:stretch}
+.insight-title{min-height:30px;display:flex;align-items:center;gap:9px}
+.insight-title .info-tip{margin-left:auto;flex:0 0 16px}
+.insight-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px;min-height:30px;margin:10px 0 5px;font-variant-numeric:tabular-nums}
+.insight-split{flex:1;align-items:start;gap:var(--layout-gap)}
+.insight-bar{width:100%;margin:10px 0}
+.insight-action{margin-top:auto;min-height:32px}
+.statvalue,.statdetail,.insight-main,.insight-split b,.metric-change,.variation-pill,.return-spark-item>b{font-variant-numeric:tabular-nums lining-nums}
+.statdetail{align-items:center}
+.metric-change,.variation-pill{display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;line-height:1.2}
+.charts,.prov-charts,.distribution-layout{align-items:stretch;justify-items:stretch}
+.charts>.panel,.prov-charts>.panel,.distribution-layout>.panel{height:100%;min-width:0}
+.panelhead{gap:var(--layout-gap);align-items:center}
+.panelhead .toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.panelhead select,.toolbar select{height:40px;min-height:40px;line-height:normal;display:inline-flex;align-items:center}
+.chartbox,.distribution-chartbox,.patrimony-overview-chart,.patrimony-category-chart{margin-left:auto;margin-right:auto}
+.chartbox canvas,.distribution-chartbox canvas{max-width:100%}
+.return-spark-grid{gap:var(--layout-gap);align-items:stretch}
+.return-spark-item{align-content:start;gap:6px}
+.return-spark-item>span,.return-spark-item>b{text-align:center}
+.return-spark-item .sparkline-svg{margin:0 auto}
+.toolbar{gap:8px;align-items:center}
+@media(max-width:1100px){
+ .position-insights{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .summary-investor10{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:700px){
+ :root{--layout-gap:10px}
+ .position-insights{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .charts,.prov-charts,.distribution-layout{grid-template-columns:minmax(0,1fr)}
+ .panelhead{align-items:flex-start}
+ .panelhead .toolbar{width:100%;justify-content:flex-start;flex-wrap:wrap}
+}
+@media(max-width:420px){
+ .position-insights,.summary-investor10{grid-template-columns:minmax(0,1fr)}
+ .insight-card{min-height:unset}
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
