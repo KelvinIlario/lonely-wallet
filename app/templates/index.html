@@ -1240,12 +1240,6 @@ body.light-theme .tax-tabs button.active{background:#fff}
 }
 
 
-/* v2.0.23 — cabeçalho Ativo alinhado ao início do nome e dicas de rebalanceamento */
-.asset-category .data.proportional-assets-table thead th[data-col="ticker"]{
- text-align:left!important;
- padding-left:63px!important;
- padding-right:8px!important;
-}
 .asset-category .data.proportional-assets-table tbody td[data-col="ticker"]{
  text-align:left!important;
  padding-left:20px!important;
@@ -1262,6 +1256,51 @@ body.light-theme .tax-tabs button.active{background:#fff}
  border-bottom:1px dotted currentColor;
 }
 .asset-category .data.proportional-assets-table .value-hint:focus-visible{
+ outline:2px solid var(--accent,#4b9cff);
+ outline-offset:3px;
+ border-radius:4px;
+}
+
+
+/* v2.0.24 — cabeçalho Ativo alinhado ao ícone e tooltip funcional em % Ideal */
+.asset-category .data.proportional-assets-table thead th[data-col="ticker"]{
+ text-align:left!important;
+ padding-left:20px!important;
+}
+.asset-category .data.proportional-assets-table td[data-col="idealPct"],
+.asset-category .data.proportional-assets-table td[data-col="portfolioPct"]{
+ overflow:visible!important;
+ position:relative!important;
+}
+.asset-category .data.proportional-assets-table td[data-col="idealPct"] .value-hint,
+.asset-category .data.proportional-assets-table td[data-col="portfolioPct"] .value-hint{
+ position:relative!important;
+ z-index:2;
+ cursor:help!important;
+}
+.asset-category .data.proportional-assets-table td[data-col="idealPct"] .value-hint::after,
+.asset-category .data.proportional-assets-table td[data-col="portfolioPct"] .value-hint::after{
+ z-index:9999!important;
+ left:50%!important;
+ bottom:calc(100% + 11px)!important;
+ transform:translate(-50%,5px)!important;
+ white-space:pre-line!important;
+ display:block!important;
+ opacity:0;
+ visibility:hidden;
+ pointer-events:none;
+}
+.asset-category .data.proportional-assets-table td[data-col="idealPct"] .value-hint:hover::after,
+.asset-category .data.proportional-assets-table td[data-col="idealPct"] .value-hint:focus::after,
+.asset-category .data.proportional-assets-table td[data-col="idealPct"] .value-hint:focus-visible::after,
+.asset-category .data.proportional-assets-table td[data-col="portfolioPct"] .value-hint:hover::after,
+.asset-category .data.proportional-assets-table td[data-col="portfolioPct"] .value-hint:focus::after,
+.asset-category .data.proportional-assets-table td[data-col="portfolioPct"] .value-hint:focus-visible::after{
+ opacity:1!important;
+ visibility:visible!important;
+ transform:translate(-50%,0)!important;
+}
+.asset-category .data.proportional-assets-table td[data-col="idealPct"] .value-hint:focus-visible{
  outline:2px solid var(--accent,#4b9cff);
  outline-offset:3px;
  border-radius:4px;
@@ -1733,7 +1772,7 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   ['margem_bruta','Margem Bruta',i=>`<td data-col="margem_bruta">—</td>`],['cagr_receitas','CAGR Receitas (5 anos)',i=>`<td data-col="cagr_receitas">—</td>`],['cagr_lucros','CAGR Lucros (5 anos)',i=>`<td data-col="cagr_lucros">—</td>`],
   ['nota','Nota',i=>`<td data-col="nota"><button class="note-inline" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">✎</button></td>`],
   ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0,ideal=idealPercentForAsset(i),balanceClass=Math.abs(share-ideal)<0.005?'neutral':share>ideal?'positive':'negative';return `<td data-col="portfolioPct"><span class="value-hint ${balanceClass}" tabindex="0" data-hint="${escapeHTML(idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio))}">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
-  ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const balance=share-ideal,balanceClass=Math.abs(balance)<0.005?'neutral':balance>0?'positive':'negative';return `<td data-col="idealPct"><span class="value-hint ${balanceClass}" tabindex="0" data-hint="${escapeHTML(idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio))}">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
+  ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const balance=share-ideal,balanceClass=Math.abs(balance)<0.005?'neutral':balance>0?'positive':'negative';const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);return `<td data-col="idealPct"><span class="value-hint ${balanceClass}" tabindex="0" title="${escapeHTML(hint)}" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const buy=Number(i.preco_atual)>0&&Number(i.preco_medio)>0&&Number(i.preco_atual)<Number(i.preco_medio);return `<td data-col="comprar">${buy?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
  ];
  host.innerHTML=visibleCategories.map(cat=>{
