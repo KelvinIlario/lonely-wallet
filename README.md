@@ -1,4 +1,4 @@
-# Lonely Wallet v2.0.49\n\nPaginação da tabela Meus proventos e correção visual dos filtros nos temas claro e escuro.\n\n# Lonely Wallet — atualização de interface v2.0.43
+# Lonely Wallet v2.0.51\n\nPaginação da tabela Meus proventos e correção visual dos filtros nos temas claro e escuro.\n\n# Lonely Wallet — atualização de interface v2.0.43
 
 # Lonely Wallet v2.0.44
 

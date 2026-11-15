@@ -1760,6 +1760,32 @@ body.light-theme .my-provents-toolbar .prov-history-menu .history-search{backgro
  .my-prov-period-menu{left:0;right:auto;width:min(285px,calc(100vw - 48px))}
 }
 
+
+/* v2.0.51 — padrão visual unificado dos filtros de proventos */
+.earnings-history-toolbar,.my-provents-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-width:0}
+.earnings-history-toolbar .prov-history-filter,.my-provents-toolbar .my-prov-filter{flex:0 1 auto;min-width:0}
+.earnings-history-toolbar .prov-history-trigger,.my-provents-toolbar .prov-history-trigger{appearance:none!important;-webkit-appearance:none!important;width:100%;height:40px;min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 13px!important;border:1px solid #343b49!important;border-radius:8px!important;background:#151821!important;color:var(--text)!important;box-shadow:none!important;font:inherit!important;font-size:12px!important;line-height:1.2!important;text-align:left;white-space:nowrap;cursor:pointer}
+#provHistoryStatusWrap,#myProvPeriodWrap{width:176px}
+#provHistoryTypeWrap,#provHistoryAssetWrap,#myProvTypeWrap,#myProvAssetWrap{width:153px}
+.earnings-history-toolbar .prov-history-trigger:hover,.my-provents-toolbar .prov-history-trigger:hover{border-color:#596578!important;background:#191e29!important}
+.earnings-history-toolbar .prov-history-trigger:focus-visible,.my-provents-toolbar .prov-history-trigger:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.earnings-history-toolbar .prov-total-chevron,.my-provents-toolbar .prov-total-chevron{color:#8d98aa;font-size:13px;flex:none}
+.earnings-history-toolbar .prov-history-menu,.my-provents-toolbar .prov-history-menu{background:#20242e!important;color:#f3f5f8!important;border:1px solid #394252!important;border-radius:9px!important;box-shadow:0 14px 34px #0006!important;padding:9px!important}
+.earnings-history-toolbar .prov-history-menu .history-option,.my-provents-toolbar .prov-history-menu .history-option,.my-provents-toolbar .my-prov-period-menu .period-option{color:#f3f5f8!important;border-radius:6px}
+.earnings-history-toolbar .prov-history-menu .history-option:hover,.earnings-history-toolbar .prov-history-menu .history-option.active,.my-provents-toolbar .prov-history-menu .history-option:hover,.my-provents-toolbar .prov-history-menu .history-option.active,.my-provents-toolbar .my-prov-period-menu .period-option:hover,.my-provents-toolbar .my-prov-period-menu .period-option.active{background:#151821!important}
+.earnings-history-toolbar .prov-history-menu .history-search,.my-provents-toolbar .prov-history-menu .history-search{background:#151821!important;color:#f3f5f8!important;border:1px solid #394252!important;border-radius:8px!important}
+.earnings-history-toolbar .prov-history-menu .history-menu-footer,.my-provents-toolbar .prov-history-menu .history-menu-footer,.my-provents-toolbar .my-prov-period-menu .period-divider{border-color:#394252!important;background:transparent}
+.my-provents-toolbar .my-prov-month-nav{background:#151821!important;color:#f3f5f8!important}.my-provents-toolbar .my-prov-month-nav button{color:#f3f5f8!important}
+body.light-theme .earnings-history-toolbar .prov-history-trigger,body.light-theme .my-provents-toolbar .prov-history-trigger{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .earnings-history-toolbar .prov-history-trigger:hover,body.light-theme .my-provents-toolbar .prov-history-trigger:hover{background:#f5f7fa!important}
+body.light-theme .earnings-history-toolbar .prov-total-chevron,body.light-theme .my-provents-toolbar .prov-total-chevron{color:#657184}
+body.light-theme .earnings-history-toolbar .prov-history-menu,body.light-theme .my-provents-toolbar .prov-history-menu{background:#fff!important;color:#202633!important;border-color:#d8dee8!important;box-shadow:0 14px 34px #17203325!important}
+body.light-theme .earnings-history-toolbar .prov-history-menu .history-option,body.light-theme .my-provents-toolbar .prov-history-menu .history-option,body.light-theme .my-provents-toolbar .my-prov-period-menu .period-option{color:#202633!important}
+body.light-theme .earnings-history-toolbar .prov-history-menu .history-option:hover,body.light-theme .earnings-history-toolbar .prov-history-menu .history-option.active,body.light-theme .my-provents-toolbar .prov-history-menu .history-option:hover,body.light-theme .my-provents-toolbar .prov-history-menu .history-option.active,body.light-theme .my-provents-toolbar .my-prov-period-menu .period-option:hover,body.light-theme .my-provents-toolbar .my-prov-period-menu .period-option.active{background:#eef1f5!important}
+body.light-theme .earnings-history-toolbar .prov-history-menu .history-search,body.light-theme .my-provents-toolbar .prov-history-menu .history-search{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!important;color:#202633!important}body.light-theme .my-provents-toolbar .my-prov-month-nav button{color:#202633!important}
+@media(max-width:760px){.earnings-history-toolbar,.my-provents-toolbar{gap:8px}#provHistoryStatusWrap,#myProvPeriodWrap{width:100%}#provHistoryTypeWrap,#provHistoryAssetWrap,#myProvTypeWrap,#myProvAssetWrap{width:calc(50% - 4px)}.earnings-history-toolbar>#provHistoryTotal,.my-provents-toolbar>#myProvTotal{grid-column:1/-1}}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
