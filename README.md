@@ -1,3 +1,15 @@
+# Lonely Wallet — atualização de interface v2.0.41
+
+## Novidades da v2.0.41
+- Na aba **Lançamentos**, cada operação agora oferece **Editar lançamento** à esquerda de **Excluir**. A edição permite atualizar ativo, classe, compra/venda, quantidade, preço, custos, data e campos específicos, preservando o registro no banco.
+- Na aba **Proventos**, o card lateral foi reorganizado: o indicador inferior agora mostra **Total de proventos** recebidos, em vez do patrimônio da carteira.
+- O gráfico de distribuição no card lateral destaca os três ativos que mais geraram proventos nos últimos 12 meses.
+- O botão **Ver todos** abre uma janela com distribuição completa **Por Ativo** e **Por Tipo**, percentuais e valores recebidos ao passar o mouse sobre os itens.
+- O histórico de Proventos agora é agrupado por classe e usa paginação independente de até 15 registros por classe, com navegação Anterior, páginas e Próximo.
+- O gráfico principal **Evolução de Proventos**, seus filtros, alternância Mensal/Anual e interação por mês foram preservados.
+
+---
+
 # Lonely Wallet v45
 
 Aplicação Flask + SQLite para controle pessoal de investimentos, preparada para Docker/ZimaOS.

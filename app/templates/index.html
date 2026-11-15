@@ -555,6 +555,11 @@ body.light-theme .tax-tabs button.active{background:#fff}
 .operation-group-totals b{font-size:12px}
 .operation-group .data th{background:#191d25}
 .operation-group .data th,.operation-group .data td{padding:10px 11px}
+.operation-group-pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:12px 10px;border-top:1px solid var(--line);background:var(--panel)}
+.operation-group-pagination button{min-width:32px;padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11px;cursor:pointer}
+.operation-group-pagination button.active{background:var(--panel2);border-color:var(--blue);color:var(--text);font-weight:750}
+.operation-group-pagination button:disabled{opacity:.35;cursor:not-allowed}
+.operation-group-pagination .page-info{margin-left:8px;color:var(--muted);font-size:11px}
 .imported-balance-note{margin:-5px 0 14px;line-height:1.55}
 .imported-balance-class{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#1c2029}
 .imported-balance-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;background:#222731;border-bottom:1px solid var(--line)}
@@ -1570,6 +1575,32 @@ body.light-theme .insight-highlight-pill.positive{background:#d9f5e9;color:#0789
 body.light-theme .insight-highlight-pill.negative{background:#fbe1e8;color:#cf3657}
 .insight-card-placeholder{min-height:130px}
 
+
+/* v2.0.41 — distribuição detalhada e paginação de proventos */
+.earnings-distribution .chartbox{height:155px}
+.earnings-distribution .earnings-legend{gap:6px}
+.earnings-distribution .earnings-legend-row{font-size:11px}
+.prov-distribution-modal{width:min(920px,100%)}
+.prov-distribution-content{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(230px,.8fr);gap:18px;align-items:center;padding:18px}
+.prov-distribution-chart{height:430px;min-width:0}
+.prov-distribution-side{min-width:0}
+.prov-distribution-total{display:flex;justify-content:space-between;gap:12px;padding:12px;background:var(--panel2);border-radius:7px;margin-bottom:10px;font-weight:750}
+.prov-distribution-list{display:grid;gap:2px;max-height:380px;overflow:auto}
+.prov-distribution-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 7px;border-radius:5px;font-size:12px}
+.prov-distribution-item:hover{background:var(--panel2)}
+.prov-distribution-item span:first-child{display:flex;align-items:center;gap:8px;min-width:0}
+.prov-distribution-item i{width:13px;height:13px;border-radius:3px;flex:none}
+.prov-distribution-switch{display:flex;justify-content:center;margin:0 0 12px}
+.prov-distribution-switch .segmented button.active{background:var(--panel);border:1px solid var(--muted)}
+.prov-class-row td{background:var(--panel2);font-weight:750;color:var(--text);padding:10px 12px}
+.prov-class-pagination td{padding:0!important}
+.prov-group-pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:12px 10px;border-top:1px solid var(--line);background:var(--panel)}
+.prov-group-pagination button{min-width:32px;padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11px;cursor:pointer}
+.prov-group-pagination button.active{background:var(--panel2);border-color:var(--blue);font-weight:750}
+.prov-group-pagination button:disabled{opacity:.35;cursor:not-allowed}
+.prov-edit-actions{display:flex;gap:5px;white-space:nowrap}
+@media(max-width:650px){.prov-distribution-content{grid-template-columns:1fr}.prov-distribution-chart{height:280px}.prov-distribution-list{max-height:240px}}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1589,8 +1620,8 @@ body.light-theme .insight-highlight-pill.negative{background:#fbe1e8;color:#cf36
    <div class="panelhead"><h2>Resumo</h2></div>
    <div class="earnings-summary-block"><span class="summary-label">Média mensal (últimos 12 meses)</span><div class="earnings-summary-value" id="provAverage">R$ 0,00</div><div class="earnings-progress"><span id="provAverageProgress"></span></div></div>
    <div class="earnings-summary-block"><span class="summary-label">Total de 12 meses</span><div class="earnings-summary-value" id="provTotal12">R$ 0,00</div></div>
-   <div class="earnings-summary-block"><span class="summary-label">Total da carteira</span><div class="earnings-summary-value" id="provPortfolioTotal">R$ 0,00</div></div>
-   <div class="earnings-distribution"><span class="summary-label">Distribuição de proventos em 12 meses</span><div class="chartbox small"><canvas id="provDistributionChart"></canvas></div><div id="provDistributionLegend" class="earnings-legend"></div><button class="ghost" onclick="document.getElementById('provRows').scrollIntoView({behavior:'smooth',block:'start'})">Ver todos</button></div>
+   <div class="earnings-summary-block"><span class="summary-label">Total de proventos</span><div class="earnings-summary-value" id="provPortfolioTotal">R$ 0,00</div></div>
+   <div class="earnings-distribution"><span class="summary-label">Distribuição de proventos em 12 meses</span><div class="chartbox small"><canvas id="provDistributionChart"></canvas></div><div id="provDistributionLegend" class="earnings-legend"></div><button class="ghost" type="button" onclick="openProvDistributionModal()">Ver todos</button></div>
   </div>
  </aside>
  <div class="earnings-main">
@@ -1651,6 +1682,7 @@ body.light-theme .insight-highlight-pill.negative{background:#fbe1e8;color:#cf36
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="notice b3-fixed-income-notice"><b>Atenção:</b> ativos de renda fixa não são importados pela B3. Cadastre esses investimentos manualmente pela opção <b>Adicionar lançamento</b>.</div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
+<div class="modalback" id="provDistributionBack" onclick="if(event.target===this)closeProvDistributionModal()"><div class="modal prov-distribution-modal"><div class="modalhead"><h2>Distribuição de proventos em 12 meses</h2><button class="close" onclick="closeProvDistributionModal()">×</button></div><div class="prov-distribution-content"><div><div class="prov-distribution-switch segmented"><button type="button" id="provDistAssetTab" class="active" onclick="setProvDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="provDistTypeTab" onclick="setProvDistributionMode('tipo')">◉ Por Tipo</button></div><div class="prov-distribution-chart"><canvas id="provDistributionDetailChart"></canvas></div></div><div class="prov-distribution-side"><div class="prov-distribution-total"><span>Total</span><strong id="provDistributionTotal" class="green">R$ 0,00</strong></div><div id="provDistributionDetailList" class="prov-distribution-list"></div></div></div></div></div>
 <div class="modalback" id="modalback" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modalhead"><h2 id="modalTitle">Novo lançamento</h2><button class="close" onclick="closeModal()">×</button></div><form id="opForm" class="formgrid operation-form">
  <div class="operation-switch full">
   <button type="button" class="operation-side active" data-side="compra" onclick="setOperationSide('compra')">▣ Compra</button>
@@ -1725,7 +1757,7 @@ body.light-theme .insight-highlight-pill.negative{background:#fbe1e8;color:#cf36
 </div>
 <script>
 const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), pct=v=>`${Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2})}%`;
-const labels={acao:'Ações',fii:'FIIs',etf:'ETFs',bdr:'BDRs',internacional:'ETFs Internacionais',renda_fixa:'Renda Fixa',cripto:'Criptomoedas',stocks:'Stocks',reit:'REITs',tesouro:'Tesouro Direto',fundo:'Fundos de Investimentos',outros:'Outros'};let state={itens:[],resumo:{},alocacao:{},operacoes:[],proventos:[],metas:[]};let charts={};let irpfData={posicoes:[],rendimentos:[],operacoes:[],resumo:{}};let darfItems=[];let activeIRPFTab='bens';
+const labels={acao:'Ações',fii:'FIIs',etf:'ETFs',bdr:'BDRs',internacional:'ETFs Internacionais',renda_fixa:'Renda Fixa',cripto:'Criptomoedas',stocks:'Stocks',reit:'REITs',tesouro:'Tesouro Direto',fundo:'Fundos de Investimentos',outros:'Outros'};let state={itens:[],resumo:{},alocacao:{},operacoes:[],proventos:[],metas:[]};let charts={};let operationGroupPages={};let operationGroupsData=[];const OPERATION_GROUP_PAGE_SIZE=15;let provGroupPages={};let provGroupedRows={};let provDistributionData={ativo:[],tipo:[]};let provDistributionMode="ativo";let editingOperationId=null;let irpfData={posicoes:[],rendimentos:[],operacoes:[],resumo:{}};let darfItems=[];let activeIRPFTab='bens';
 let expandedAssetGroups={};
 // Estado independente dos grupos exibidos na página Resumo.
 let summaryExpandedAssetGroups={};
@@ -2470,7 +2502,7 @@ function renderProventosDashboard(){
  const averageEl=document.getElementById('provAverage'),totalEl=document.getElementById('provTotal12'),portfolioEl=document.getElementById('provPortfolioTotal');
  if(averageEl)averageEl.textContent=brl(average);
  if(totalEl)totalEl.textContent=brl(total12);
- if(portfolioEl)portfolioEl.textContent=brl(r.atual||0);
+ if(portfolioEl)portfolioEl.textContent=brl((d.recebidos||[]).reduce((sum,x)=>sum+Number(x.valor_total||0),0));
  const progress=document.getElementById('provAverageProgress');
  if(progress)progress.style.width=`${Math.min(100,average>0?average/Math.max(average,3000)*100:0)}%`;
 
@@ -2495,12 +2527,16 @@ function renderProventosDashboard(){
  (d.recebidos||[]).filter(x=>{const dt=new Date(String(x.data_pagamento||'')+'T12:00:00');return (selectedType==='todos'||eventType(x)===selectedType)&&(selectedAsset==='todos'||x.ticker===selectedAsset)&&!String(x.tipo_evento||x.tipo||'').toUpperCase().includes('AMORTIZA')&&Number.isFinite(dt.getTime())&&dt>=firstDistribution;}).forEach(x=>distribution[x.ticker]=(distribution[x.ticker]||0)+Number(x.valor_total||0));
  const syncStatus=document.getElementById('proventosSyncStatus');
  if(syncStatus){const sync=d.sincronizacao||{};syncStatus.textContent=sync.mensagem?`${sync.mensagem}${sync.ultima_sincronizacao?' · '+new Date(sync.ultima_sincronizacao).toLocaleString('pt-BR'):''}`:'Histórico automático ainda não sincronizado.';if(sync.erros?.length)syncStatus.textContent+=' · '+sync.erros.join(' · ');}
- const distNames=Object.keys(distribution).sort((a,b)=>distribution[b]-distribution[a]),distValues=distNames.map(k=>distribution[k]);
- const palette=['#477bd0','#42d49b','#f3d978','#b59af3','#ed8e9c','#74d7d2','#d7a36a','#e8a56b','#a8b7cb','#d98ad0'];
- chart('provDistributionChart','doughnut',{labels:distNames,datasets:[{data:distValues,backgroundColor:distNames.map((_,i)=>palette[i%palette.length]),borderWidth:0}]},{cutout:'66%',plugins:{legend:{display:false}}});
+ const distNames=Object.keys(distribution).sort((a,b)=>distribution[b]-distribution[a]);
+ const distValues=distNames.map(k=>distribution[k]);
+ const distTotal=distValues.reduce((a,b)=>a+b,0);
+ const typeDistribution={};
+ distNames.forEach(ticker=>{const sample=(d.recebidos||[]).find(x=>x.ticker===ticker);const kind=sample?.tipo_ativo||((state.itens||[]).find(i=>i.ticker===ticker)||{}).tipo||'outros';typeDistribution[kind]=(typeDistribution[kind]||0)+distribution[ticker];});
+ const palette=['#477bd0','#42d49b','#f3d978','#b59af3','#ed8e9c','#74d7d2','#d7a36a','#e8a56b','#a8b7cb','#d98ad0','#f28f5b','#88c1a8','#c49aeb','#d9c46a','#78a8d8','#e57da9','#9cc36b','#b6a0d8'];
+ provDistributionData={ativo:distNames.map((name,i)=>({name,value:distValues[i],color:palette[i%palette.length]})),tipo:Object.keys(typeDistribution).sort((a,b)=>typeDistribution[b]-typeDistribution[a]).map((name,i)=>({name:labels[name]||name,value:typeDistribution[name],color:palette[i%palette.length]}))};
+ chart('provDistributionChart','doughnut',{labels:distNames.slice(0,3),datasets:[{data:distValues.slice(0,3),backgroundColor:distNames.slice(0,3).map((_,i)=>palette[i%palette.length]),borderWidth:0}]},{cutout:'66%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)}`}}}});
  const legend=document.getElementById('provDistributionLegend');
- if(legend)legend.innerHTML=distNames.length?distNames.slice(0,5).map((name,i)=>{const sum=distValues[i],share=distValues.reduce((a,b)=>a+b,0)?sum/distValues.reduce((a,b)=>a+b,0)*100:0;return `<div class="earnings-legend-row"><span><i style="background:${palette[i%palette.length]}"></i>${escapeHTML(name)}</span><b>${pct(share)}</b></div>`}).join(''):'<div class="mini">Nenhum provento recebido.</div>';
-
+ if(legend)legend.innerHTML=distNames.length?distNames.slice(0,3).map((name,i)=>{const sum=distValues[i],share=distTotal?sum/distTotal*100:0;return `<div class="earnings-legend-row" title="${brl(sum)}"><span><i style="background:${palette[i%palette.length]}"></i>${escapeHTML(name)}</span><b>${pct(share)}</b></div>`}).join(''):'<div class="mini">Nenhum provento recebido.</div>';
  // Use actual event dates and values for the dashboard. No synthetic historical values are created.
  const period=document.getElementById('provPeriodFilter')?.value||'12';
  const mode=window.provMode||'mensal';
@@ -2551,8 +2587,20 @@ function renderProventosDashboard(){
  const history=document.getElementById('provMonthlyRows');
  if(history)history.innerHTML=years.length?years.map(year=>{const vals=byYear[year],sum=vals.reduce((a,b)=>a+b,0);return `<tr><td class="ticker">${year}</td>${vals.map(v=>`<td>${brl(v)}</td>`).join('')}<td class="green">${brl(sum)}</td></tr>`}).join(''):`<tr><td colspan="14" class="empty">Nenhum provento recebido no período.</td></tr>`;
  const table=document.getElementById('provRows');
- if(table)table.innerHTML=filtered.length?filtered.map(x=>`<tr><td class="ticker">${escapeHTML(x.ticker)}${x.remarks?`<div class="mini">${escapeHTML(x.remarks)}</div>`:''}</td><td>${escapeHTML(x.tipo||'Provento')}</td><td><span class="prov-status ${x.status==='A receber'?'pending':''}">${x.status}</span></td><td>${x.data_com?new Date(x.data_com+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.data_pagamento?new Date(x.data_pagamento+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.quantidade??'—'}</td><td>${x.valor_por_ativo!==null&&x.valor_por_ativo!==undefined?brl(x.valor_por_ativo):'—'}</td><td class="${x.status==='Pago'?'green':'blue'}">${brl(x.valor_total)}</td></tr>`).join(''):rowEmpty(8,'Nenhum provento encontrado para esse filtro.');
+ if(table){
+  const groupOrder=['renda_fixa','fii','acao','etf','bdr','internacional','stocks','reit','cripto','tesouro','fundo','outros'];
+  const groups=new Map();filtered.forEach(x=>{const kind=eventType(x);if(!groups.has(kind))groups.set(kind,[]);groups.get(kind).push(x)});
+  const groupKeys=[...groups.keys()].sort((a,b)=>{const ai=groupOrder.indexOf(a),bi=groupOrder.indexOf(b);return (ai<0?999:ai)-(bi<0?999:bi)||(labels[a]||a).localeCompare(labels[b]||b,'pt-BR')});
+  provGroupedRows={};
+  table.innerHTML=groupKeys.length?groupKeys.map(key=>{const items=groups.get(key);provGroupedRows[key]=items;const totalPages=Math.max(1,Math.ceil(items.length/15));const current=Math.min(Math.max(1,Number(provGroupPages[key])||1),totalPages);provGroupPages[key]=current;const visible=items.slice((current-1)*15,current*15);const records=visible.map(x=>`<tr><td class="ticker">${escapeHTML(x.ticker)}${x.remarks?`<div class="mini">${escapeHTML(x.remarks)}</div>`:''}</td><td>${escapeHTML(x.tipo||'Provento')}</td><td><span class="prov-status ${x.status==='A receber'?'pending':''}">${x.status}</span></td><td>${x.data_com?new Date(x.data_com+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.data_pagamento?new Date(x.data_pagamento+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.quantidade??'—'}</td><td>${x.valor_por_ativo!==null&&x.valor_por_ativo!==undefined?brl(x.valor_por_ativo):'—'}</td><td class="${x.status==='Pago'?'green':'blue'}">${brl(x.valor_total)}</td></tr>`).join('');return `<tr class="prov-class-row"><td colspan="8">${escapeHTML(labels[key]||key)} <span class="mini">· ${items.length} registro(s)</span></td></tr>${records}${totalPages>1?`<tr class="prov-class-pagination"><td colspan="8">${provGroupPagination(key,totalPages,current)}</td></tr>`:''}`}).join(''):rowEmpty(8,'Nenhum provento encontrado para esse filtro.');
+ }
 }
+function setProvGroupPage(encodedKey,page){const key=decodeURIComponent(encodedKey);const rows=provGroupedRows[key]||[];const total=Math.max(1,Math.ceil(rows.length/15));provGroupPages[key]=Math.min(Math.max(1,Number(page)||1),total);renderProventosDashboard();}
+function provGroupPagination(key,totalPages,currentPage){const encoded=encodeURIComponent(key);const pages=new Set([1,totalPages]);for(let n=Math.max(1,currentPage-1);n<=Math.min(totalPages,currentPage+1);n++)pages.add(n);const ordered=[...pages].sort((a,b)=>a-b);let previous=0;const buttons=ordered.map(n=>{const gap=previous&&n-previous>1?'<span class="mini">…</span>':'';previous=n;return gap+`<button type="button" class="${n===currentPage?'active':''}" ${n===currentPage?'aria-current="page"':''} onclick="setProvGroupPage('${encoded}',${n})">${n}</button>`}).join('');return `<nav class="prov-group-pagination" aria-label="Paginação dos proventos de ${escapeHTML(labels[key]||key)}"><button type="button" ${currentPage===1?'disabled':''} onclick="setProvGroupPage('${encoded}',${currentPage-1})">Anterior</button>${buttons}<button type="button" ${currentPage===totalPages?'disabled':''} onclick="setProvGroupPage('${encoded}',${currentPage+1})">Próximo</button><span class="page-info">Página ${currentPage} de ${totalPages}</span></nav>`;}
+function openProvDistributionModal(){const back=document.getElementById('provDistributionBack');if(!back)return;back.style.display='flex';setProvDistributionMode(provDistributionMode||'ativo');}
+function closeProvDistributionModal(){const back=document.getElementById('provDistributionBack');if(back)back.style.display='none';}
+function setProvDistributionMode(mode){provDistributionMode=mode;document.getElementById('provDistAssetTab')?.classList.toggle('active',mode==='ativo');document.getElementById('provDistTypeTab')?.classList.toggle('active',mode==='tipo');const items=provDistributionData[mode]||[];const total=items.reduce((sum,x)=>sum+Number(x.value||0),0);const totalEl=document.getElementById('provDistributionTotal');if(totalEl)totalEl.textContent=brl(total);const list=document.getElementById('provDistributionDetailList');if(list)list.innerHTML=items.length?items.map(item=>`<div class="prov-distribution-item" title="${mode==='ativo'?'Recebido':'Total da classe'}: ${brl(item.value)}"><span><i style="background:${item.color}"></i>${escapeHTML(item.name)}</span><b>${pct(total?item.value/total*100:0)}</b></div>`).join(''):'<div class="empty">Nenhum provento recebido no período.</div>';chart('provDistributionDetailChart','doughnut',{labels:items.map(x=>x.name),datasets:[{data:items.map(x=>x.value),backgroundColor:items.map(x=>x.color),borderWidth:0}]},{cutout:'48%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)}`}}}});}
+
 const chartPalette=['#78b7f5','#f3d978','#42d49b','#b59af3','#ed8e9c','#74d7d2','#d7a36a','#e8a56b','#a8b7cb','#d98ad0','#f28f5b','#88c1a8','#c49aeb','#d9c46a','#78a8d8','#e57da9','#9cc36b','#b6a0d8'];
 function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typeId='aporteType'){
  const ops=state.operacoes||[];
@@ -2815,12 +2863,33 @@ function operationQuantity(value){
  const n=Number(value||0);
  return n.toLocaleString('pt-BR',{maximumFractionDigits:8});
 }
+function setOperationGroupPage(encodedKey,page){
+ const key=decodeURIComponent(encodedKey);
+ const rows=operationGroupsData.filter(op=>String(op.tipo||'outros').toLowerCase()===key);
+ const totalPages=Math.max(1,Math.ceil(rows.length/OPERATION_GROUP_PAGE_SIZE));
+ operationGroupPages[key]=Math.min(Math.max(1,Number(page)||1),totalPages);
+ renderOperationsByType(operationGroupsData);
+}
+function operationGroupPagination(key,totalPages,currentPage){
+ if(totalPages<=1)return '';
+ const encoded=encodeURIComponent(key);
+ const pages=new Set([1,totalPages]);
+ for(let n=Math.max(1,currentPage-1);n<=Math.min(totalPages,currentPage+1);n++)pages.add(n);
+ const ordered=[...pages].sort((a,b)=>a-b);let previous=0;
+ const pageButtons=ordered.map(n=>{
+  const gap=previous&&n-previous>1?'<span class="page-info">…</span>':'';previous=n;
+  return gap+`<button type="button" class="${n===currentPage?'active':''}" ${n===currentPage?'aria-current="page"':''} onclick="setOperationGroupPage('${encoded}',${n})">${n}</button>`;
+ }).join('');
+ return `<nav class="operation-group-pagination" aria-label="Paginação dos lançamentos de ${escapeHTML(labels[key]||key)}"><button type="button" ${currentPage===1?'disabled':''} onclick="setOperationGroupPage('${encoded}',${currentPage-1})">Anterior</button>${pageButtons}<button type="button" ${currentPage===totalPages?'disabled':''} onclick="setOperationGroupPage('${encoded}',${currentPage+1})">Próximo</button><span class="page-info">${rowsCountLabel(totalPages,currentPage)}</span></nav>`;
+}
+function rowsCountLabel(totalPages,currentPage){return `Página ${currentPage} de ${totalPages}`;}
 function renderOperationsByType(allOps){
  const host=document.getElementById('operationGroups');
  if(!host)return;
+ operationGroupsData=Array.isArray(allOps)?allOps.slice():[];
  const order=['acao','fii','etf','bdr','internacional','stocks','reit','cripto','renda_fixa','tesouro','fundo','outros'];
  const groups=new Map();
- allOps.forEach(op=>{
+ operationGroupsData.forEach(op=>{
   const key=String(op.tipo||'outros').toLowerCase();
   if(!groups.has(key))groups.set(key,[]);
   groups.get(key).push(op);
@@ -2834,12 +2903,16 @@ function renderOperationsByType(allOps){
   const rows=groups.get(key).sort((a,b)=>String(b.data_execucao||b.data).localeCompare(String(a.data_execucao||a.data)));
   const buys=rows.filter(x=>x.lado==='compra').reduce((sum,x)=>sum+Number(x.quantidade||0)*Number(x.preco||0)+Number(x.custos||0),0);
   const sells=rows.filter(x=>x.lado==='venda').reduce((sum,x)=>sum+Number(x.quantidade||0)*Number(x.preco||0)-Number(x.custos||0),0);
-  return `<section class="operation-group"><div class="operation-group-head"><div><div class="operation-group-title">${escapeHTML(labels[key]||key)} <span class="operation-group-count">${rows.length} lançamento(s)</span></div></div><div class="operation-group-totals"><span>Compras <b class="green">${brl(buys)}</b></span><span>Vendas <b class="red">${brl(sells)}</b></span><span>Saldo líquido <b>${brl(buys-sells)}</b></span></div></div><div class="tablewrap"><table class="data"><thead><tr><th>Execução / agendamento</th><th>Ativo</th><th>Operação</th><th>Quantidade</th><th>Preço unitário</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(o=>{
+  const totalPages=Math.max(1,Math.ceil(rows.length/OPERATION_GROUP_PAGE_SIZE));
+  const currentPage=Math.min(Math.max(1,Number(operationGroupPages[key])||1),totalPages);
+  operationGroupPages[key]=currentPage;
+  const visibleRows=rows.slice((currentPage-1)*OPERATION_GROUP_PAGE_SIZE,currentPage*OPERATION_GROUP_PAGE_SIZE);
+  return `<section class="operation-group"><div class="operation-group-head"><div><div class="operation-group-title">${escapeHTML(labels[key]||key)} <span class="operation-group-count">${rows.length} lançamento(s)</span></div></div><div class="operation-group-totals"><span>Compras <b class="green">${brl(buys)}</b></span><span>Vendas <b class="red">${brl(sells)}</b></span><span>Saldo líquido <b>${brl(buys-sells)}</b></span></div></div><div class="tablewrap"><table class="data"><thead><tr><th>Execução / agendamento</th><th>Ativo</th><th>Operação</th><th>Quantidade</th><th>Preço unitário</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>${visibleRows.map(o=>{
    const when=o.data_execucao?new Date(o.data_execucao).toLocaleString('pt-BR'):(o.data||'');
    const details=(()=>{try{return Object.entries(JSON.parse(o.detalhes||'{}')).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(' · ')}catch{return ''}})();
    const total=Number(o.quantidade||0)*Number(o.preco||0)+Number(o.custos||0);
-   return `<tr><td>${escapeHTML(when)}</td><td class="ticker">${escapeHTML(o.ticker)}${details?`<div class="mini">${escapeHTML(details)}</div>`:''}</td><td class="${o.lado==='compra'?'green':'red'}">${o.lado==='compra'?'Compra':'Venda'}</td><td>${operationQuantity(o.quantidade)}</td><td>${brl(o.preco)}</td><td>${brl(total)}</td><td>${o.status==='agendada'?'<span class="tag">Agendada</span>':'<span class="tag">Executada</span>'}</td><td><button class="ghost" onclick="removeOperation(${Number(o.id)})">Excluir</button></td></tr>`;
-  }).join('')}</tbody></table></div></section>`;
+   return `<tr><td>${escapeHTML(when)}</td><td class="ticker">${escapeHTML(o.ticker)}${details?`<div class="mini">${escapeHTML(details)}</div>`:''}</td><td class="${o.lado==='compra'?'green':'red'}">${o.lado==='compra'?'Compra':'Venda'}</td><td>${operationQuantity(o.quantidade)}</td><td>${brl(o.preco)}</td><td>${brl(total)}</td><td>${o.status==='agendada'?'<span class="tag">Agendada</span>':'<span class="tag">Executada</span>'}</td><td><div class="prov-edit-actions"><button class="ghost" type="button" onclick="editOperation(${Number(o.id)})">Editar lançamento</button><button class="ghost" type="button" onclick="removeOperation(${Number(o.id)})">Excluir</button></div></td></tr>`;
+  }).join('')}</tbody></table></div>${operationGroupPagination(key,totalPages,currentPage)}</section>`;
  }).join('');
 }
 function renderImportedBalances(rows,baseDate){
@@ -3017,7 +3090,8 @@ async function syncProventosHistory(){
  finally{if(button){button.disabled=false;button.textContent='↻ Atualizar histórico';}}
 }
 
-function openModal(type){document.getElementById('modalback').style.display='flex';if(type==='op'){syncAssetTypeOptions();setOperationSide('compra');quantityInput.value='1';unitPriceInput.value='';costsInput.value='0,00';updateOperationTotal();}document.getElementById('opForm').classList.toggle('hidden',type!=='op');document.getElementById('provForm').classList.toggle('hidden',type!=='prov');document.getElementById('metaForm').classList.toggle('hidden',type!=='meta');document.getElementById('modalTitle').textContent=type==='op'?'Adicionar lançamento':type==='prov'?'Registrar provento':'Criar meta';const now=new Date();const local=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);document.getElementById('opDateTime').value=local;document.getElementById('opDate').value=local.slice(0,10);renderSpecificFields(assetType.value)}function closeModal(){
+function openModal(type){editingOperationId=null;const opSubmit=document.querySelector('#opForm .modalactions button.primary');if(opSubmit)opSubmit.textContent='＋ Adicionar lançamento';document.getElementById('modalback').style.display='flex';if(type==='op'){syncAssetTypeOptions();setOperationSide('compra');quantityInput.value='1';unitPriceInput.value='';costsInput.value='0,00';updateOperationTotal();}document.getElementById('opForm').classList.toggle('hidden',type!=='op');document.getElementById('provForm').classList.toggle('hidden',type!=='prov');document.getElementById('metaForm').classList.toggle('hidden',type!=='meta');document.getElementById('modalTitle').textContent=type==='op'?'Adicionar lançamento':type==='prov'?'Registrar provento':'Criar meta';const now=new Date();const local=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);document.getElementById('opDateTime').value=local;document.getElementById('opDate').value=local.slice(0,10);renderSpecificFields(assetType.value)}function closeModal(){
+ editingOperationId=null;const opSubmit=document.querySelector('#opForm .modalactions button.primary');if(opSubmit)opSubmit.textContent='＋ Adicionar lançamento';
  document.getElementById('modalback').style.display='none';
  ['opForm','provForm','metaForm'].forEach(id=>document.getElementById(id).reset());
  quantityInput.value='1';unitPriceInput.value='';costsInput.value='0,00';setOperationSide('compra');updateOperationTotal();selectedAsset=null;closeSuggestions();
@@ -3184,7 +3258,8 @@ assetInput.addEventListener('blur',()=>{
  },180);
 });
 
-async function submitForm(id,url){document.getElementById(id).addEventListener('submit',async e=>{e.preventDefault();let data=Object.fromEntries(new FormData(e.target));if(id==='opForm'&&data.lado==='venda'){await loadSellableAssets();const ticker=String(data.ticker||'').trim().toUpperCase();if(!sellableAssets.some(item=>item.ticker.toUpperCase()===ticker)){alert('Só é permitido vender ativos que já estão na sua carteira.');return;}const holding=sellableAssets.find(item=>item.ticker.toUpperCase()===ticker);if(Number(data.quantidade)>Number(holding.quantidade)+1e-8){alert('A quantidade informada é maior que a quantidade disponível na carteira.');return;}}if(id==='opForm'){data.preco=String(parseLocalizedNumber(data.preco));data.custos=String(parseLocalizedNumber(data.custos));data.data=data.data_hora.slice(0,10);data.detalhes=Object.fromEntries(Object.entries(data).filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));Object.keys(data).filter(k=>k.startsWith('detail_')).forEach(k=>delete data[k]);}try{const saved=await api(url,{method:'POST',body:JSON.stringify(data)});e.target.reset();if(id==='opForm'){quantityInput.value='1';updateOperationTotal();}closeModal();await refresh();if(id==='opForm'&&saved.status==='agendada'){toast('Operação agendada para '+new Date(saved.data_execucao).toLocaleString('pt-BR')+'.')}else if(id==='opForm'){toast('Lançamento salvo. Carteira, posições e gráficos atualizados.')}else toast('Registro salvo com sucesso.')}catch(err){toast(err.message)}})}submitForm('opForm','/api/operacoes');submitForm('provForm','/api/proventos');submitForm('metaForm','/api/metas');
+async function submitForm(id,url){document.getElementById(id).addEventListener('submit',async e=>{e.preventDefault();let data=Object.fromEntries(new FormData(e.target));if(id==='opForm'&&data.lado==='venda'&&!editingOperationId){await loadSellableAssets();const ticker=String(data.ticker||'').trim().toUpperCase();if(!sellableAssets.some(item=>item.ticker.toUpperCase()===ticker)){alert('Só é permitido vender ativos que já estão na sua carteira.');return;}const holding=sellableAssets.find(item=>item.ticker.toUpperCase()===ticker);if(Number(data.quantidade)>Number(holding.quantidade)+1e-8){alert('A quantidade informada é maior que a quantidade disponível na carteira.');return;}}if(id==='opForm'){data.preco=String(parseLocalizedNumber(data.preco));data.custos=String(parseLocalizedNumber(data.custos));data.data=data.data_hora.slice(0,10);data.detalhes=Object.fromEntries(Object.entries(data).filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));Object.keys(data).filter(k=>k.startsWith('detail_')).forEach(k=>delete data[k]);}try{const saved=await api(id==='opForm'&&editingOperationId?`/api/operacoes/${editingOperationId}`:url,{method:id==='opForm'&&editingOperationId?'PUT':'POST',body:JSON.stringify(data)});if(id==='opForm')editingOperationId=null;e.target.reset();if(id==='opForm'){quantityInput.value='1';updateOperationTotal();}closeModal();await refresh();if(id==='opForm'&&saved.status==='agendada'){toast('Operação agendada para '+new Date(saved.data_execucao).toLocaleString('pt-BR')+'.')}else if(id==='opForm'){toast('Lançamento salvo. Carteira, posições e gráficos atualizados.')}else toast('Registro salvo com sucesso.')}catch(err){toast(err.message)}})}submitForm('opForm','/api/operacoes');submitForm('provForm','/api/proventos');submitForm('metaForm','/api/metas');
+async function editOperation(id){const op=(state.operacoes||[]).find(x=>Number(x.id)===Number(id));if(!op){toast('Lançamento não encontrado.');return;}editingOperationId=Number(id);document.getElementById('modalback').style.display='flex';document.getElementById('opForm').classList.remove('hidden');document.getElementById('provForm').classList.add('hidden');document.getElementById('metaForm').classList.add('hidden');document.getElementById('modalTitle').textContent='Editar lançamento';syncAssetTypeOptions();const typeSelect=document.getElementById('assetType');if(![...typeSelect.options].some(option=>option.value===(op.tipo||'acao'))){const option=document.createElement('option');option.value=op.tipo||'acao';option.textContent=labels[op.tipo]||op.tipo;typeSelect.appendChild(option);}typeSelect.value=op.tipo||'acao';document.getElementById('operationSide').value=op.lado||'compra';document.querySelectorAll('.operation-side').forEach(button=>button.classList.toggle('active',button.dataset.side===(op.lado||'compra')));selectedAsset=null;closeSuggestions();document.getElementById('assetTicker').value=op.ticker||'';const stamp=op.data_execucao||op.data||new Date().toISOString().slice(0,10);document.getElementById('opDateTime').value=String(stamp).slice(0,16);document.getElementById('opDate').value=String(stamp).slice(0,10);try{const details=typeof op.detalhes==='string'?JSON.parse(op.detalhes||'{}'):(op.detalhes||{});renderSpecificFields(op.tipo||'acao');Object.entries(details).forEach(([key,value])=>{const field=document.querySelector(`#opForm [name="detail_${CSS.escape(key)}"]`);if(field)field.value=value;});}catch(e){renderSpecificFields(op.tipo||'acao')}document.getElementById('opQuantity').value=op.quantidade??1;document.getElementById('opUnitPrice').value=String(op.preco??0).replace('.',',');document.getElementById('opCosts').value=String(op.custos??0).replace('.',',');updateOperationTotal();const submit=document.querySelector('#opForm .modalactions button.primary');if(submit)submit.textContent='Salvar alterações';}
 async function removeOperation(id){if(!confirm('Excluir este lançamento?'))return;try{await api('/api/operacoes/'+id,{method:'DELETE'});refresh()}catch(e){toast(e.message)}}async function removeGoal(id){if(!confirm('Excluir esta meta?'))return;await api('/api/metas/'+id,{method:'DELETE'});refresh()}
 
 // IRPF e DARFs: registros auxiliares separados das operações da carteira.

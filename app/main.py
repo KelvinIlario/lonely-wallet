@@ -650,27 +650,48 @@ def delete_operacao(op_id):
     if not current: return json_error('Lançamento não encontrado.',404)
     j=request.get_json(silent=True) or {}
     try:
+        ticker=str(j.get('ticker',current['ticker'])).strip().upper()
+        tipo=str(j.get('tipo',current['tipo'])).lower()
+        lado=str(j.get('lado',current['lado'])).lower()
         qtd=float(j.get('quantidade',current['quantidade']))
         preco=float(j.get('preco',current['preco']))
         custos=float(j.get('custos',current['custos'] or 0))
         dt=str(j.get('data') or current['data'])
+        allowed_types=('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros')
         date.fromisoformat(dt)
-        if qtd<=0 or preco<0 or custos<0: raise ValueError()
-        requested=datetime.fromisoformat(str(j.get('data_hora') or (dt+'T10:00')))
+        if not ticker or len(ticker)>80 or tipo not in allowed_types or lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
+        if lado=='venda':
+            existing_type=db().execute("SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1",(ticker,)).fetchone()
+            if not existing_type or str(existing_type['tipo']).lower()!=tipo:
+                return json_error('O ativo selecionado não pertence à categoria informada. Escolha o ativo dentro da categoria correta.')
+            available,_=posicao(ticker)
+            if ticker==current['ticker'] and current['lado']=='venda' and current['status']!='agendada':
+                available+=float(current['quantidade'] or 0)
+            reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada' AND id<>?",(ticker,op_id)).fetchone()[0])
+            if qtd>available-reserved+1e-8:
+                return json_error('A quantidade vendida é maior que a posição disponível, considerando vendas já agendadas.')
+        raw=str(j.get('data_hora') or (dt+'T10:00'))
+        requested=datetime.fromisoformat(raw)
         if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
         now=datetime.now(TZ); now_minute=now.replace(second=0,microsecond=0)
         if requested.date()<now.date():
             execution=requested; status='executada'
+        elif tipo=='renda_fixa':
+            execution=now; status='executada'
         elif requested.date()==now.date() and now.weekday()<5 and now.date() not in b3_holidays(now.year) and MARKET_OPEN<=requested.time()<MARKET_CLOSE and requested<=now_minute:
             execution=requested; status='executada'
         else:
             execution=next_b3_session(requested); status='executada' if execution<=now_minute else 'agendada'
-        db().execute('UPDATE operacoes SET quantidade=?,preco=?,custos=?,data=?,status=?,data_execucao=? WHERE id=?',
-            (qtd,preco,custos,execution.date().isoformat(),status,execution.isoformat(timespec='minutes'),op_id))
-        db().commit(); CACHE.pop(current['ticker'],None)
+        details=j.get('detalhes',current['detalhes'] or '{}')
+        if isinstance(details,dict): details=json.dumps(details,ensure_ascii=False)
+        else:
+            parsed=json.loads(details or '{}'); details=json.dumps(parsed,ensure_ascii=False)
+        db().execute('UPDATE operacoes SET ticker=?,tipo=?,lado=?,quantidade=?,preco=?,custos=?,data=?,status=?,data_execucao=?,detalhes=? WHERE id=?',
+            (ticker,tipo,lado,qtd,preco,custos,execution.date().isoformat(),status,execution.isoformat(timespec='minutes'),details,op_id))
+        db().commit(); CACHE.pop(current['ticker'],None); CACHE.pop(ticker,None)
         return jsonify(ok=True,status=status,data_execucao=execution.isoformat(timespec='minutes'))
     except Exception:
-        return json_error('Confira quantidade, preço, custos e data do lançamento.')
+        return json_error('Confira ativo, tipo, operação, quantidade, preço, custos e data do lançamento.')
 
 
 @app.route('/api/proventos', methods=['GET','POST'])
