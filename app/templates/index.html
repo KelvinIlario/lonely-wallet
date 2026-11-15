@@ -1458,50 +1458,27 @@ body.light-theme select option{background:#fff!important;color:#202633!important
  .summary-position-groups .summary-category-head{grid-template-columns:27px minmax(0,1fr)}
 }
 
-
-/* v2.0.33 — setas alinhadas ao logo do primeiro ativo e botões adaptáveis ao tema */
+/* v2.0.34 — manter o layout dos cards e alinhar os controles à primeira logo */
 .asset-category{position:relative}
+.position-category-head{grid-template-columns:minmax(0,1fr)}
+.summary-position-groups .summary-category-head{grid-template-columns:minmax(0,1fr)}
 .position-category-move{
  position:absolute!important;
- z-index:4;
+ z-index:5;
  display:flex;
  flex-direction:column;
  align-items:center;
  justify-content:center;
- align-self:auto;
- min-height:0;
- height:auto;
- padding:0;
  gap:3px;
+ padding:0;
+ width:20px;
  pointer-events:auto;
 }
-.position-category-arrow{display:grid;place-items:center;flex:0 0 24px;width:25px;height:24px;padding:0;line-height:1}
-.insight-profit-links button{
- -webkit-appearance:none;
- appearance:none;
- display:inline-flex;
- align-items:center;
- justify-content:center;
- gap:4px;
- padding:6px 9px;
- min-height:28px;
- border:1px solid var(--line);
- border-radius:6px;
- background:var(--panel2);
- color:var(--text);
- font:inherit;
- font-size:11px;
- font-weight:650;
- line-height:1.2;
- white-space:nowrap;
- box-shadow:none;
+.position-category-arrow{flex:0 0 20px;width:20px;height:20px;padding:0}
+@media(max-width:700px){
+ .position-category-move{width:20px}
+ .position-category-arrow{width:20px;height:20px;flex-basis:20px}
 }
-.insight-profit-links button.green{color:var(--green)}
-.insight-profit-links button.red{color:var(--red)}
-.insight-profit-links button:hover{background:var(--panel);border-color:var(--muted);text-decoration:none;filter:none}
-body.light-theme .insight-profit-links button{background:var(--panel2);border-color:var(--line);color:var(--text)}
-body.light-theme .insight-profit-links button.green{color:var(--green)}
-body.light-theme .insight-profit-links button.red{color:var(--red)}
 
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
@@ -2014,11 +1991,11 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   return `<section class="asset-category ${expanded?'':'collapsed'} ${summaryMode?'summary-draggable-category':''}" ${summaryMode?`data-category-key="${cat.key}"`:!summaryMode?`data-category-key="${cat.key}"`:``}>${header}<div class="asset-category-body">${body}</div></section>`;
  }).join('');
  applyPositionColumnPrefs();
- alignCategoryMoveControls(hostId);
+ requestAnimationFrame(()=>alignCategoryMoveControls(hostId));
 }
 
-// Posiciona as setas exatamente no centro vertical e horizontal do logo do primeiro ativo.
-// A medição real evita diferenças entre cabeçalhos/tabelas da página Resumo e Posições.
+// Mantém as setas na mesma altura do logotipo do primeiro ativo sem retirar
+// os controles do fluxo visual do cabeçalho (o cabeçalho continua ocupando 100%).
 function alignCategoryMoveControls(hostId){
  const host=document.getElementById(hostId);
  if(!host)return;
@@ -2030,15 +2007,20 @@ function alignCategoryMoveControls(hostId){
   if(!target)return;
   const categoryRect=category.getBoundingClientRect();
   const targetRect=target.getBoundingClientRect();
+  if(!categoryRect.width||!targetRect.width)return;
   const controlRect=controls.getBoundingClientRect();
-  controls.style.left=`${targetRect.left-categoryRect.left+(targetRect.width-controlRect.width)/2}px`;
-  controls.style.top=`${targetRect.top-categoryRect.top+(targetRect.height-controlRect.height)/2}px`;
+  const controlWidth=20;
+  // Trilho estreito à esquerda da logo; o centro vertical acompanha a primeira linha.
+  const logoLeft=targetRect.left-categoryRect.left;
+  controls.style.left=`${Math.max(0,logoLeft-controlWidth-4)}px`;
+  controls.style.top=`${targetRect.top-categoryRect.top+targetRect.height/2-controlRect.height/2}px`;
  });
 }
-
 window.addEventListener('resize',()=>{
- alignCategoryMoveControls('positionGroups');
- alignCategoryMoveControls('summaryGroups');
+ requestAnimationFrame(()=>{
+  alignCategoryMoveControls('positionGroups');
+  alignCategoryMoveControls('summaryGroups');
+ });
 });
 
 function idealBalanceHint(assetValue,share,ideal,totalPortfolio){
@@ -2854,7 +2836,7 @@ document.getElementById('goalRows').innerHTML=(state.metas||[]).length?state.met
  return `<div class="panel goal-dashboard-card"><div class="goalrow"><div class="goal-title"><span class="goal-icon">${m.tipo==='proventos'?'◉':'◎'}</span>${escapeHTML(m.nome)}</div><button class="ghost" onclick="removeGoal(${m.id})">Excluir</button></div><div class="goal-progress-head"><strong>${pct(progress)}</strong><span>do objetivo alcançado</span></div><div class="progress"><span style="width:${progress}%"></span></div><div class="goal-dashboard-metrics"><div class="goal-dashboard-metric">${currentLabel}<b>${brl(current)}</b></div><div class="goal-dashboard-metric">Aporte mensal<b>${brl(monthly)}</b></div><div class="goal-dashboard-metric">Faltam<b>${brl(remaining)}</b></div><div class="goal-dashboard-metric">Conclusão estimada<b>${eta}</b></div><div class="goal-dashboard-metric">Objetivo<b>${brl(target)}</b></div></div></div>`;
  }).join(''):'<div class="panel empty">Você ainda não criou metas. Defina um objetivo para acompanhar seu progresso.</div>';
 }
-function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));if(name==='distribuicao')loadDistribution();if(name==='irpf')loadIRPF();if(name==='darfs')loadDARFs();setTimeout(()=>Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}}),60);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
+function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));if(name==='distribuicao')loadDistribution();if(name==='irpf')loadIRPF();if(name==='darfs')loadDARFs();setTimeout(()=>{Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups');if(name==='posicoes')alignCategoryMoveControls('positionGroups')},60);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
 function renderSpecificFields(type){
  const host=document.getElementById('assetSpecificFields'); if(!host)return;
  const fixed=['renda_fixa','tesouro'].includes(type);
@@ -3406,3 +3388,13 @@ async function confirmB3Import(){
 }
 
 </script></body></html>
+
+
+/* v2.0.32 — alinhamento dos controles de categoria e ações dos cards */
+.position-category-head,.summary-category-head{align-items:center}
+.position-category-move{align-self:center;height:auto;min-height:28px;padding:0;gap:3px;justify-content:center}
+.position-category-arrow{width:25px;height:24px;flex:0 0 24px}
+.insight-profit-links{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:2px}
+.insight-profit-links button{padding:0;border:0;background:transparent;font:inherit;font-size:11px;cursor:pointer}
+.insight-profit-links button:hover{text-decoration:underline}
+.b3-fixed-income-notice{margin:2px 0 16px;padding:11px 13px}
