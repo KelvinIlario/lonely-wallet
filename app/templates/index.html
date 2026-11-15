@@ -1073,6 +1073,17 @@ body.light-theme .tax-tabs button.active{background:#fff}
  text-align:center!important;
 }
 
+
+/* v2.0.18 — distribuição proporcional dos indicadores dos cards */
+@media(min-width:1101px){
+ .asset-category-head{
+  grid-template-columns:minmax(220px,1.75fr) repeat(5,minmax(105px,.85fr)) 26px!important;
+  column-gap:clamp(12px,1.15vw,22px)!important;
+  padding-left:clamp(16px,1.5vw,28px)!important;
+  padding-right:clamp(16px,1.5vw,28px)!important;
+ }
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1529,7 +1540,7 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   ['roe','ROE',i=>`<td data-col="roe">—</td>`],['margem_liquida','Margem Líquida',i=>`<td data-col="margem_liquida">—</td>`],
   ['margem_bruta','Margem Bruta',i=>`<td data-col="margem_bruta">—</td>`],['cagr_receitas','CAGR Receitas (5 anos)',i=>`<td data-col="cagr_receitas">—</td>`],['cagr_lucros','CAGR Lucros (5 anos)',i=>`<td data-col="cagr_lucros">—</td>`],
   ['nota','Nota',i=>`<td data-col="nota"><button class="note-inline" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">✎</button></td>`],
-  ['portfolioPct','% Carteira',i=>`<td data-col="portfolioPct">${pct(totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0)}</td>`],
+  ['portfolioPct','% Carteira',i=>`<td data-col="portfolioPct">${Math.round(totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0)}%</td>`],
   ['idealPct','% Ideal',i=>{const target=distributionItems.find(x=>categoryKeyFromName(x.nome)===i.tipo),ideal=Number(target?.percentual||0),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const balance=share-ideal,balanceClass=Math.abs(balance)<0.005?'neutral':balance>0?'positive':'negative';return `<td data-col="idealPct"><span class="value-hint ${balanceClass}" tabindex="0" data-hint="${escapeHTML(idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio))}">${pct(ideal)}</span></td>`;}],
   ['comprar','Comprar?',i=>{const buy=Number(i.preco_atual)>0&&Number(i.preco_medio)>0&&Number(i.preco_atual)<Number(i.preco_medio);return `<td data-col="comprar">${buy?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
  ];
@@ -1543,7 +1554,7 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
    : (expandedAssetGroups[cat.key]!==undefined?expandedAssetGroups[cat.key]:items.length>0);
   const shown=defs.filter(([key])=>prefs[key] && !(cat.key==='renda_fixa' && key==='proventos'));
   const body=items.length?`<div class="tablewrap"><table class="data" data-position-table><thead><tr>${shown.map(([,label])=>`<th data-col="${shown.find(x=>x[1]===label)[0]}">${label}</th>`).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">Nenhum ativo cadastrado nesta categoria.</div>`;
-  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${items.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${items.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${items.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${items.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${pct(portfolioPct)} / ${pct(ideal)}</b></span><span class="asset-category-chevron">⌄</span>`;
+  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${items.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${items.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${items.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${items.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
   const header=summaryMode
    ? `<div class="summary-category-head"><button type="button" class="category-drag-handle" title="Arraste para mover esta categoria" aria-label="Mover ${cat.name}" onpointerdown="startSummaryCategoryPointer(event,'${cat.key}')">⠿</button><button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
    : `<button type="button" class="asset-category-head position-group-toggle" onclick="toggleAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button>`;
@@ -1571,10 +1582,12 @@ function openAssetMenu(event,ticker){
  event.stopPropagation();closeAssetMenu();
  const menu=document.createElement('div');
  menu.id='assetActionMenu';menu.className='asset-action-menu';
+ const menuAsset=(state.itens||[]).find(item=>String(item.ticker||'').toUpperCase()===String(ticker||'').toUpperCase());
+ const isFixedIncome=['renda_fixa','tesouro'].includes(menuAsset?.tipo);
  menu.innerHTML=`
   <button type="button" onclick="assetMenuAction('add','${escapeHTML(ticker)}')"><span>＋</span>Adicionar Lançamento</button>
   <button type="button" onclick="assetMenuAction('transactions','${escapeHTML(ticker)}')"><span>☷</span>Ver lançamentos</button>
-  <button type="button" onclick="assetMenuAction('fundamentals','${escapeHTML(ticker)}')"><span>♧</span>Ver fundamentos</button>
+  ${isFixedIncome?'':`<button type="button" onclick="assetMenuAction('fundamentals','${escapeHTML(ticker)}')"><span>♧</span>Ver fundamentos</button>`}
   <button type="button" onclick="assetMenuAction('notes','${escapeHTML(ticker)}')"><span>▱</span>Minhas observações</button>
   <button type="button" onclick="assetMenuAction('columns','${escapeHTML(ticker)}')"><span>▤</span>Editar colunas</button>
   <div class="asset-menu-divider"></div>
