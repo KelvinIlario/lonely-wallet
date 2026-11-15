@@ -1307,7 +1307,7 @@ body.light-theme .tax-tabs button.active{background:#fff}
 }
 
 
-/* v2.0.25 — tooltip de balanceamento exclusivo em % Ideal, fora do overflow da tabela */
+/* v2.0.26 — tooltip com cor por ação e seleção preservada ao alternar Compra/Venda */
 .asset-category .data.proportional-assets-table td[data-col="idealPct"]{
  overflow:visible!important;
 }
@@ -1343,6 +1343,9 @@ body.light-theme .tax-tabs button.active{background:#fff}
  box-shadow:0 10px 30px #0007;
  pointer-events:none;
 }
+.ideal-balance-floating-tooltip.is-buy{border-color:#12c98b;color:#12c98b}
+.ideal-balance-floating-tooltip.is-sell{border-color:#ff5b78;color:#ff5b78}
+.ideal-balance-floating-tooltip.is-neutral{border-color:#9aa4b2;color:#c5ccd6}
 
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
@@ -1810,7 +1813,7 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   ['margem_bruta','Margem Bruta',i=>`<td data-col="margem_bruta">—</td>`],['cagr_receitas','CAGR Receitas (5 anos)',i=>`<td data-col="cagr_receitas">—</td>`],['cagr_lucros','CAGR Lucros (5 anos)',i=>`<td data-col="cagr_lucros">—</td>`],
   ['nota','Nota',i=>`<td data-col="nota"><button class="note-inline" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">✎</button></td>`],
   ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;return `<td data-col="portfolioPct">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</td>`;}],
-  ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);return `<td data-col="idealPct"><span class="ideal-balance-hint" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
+  ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);const action=share>ideal+0.005?'sell':share<ideal-0.005?'buy':'neutral';return `<td data-col="idealPct"><span class="ideal-balance-hint" data-action="${action}" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const buy=Number(i.preco_atual)>0&&Number(i.preco_medio)>0&&Number(i.preco_atual)<Number(i.preco_medio);return `<td data-col="comprar">${buy?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
  ];
  host.innerHTML=visibleCategories.map(cat=>{
@@ -1861,9 +1864,10 @@ function showIdealBalanceTooltip(event,el){
  if(!tip){
   tip=document.createElement('div');
   tip.id='idealBalanceFloatingTooltip';
-  tip.className='ideal-balance-floating-tooltip';
   document.body.appendChild(tip);
  }
+ const action=el?.dataset?.action||'neutral';
+ tip.className='ideal-balance-floating-tooltip '+(action==='sell'?'is-sell':action==='buy'?'is-buy':'is-neutral');
  tip.textContent=text;
  tip.style.visibility='hidden';
  tip.style.display='block';
@@ -1877,9 +1881,10 @@ function showIdealBalanceTooltip(event,el){
  let left=rect.left+rect.width/2-box.width/2;
  left=Math.max(12,Math.min(left,window.innerWidth-box.width-12));
  let top=rect.top-box.height-10;
- if(top<10)top=Math.min(window.innerHeight-box.height-10,rect.bottom+10);
+ if(top<10)top=rect.bottom+10;
+ top=Math.max(10,Math.min(top,window.innerHeight-box.height-10));
  tip.style.left=left+'px';
- tip.style.top=Math.max(10,top)+'px';
+ tip.style.top=top+'px';
 }
 function moveIdealBalanceTooltip(event,el){
  const tip=document.getElementById('idealBalanceFloatingTooltip');
@@ -2668,11 +2673,42 @@ async function loadSellableAssets(){
  }catch(e){sellableAssets=[];}
 }
 async function setOperationSide(side){
+ const previousTicker=String(assetInput.value||'').trim().toUpperCase();
+ const previousType=assetType.value;
  document.getElementById('operationSide').value=side;
  document.querySelectorAll('.operation-side').forEach(button=>button.classList.toggle('active',button.dataset.side===side));
- selectedAsset=null;assetInput.value='';closeSuggestions();assetPrice.value='';
+ closeSuggestions();
  if(side==='venda'){
   await loadSellableAssets();
+  // Ao alternar Compra/Venda dentro do lançamento iniciado pelo menu do ativo,
+  // preserva a seleção se a posição realmente existir na carteira.
+  const existing=previousTicker?sellableAssets.find(item=>
+   String(item.ticker||'').trim().toUpperCase()===previousTicker&&
+   String(item.tipo||'').toLowerCase()===String(previousType||'').toLowerCase()
+  ):null;
+  if(existing){
+   selectedAsset=existing;
+   assetType.value=existing.tipo||previousType;
+   assetInput.value=existing.ticker;
+   const fixed=['renda_fixa','tesouro'].includes(String(existing.tipo||'').toLowerCase());
+   if(fixed){
+    const quantity=Number(existing.quantidade||1);
+    quantityInput.value=String(quantity>0?quantity:1);
+    quantityInput.step='0.000001';quantityInput.min='0.000001';
+    const price=Number(existing.preco_atual??existing.preco_medio??0);
+    if(price>0)moneyInput(price);else assetPrice.value='';
+    assetHint.textContent=`Investimento selecionado para venda. Saldo disponível: ${brl(existing.valor_atual??quantity*price)}.`;
+   }else{
+    quantityInput.value='1';quantityInput.step='1';quantityInput.min='1';
+    const price=Number(existing.preco_atual??existing.preco_medio??0);
+    if(price>0)moneyInput(price);else assetPrice.value='';
+    assetHint.textContent='Ativo mantido para venda. Informe a quantidade que deseja vender.';
+   }
+   updateOperationTotal();
+   closeFixedIncomeSalePicker();
+   return;
+  }
+  selectedAsset=null;assetInput.value='';assetPrice.value='';
   if(assetType.value==='renda_fixa'){openFixedIncomeSalePicker();return;}
   const categoryHoldings=sellableAssets.filter(item=>String(item.tipo||'').toLowerCase()===String(assetType.value).toLowerCase());
   assetHint.textContent=categoryHoldings.length
@@ -2680,6 +2716,7 @@ async function setOperationSide(side){
    : 'Você não possui ativos disponíveis nesta categoria para vender.';
   if(categoryHoldings.length){suggestions.classList.remove('hidden');searchAssets();}
  }else{
+  selectedAsset=null;assetInput.value='';assetPrice.value='';
   assetHint.textContent='Digite pelo menos 2 caracteres para buscar na B3.';
  }
 }
