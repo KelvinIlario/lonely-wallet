@@ -991,6 +991,10 @@ body.light-theme .tax-tabs button.active{background:#fff}
 .return-stat-card .return-spark-item>b.red{background:rgba(239,102,128,.16)}
 @media(max-width:700px){.return-stat-card .return-spark-grid{gap:9px}.return-stat-card .return-spark-item>b{font-size:14px;padding:3px 8px}}
 
+
+/* v2.0.15 — cores distintas para cada fatia da distribuição de ativos */
+.allocation-legend-row .allocation-dot{flex:0 0 10px;width:10px;height:10px;border-radius:3px}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1863,28 +1867,35 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
  }
  chart(canvasId,'bar',{labels:monthKeys.map(m=>m.slice(5,7)+'/'+m.slice(0,4)),datasets:[{label:'Valor aplicado acumulado',data:cumulative,backgroundColor:'#31b77e',borderRadius:3}]},{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
 }
+function getDistinctChartColors(count){
+ const total=Math.max(1,Number(count)||1);
+ return Array.from({length:total},(_,index)=>{
+  const hue=(index*137.507764)%360;
+  const lightness=index%3===0?62:index%3===1?55:68;
+  return `hsl(${hue.toFixed(1)} 72% ${lightness}%)`;
+ });
+}
 function renderAllocationChart(){
  const rows=(state.itens||[]).filter(item=>Number(item.valor_atual||0)>0);
  const selectedType=document.getElementById('allocationType')?.value||'todos';
- const palette=chartPalette;
- const classColor={acao:'#78b7f5',fii:'#f3d978',bdr:'#42d49b',etf:'#b59af3',internacional:'#ed8e9c',renda_fixa:'#74d7d2',stocks:'#d7a36a',reit:'#e8a56b',cripto:'#a8b7cb',tesouro:'#d98ad0',fundo:'#8bcf9e',outros:'#c3a6ef'};
  let entries=[];
  if(selectedType==='todos'){
   const grouped={};
   rows.forEach(item=>{
    const key=item.tipo||'outros';
-   if(!grouped[key])grouped[key]={name:labels[key]||key,value:0,color:classColor[key]||palette[Object.keys(grouped).length%palette.length],type:key};
+   if(!grouped[key])grouped[key]={name:labels[key]||key,value:0,type:key};
    grouped[key].value+=Number(item.valor_atual||0);
   });
   entries=Object.values(grouped).sort((a,b)=>b.value-a.value);
  }else{
   entries=rows.filter(item=>item.tipo===selectedType)
    .sort((a,b)=>Number(b.valor_atual||0)-Number(a.valor_atual||0))
-   .map((item,index)=>({name:item.ticker,value:Number(item.valor_atual||0),color:palette[index%palette.length],type:item.tipo,ticker:item.ticker}));
+   .map(item=>({name:item.ticker,value:Number(item.valor_atual||0),type:item.tipo,ticker:item.ticker}));
  }
  const names=entries.map(item=>item.name),values=entries.map(item=>item.value);
  const denominator=values.reduce((sum,value)=>sum+value,0);
- const colors=entries.map(item=>item.color);
+ const colors=getDistinctChartColors(entries.length);
+ entries.forEach((item,index)=>item.color=colors[index]);
  chart('allocationChart','doughnut',{labels:names,datasets:[{data:values,backgroundColor:colors,borderWidth:0,hoverOffset:5}]},{cutout:'66%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${pct(denominator?Number(ctx.raw||0)/denominator*100:0)} · ${brl(ctx.raw||0)}`}}}});
  const legend=document.getElementById('allocationLegend');
  if(legend){
