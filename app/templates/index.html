@@ -1618,6 +1618,21 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 .prov-total-trigger[aria-expanded="true"] .prov-total-chevron{transform:rotate(180deg)}
 .prov-total-menu{position:absolute;z-index:12;left:0;top:calc(100% + 7px);min-width:210px;padding:6px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px #0004;display:grid;gap:2px}
 .prov-chart-period{position:relative;min-width:170px}
+.earnings-history-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.prov-history-filter{position:relative;min-width:150px}
+.prov-history-trigger{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;text-align:left;white-space:nowrap}
+.prov-history-menu{position:absolute;z-index:35;right:0;top:calc(100% + 7px);width:205px;max-height:min(65vh,360px);overflow:auto;padding:8px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 32px #0005;display:grid;gap:3px}
+.prov-history-menu.hidden{display:none}
+.prov-history-menu .history-option{display:flex;align-items:center;gap:9px;width:100%;padding:7px 8px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.prov-history-menu .history-option:hover,.prov-history-menu .history-option.active{background:var(--hover,rgba(127,145,170,.13))}
+.prov-history-menu .history-option input{width:15px;height:15px;margin:0;accent-color:var(--accent);flex:none}
+.prov-history-menu .history-menu-title{font-size:11px;font-weight:750;color:var(--muted);padding:5px 8px 7px}
+.prov-history-menu .history-search{width:100%;min-height:36px;padding:7px 10px;margin-bottom:5px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text);font:inherit;font-size:12px}
+.prov-history-menu .history-menu-footer{display:flex;justify-content:space-between;gap:8px;padding:7px 6px 3px;border-top:1px solid var(--line);margin-top:4px}
+.prov-history-menu .history-menu-footer button{border:0;background:transparent;color:var(--accent);font:inherit;font-size:11px;cursor:pointer;padding:3px}
+.prov-history-asset-menu{width:230px}
+@media(max-width:760px){.earnings-history-toolbar{width:100%;display:grid;grid-template-columns:1fr 1fr}.earnings-history-toolbar>#provHistoryTotal{grid-column:1/-1}.prov-history-filter{min-width:0}.prov-history-menu{right:auto;left:0}.prov-history-asset-menu{width:min(230px,calc(100vw - 48px))}}
+
 .prov-chart-period-trigger{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;text-align:left}
 .prov-chart-period-menu{position:absolute;z-index:30;right:0;top:calc(100% + 7px);width:285px;max-height:min(72vh,520px);overflow:auto;padding:12px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 32px #0005;display:grid;gap:9px}
 .prov-chart-period-menu .period-title{font-size:12px;font-weight:750;color:var(--text);margin-bottom:1px}
@@ -1710,7 +1725,12 @@ body.light-theme .prov-total-menu button:hover,body.light-theme .prov-total-menu
   </div>
  </div>
 </div>
-<div class="panel section"><div class="panelhead earnings-history-head"><h2>Histórico mensal</h2><div class="toolbar"><strong id="provMonthlyTotal" class="green"></strong><select id="provStatusFilter" onchange="renderProventosDashboard()"><option value="todos">Recebidos e a receber</option><option value="Pago">Recebidos</option><option value="A receber">A receber</option></select></div></div><div class="tablewrap"><table class="data"><thead><tr><th>Ano</th><th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th><th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th><th>Total</th></tr></thead><tbody id="provMonthlyRows"></tbody></table></div></div>
+<div class="panel section"><div class="panelhead earnings-history-head"><h2>Histórico mensal</h2><div class="toolbar earnings-history-toolbar">
+<strong id="provHistoryTotal" class="green">Total R$ 0,00</strong><select id="provStatusFilter" class="hidden" aria-hidden="true"><option value="todos">Recebidos e Futuros</option><option value="Pago">Recebidos</option><option value="A receber">Futuros</option></select>
+<div class="prov-history-filter" id="provHistoryStatusWrap"><button type="button" class="prov-history-trigger" onclick="toggleProvHistoryMenu('status')" aria-haspopup="true" aria-expanded="false"><span id="provHistoryStatusLabel">Recebidos e Futuros</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden" id="provHistoryStatusMenu"></div></div>
+<div class="prov-history-filter" id="provHistoryTypeWrap"><button type="button" class="prov-history-trigger" onclick="toggleProvHistoryMenu('type')" aria-haspopup="true" aria-expanded="false"><span>Tipo de ativo</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden" id="provHistoryTypeMenu"></div></div>
+<div class="prov-history-filter" id="provHistoryAssetWrap"><button type="button" class="prov-history-trigger" onclick="toggleProvHistoryMenu('asset')" aria-haspopup="true" aria-expanded="false"><span>Ativos</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden prov-history-asset-menu" id="provHistoryAssetMenu"></div></div>
+</div></div><div class="tablewrap"><table class="data"><thead><tr><th>Ano</th><th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th><th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th><th>Total</th></tr></thead><tbody id="provMonthlyRows"></tbody></table></div></div>
 <div class="panel section"><div class="panelhead"><h2>Meus proventos</h2><span class="mini">Pagamentos recebidos e anunciados</span></div><div class="tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Tipo</th><th>Status</th><th>Data-com</th><th>Data pagamento</th><th>Quantidade</th><th>Valor por ativo</th><th>Valor total</th></tr></thead><tbody id="provRows"></tbody></table></div><p class="mini">Pagamentos futuros são estimativas baseadas nos eventos anunciados pela fonte de cotação e na quantidade elegível na data-com. Confirme os valores com a B3 ou o RI do fundo/empresa.</p></div>
 </section>
 <section id="page-patrimonio" class="page hidden">
@@ -1829,7 +1849,7 @@ body.light-theme .prov-total-menu button:hover,body.light-theme .prov-total-menu
 </div>
 <script>
 const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), pct=v=>`${Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2})}%`;
-const labels={acao:'Ações',fii:'FIIs',etf:'ETFs',bdr:'BDRs',internacional:'ETFs Internacionais',renda_fixa:'Renda Fixa',cripto:'Criptomoedas',stocks:'Stocks',reit:'REITs',tesouro:'Tesouro Direto',fundo:'Fundos de Investimentos',outros:'Outros'};let state={itens:[],resumo:{},alocacao:{},operacoes:[],proventos:[],metas:[]};let charts={};let operationGroupPages={};let operationGroupsData=[];const OPERATION_GROUP_PAGE_SIZE=15;let provGroupPages={};let provGroupedRows={};let provDistributionData={ativo:[],tipo:[]};let provDistributionMode="ativo";let provDistributionStatus="Pago";let provTotalPeriod="12m";let provChartRange="12m";let editingOperationId=null;let irpfData={posicoes:[],rendimentos:[],operacoes:[],resumo:{}};let darfItems=[];let activeIRPFTab='bens';
+const labels={acao:'Ações',fii:'FIIs',etf:'ETFs',bdr:'BDRs',internacional:'ETFs Internacionais',renda_fixa:'Renda Fixa',cripto:'Criptomoedas',stocks:'Stocks',reit:'REITs',tesouro:'Tesouro Direto',fundo:'Fundos de Investimentos',outros:'Outros'};let state={itens:[],resumo:{},alocacao:{},operacoes:[],proventos:[],metas:[]};let charts={};let operationGroupPages={};let operationGroupsData=[];const OPERATION_GROUP_PAGE_SIZE=15;let provGroupPages={};let provGroupedRows={};let provDistributionData={ativo:[],tipo:[]};let provDistributionMode="ativo";let provDistributionStatus="Pago";let provTotalPeriod="12m";let provChartRange="todos";let editingOperationId=null;let irpfData={posicoes:[],rendimentos:[],operacoes:[],resumo:{}};let darfItems=[];let activeIRPFTab='bens';
 let expandedAssetGroups={};
 // Estado independente dos grupos exibidos na página Resumo.
 let summaryExpandedAssetGroups={};
@@ -2672,7 +2692,7 @@ function renderProvChartPeriodMenu(availableYears){
  const menu=document.getElementById('provChartPeriodMenu'),label=document.getElementById('provChartPeriodLabel');
  if(!menu)return;
  const currentYear=new Date().getFullYear();
- const quick=[['ano_atual',`Ano atual ${currentYear}`],['12m','Últimos 12 meses'],['5a','Últimos 5 anos'],['futuros','Futuros'],['recebidos','Recebidos'],['todos','Todos · Recebidos e Futuros']];
+ const quick=[['ano_atual',`Ano atual ${currentYear}`],['12m','Últimos 12 meses'],['5a','Últimos 5 anos'],['futuros','Futuros'],['recebidos','Recebidos'],['todos','Recebidos e Futuros']];
  const years=[...new Set(availableYears||[])].filter(y=>/^\d{4}$/.test(String(y))).sort((a,b)=>Number(b)-Number(a));
  const yearValue=provChartRange.startsWith('ano:')?provChartRange.slice(4):'';
  const selectedLabel=quick.find(x=>x[0]===provChartRange)?.[1]||(yearValue?yearValue:'Últimos 12 meses');
@@ -2687,6 +2707,74 @@ function setProvMode(mode){
  window.provMode=mode;
  renderProventosDashboard();
 }
+let provHistoryStatus='todos';
+let provHistoryTypes=[];
+let provHistoryAssets=[];
+function toggleProvHistoryMenu(kind){
+ const ids={status:'provHistoryStatusMenu',type:'provHistoryTypeMenu',asset:'provHistoryAssetMenu'};
+ const wraps={status:'provHistoryStatusWrap',type:'provHistoryTypeWrap',asset:'provHistoryAssetWrap'};
+ const menu=document.getElementById(ids[kind]);if(!menu)return;
+ const opening=menu.classList.contains('hidden');
+ Object.values(ids).forEach(id=>document.getElementById(id)?.classList.add('hidden'));
+ Object.values(wraps).forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
+ if(opening){menu.classList.remove('hidden');document.querySelector(`#${wraps[kind]} .prov-history-trigger`)?.setAttribute('aria-expanded','true');}
+}
+function closeProvHistoryMenus(){
+ ['provHistoryStatusMenu','provHistoryTypeMenu','provHistoryAssetMenu'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));
+ ['provHistoryStatusWrap','provHistoryTypeWrap','provHistoryAssetWrap'].forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
+}
+document.addEventListener('click',event=>{
+ if(!event.target.closest('.prov-history-filter'))closeProvHistoryMenus();
+});
+function setProvHistoryStatus(value){
+ provHistoryStatus=value;
+ const legacyStatus=document.getElementById('provStatusFilter');if(legacyStatus)legacyStatus.value=value;
+ const labels={todos:'Recebidos e Futuros',Pago:'Recebidos','A receber':'Futuros'};
+ const label=document.getElementById('provHistoryStatusLabel');if(label)label.textContent=labels[value]||labels.todos;
+ renderProventosDashboard();
+}
+function toggleProvHistoryType(value,checked){
+ if(checked){if(!provHistoryTypes.includes(value))provHistoryTypes.push(value);}
+ else provHistoryTypes=provHistoryTypes.filter(x=>x!==value);
+ renderProventosDashboard();
+}
+function toggleProvHistoryAsset(value,checked){
+ if(checked){if(!provHistoryAssets.includes(value))provHistoryAssets.push(value);}
+ else provHistoryAssets=provHistoryAssets.filter(x=>x!==value);
+ renderProventosDashboard();
+}
+function setProvHistoryAllTypes(){
+ provHistoryTypes=[];renderProventosDashboard();
+}
+function setProvHistoryAllAssets(){
+ provHistoryAssets=[];renderProventosDashboard();
+}
+function filterProvHistoryAssetOptions(){
+ const input=document.getElementById('provHistoryAssetSearch'),query=(input?.value||'').trim().toUpperCase();
+ document.querySelectorAll('#provHistoryAssetOptions .history-option').forEach(option=>{
+  option.style.display=option.dataset.search.includes(query)?'flex':'none';
+ });
+}
+function renderProvHistoryFilters(rows,eventType){
+ const statusMenu=document.getElementById('provHistoryStatusMenu');
+ if(statusMenu){
+  const choices=[['A receber','Futuros'],['Pago','Recebidos'],['todos','Todos']];
+  statusMenu.innerHTML='<div class="history-menu-title">Status dos proventos</div>'+choices.map(([value,label])=>`<button type="button" class="history-option ${provHistoryStatus===value?'active':''}" onclick="setProvHistoryStatus('${value}')"><span class="history-radio">${provHistoryStatus===value?'◉':'○'}</span>${label}${value==='todos'?' <b class="mini">Recebidos e Futuros</b>':''}</button>`).join('');
+ }
+ const typeMenu=document.getElementById('provHistoryTypeMenu');
+ const typeValues=[...new Set([...((state.itens||[]).map(x=>x.tipo).filter(Boolean)),...rows.map(eventType).filter(Boolean)])].sort((a,b)=>(labels[a]||a).localeCompare(labels[b]||b,'pt-BR'));
+ provHistoryTypes=provHistoryTypes.filter(x=>typeValues.includes(x));
+ if(typeMenu){
+  typeMenu.innerHTML='<div class="history-menu-title">Tipo de ativo</div><label class="history-option"><input type="checkbox" '+(!provHistoryTypes.length?'checked':'')+' onchange="setProvHistoryAllTypes()">Todos os tipos</label>'+typeValues.map(value=>`<label class="history-option"><input type="checkbox" ${provHistoryTypes.includes(value)?'checked':''} onchange="toggleProvHistoryType('${escapeHTML(value)}',this.checked)">${escapeHTML(labels[value]||value)}</label>`).join('')+'<div class="history-menu-footer"><button type="button" onclick="setProvHistoryAllTypes()">Limpar seleção</button></div>';
+ }
+ const assetMenu=document.getElementById('provHistoryAssetMenu');
+ const assetValues=[...new Set(rows.map(x=>x.ticker).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+ provHistoryAssets=provHistoryAssets.filter(x=>assetValues.includes(x));
+ if(assetMenu){
+  assetMenu.innerHTML='<input id="provHistoryAssetSearch" class="history-search" type="search" placeholder="Pesquisar ativo..." oninput="filterProvHistoryAssetOptions()"><div id="provHistoryAssetOptions"><label class="history-option"><input type="checkbox" '+(!provHistoryAssets.length?'checked':'')+' onchange="setProvHistoryAllAssets()">Todos os ativos</label>'+assetValues.map(value=>`<label class="history-option" data-search="${escapeHTML(value.toUpperCase())}"><input type="checkbox" ${provHistoryAssets.includes(value)?'checked':''} onchange="toggleProvHistoryAsset('${escapeHTML(value)}',this.checked)">${escapeHTML(value)}</label>`).join('')+'</div><div class="history-menu-footer"><button type="button" onclick="setProvHistoryAllAssets()">Limpar seleção</button><span class="mini">'+(provHistoryAssets.length?provHistoryAssets.length+' selecionado(s)':'Todos')+'</span></div>';
+ }
+}
+
 function renderProventosDashboard(){
  const d=state.proventos_dashboard||{},r=state.resumo||{};
  const rows=[...(d.recebidos||[]),...(d.a_receber||[])];
@@ -2794,16 +2882,26 @@ function renderProventosDashboard(){
   totalHeader.title='Soma dos proventos já pagos e dos pagamentos anunciados no período selecionado.';
  }
 
+ const historyRows=rows.filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x.data_pagamento||'')));
+ renderProvHistoryFilters(historyRows,eventType);
+ const historyFiltered=historyRows.filter(x=>
+  (provHistoryStatus==='todos'||x.status===provHistoryStatus)&&
+  (!provHistoryTypes.length||provHistoryTypes.includes(eventType(x)))&&
+  (!provHistoryAssets.length||provHistoryAssets.includes(x.ticker))
+ );
  const byYear={};
- (d.mensal||[]).forEach(x=>{
-  const amount=Number(x.recebido||0),year=String(x.mes||'').slice(0,4),month=Number(String(x.mes||'').slice(5,7))-1;
-  if(!/^\d{4}$/.test(year)||month<0||month>11)return;
+ historyFiltered.forEach(x=>{
+  const date=String(x.data_pagamento),year=date.slice(0,4),month=Number(date.slice(5,7))-1;
+  if(month<0||month>11)return;
   if(!byYear[year])byYear[year]=Array(12).fill(0);
-  byYear[year][month]=amount;
+  byYear[year][month]+=Number(x.valor_total||0);
  });
- const years=Object.keys(byYear).filter(y=>byYear[y].some(v=>v>0)).sort().reverse();
+ const years=Object.keys(byYear).filter(y=>byYear[y].some(v=>v!==0)).sort().reverse();
+ const historyTotal=historyFiltered.reduce((sum,x)=>sum+Number(x.valor_total||0),0);
+ const historyTotalEl=document.getElementById('provHistoryTotal');
+ if(historyTotalEl)historyTotalEl.textContent=`Total ${brl(historyTotal)}`;
  const history=document.getElementById('provMonthlyRows');
- if(history)history.innerHTML=years.length?years.map(year=>{const vals=byYear[year],sum=vals.reduce((a,b)=>a+b,0);return `<tr><td class="ticker">${year}</td>${vals.map(v=>`<td>${brl(v)}</td>`).join('')}<td class="green">${brl(sum)}</td></tr>`}).join(''):`<tr><td colspan="14" class="empty">Nenhum provento recebido no período.</td></tr>`;
+ if(history)history.innerHTML=years.length?years.map(year=>{const vals=byYear[year],sum=vals.reduce((a,b)=>a+b,0);return `<tr><td class="ticker">${year}</td>${vals.map(v=>`<td>${brl(v)}</td>`).join('')}<td class="green">${brl(sum)}</td></tr>`}).join(''):`<tr><td colspan="14" class="empty">Nenhum provento encontrado para os filtros selecionados.</td></tr>`;
  const table=document.getElementById('provRows');
  if(table){
   const groupOrder=['renda_fixa','fii','acao','etf','bdr','internacional','stocks','reit','cripto','tesouro','fundo','outros'];
