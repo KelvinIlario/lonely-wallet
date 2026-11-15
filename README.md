@@ -1,4 +1,12 @@
-# Lonely Wallet — atualização de interface v2.0.43
+# Lonely Wallet v2.0.45\n\nAtualização de sincronização automática da interface após operações de gravação.\n\n# Lonely Wallet — atualização de interface v2.0.43
+
+# Lonely Wallet v2.0.44
+
+## Correções
+- Gráfico de distribuição de ativos na página Resumo prioriza tons azuis, verdes, roxos e amarelos, evitando vermelho enquanto houver cores alternativas.
+- Gráfico de barras da aba Proventos ocupa toda a largura disponível do painel, com canvas responsivo e sem encolhimento horizontal em layouts flexíveis.
+- Mantida a interação de clique nas barras para abrir a distribuição circular do mês correspondente.
+- Mantidos o logotipo, o ícone e o favicon oficiais da identidade visual atual.
 
 ## Novidades da v2.0.42
 - O card **Resumo** da aba Proventos agora permite alternar o total recebido entre **Total do mês**, **Total do ano** e **Total últimos 12 meses**. O cálculo considera somente pagamentos efetivamente recebidos.

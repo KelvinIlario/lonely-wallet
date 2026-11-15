@@ -1622,8 +1622,9 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 body.light-theme .prov-total-menu{background:#fff;border-color:#d5dce6;box-shadow:0 10px 28px #17203320}
 body.light-theme .prov-total-menu button:hover,body.light-theme .prov-total-menu button.active{background:#eef2f7;color:#202633}
 .earnings-sidebar,.earnings-main{min-width:0;min-height:0}.earnings-main{display:flex}
-.earnings-main>.panel{width:100%;height:100%;min-height:100%;display:flex;flex-direction:column}
-.earnings-main-chart{height:390px;min-height:320px;flex:1 1 390px}
+.earnings-main>.panel{width:100%;height:100%;min-height:100%;min-width:0;display:flex;flex-direction:column;align-items:stretch}
+.earnings-main-chart{display:block;position:relative;width:100%;max-width:none;min-width:0;height:390px;min-height:320px;flex:1 1 auto;margin:0;align-self:stretch}
+.earnings-main-chart canvas{display:block!important;width:100%!important;height:100%!important;max-width:none!important}
 .earnings-dashboard{align-items:stretch}
 @media(max-width:900px){.earnings-main>.panel{height:auto;min-height:0}.earnings-main-chart{height:300px;min-height:250px;flex:none}}
 .goal-wizard-choice{display:flex;align-items:center;gap:16px;width:100%;padding:20px 18px;margin:0 0 14px;border:1px solid var(--muted);border-radius:13px;background:var(--panel);color:var(--text);text-align:left;cursor:pointer}
@@ -1819,11 +1820,51 @@ let expandedAssetGroups={};
 let summaryExpandedAssetGroups={};
 let summaryDraggedCategory="";
 let distributionItems=[];const distributionColors=['#4b91f5','#7df0b2','#ffdc65','#ff7181','#54d5ef','#bd9af4','#e8a56b','#6fc4a8','#b9c3d3'];
-async function api(url,opts={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});let d=await r.json();if(!r.ok)throw new Error(d.erro||'Não foi possível concluir a operação.');return d}
+let refreshInFlight=null,mutationRefreshTimer=null,refreshAgain=false;
+function scheduleMutationRefresh(){
+ if(mutationRefreshTimer)clearTimeout(mutationRefreshTimer);
+ mutationRefreshTimer=setTimeout(()=>{
+  mutationRefreshTimer=null;
+  refresh();
+ },80);
+}
+async function api(url,opts={}){
+ const method=String(opts.method||'GET').toUpperCase();
+ const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});
+ let d={};
+ try{d=await r.json();}catch(error){if(r.ok)throw new Error('O servidor não retornou uma resposta válida.');}
+ if(!r.ok)throw new Error(d.erro||'Não foi possível concluir a operação.');
+ if(['POST','PUT','PATCH','DELETE'].includes(method)&&!opts.skipAutoRefresh)scheduleMutationRefresh();
+ return d;
+}
 function chart(id,type,data,options={}){if(!document.getElementById(id))return;if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),{type,data,options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#b8c1ce',boxWidth:9,font:{size:11}}}},scales:type==='bar'?{x:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}},y:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}}}:{},...options}})}
 function stat(label,value,sub='',color=''){return `<div class="card stat"><div class="statlabel">${label}</div><div class="statvalue ${color}">${value}</div><div class="mini">${sub}</div></div>`}
 function rowEmpty(cols,msg='Nenhum registro encontrado.'){return `<tr><td colspan="${cols}" class="empty">${msg}</td></tr>`}
-async function refresh(){try{state=await api('/api/dashboard');render();applyPositionColumnPrefs();document.getElementById('updated').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});if(!document.getElementById('page-irpf').classList.contains('hidden'))await loadIRPF();if(!document.getElementById('page-darfs').classList.contains('hidden'))await loadDARFs();}catch(e){toast(e.message)}finally{const loader=document.getElementById('loadingScreen');if(loader)loader.classList.add('done')}}
+async function refresh(){
+ if(mutationRefreshTimer){clearTimeout(mutationRefreshTimer);mutationRefreshTimer=null;}
+ if(refreshInFlight){refreshAgain=true;return refreshInFlight;}
+ refreshInFlight=(async()=>{
+  try{
+   state=await api('/api/dashboard');
+   render();
+   applyPositionColumnPrefs();
+   const updated=document.getElementById('updated');
+   if(updated)updated.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+   if(!document.getElementById('page-irpf').classList.contains('hidden'))await loadIRPF();
+   if(!document.getElementById('page-darfs').classList.contains('hidden'))await loadDARFs();
+   return state;
+  }catch(e){toast(e.message);return null;}
+  finally{
+   const loader=document.getElementById('loadingScreen');
+   if(loader)loader.classList.add('done');
+  }
+ })();
+ try{return await refreshInFlight;}
+ finally{
+  refreshInFlight=null;
+  if(refreshAgain){refreshAgain=false;Promise.resolve().then(()=>refresh());}
+ }
+}
 
 
 
@@ -2813,9 +2854,19 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
  chart(canvasId,'bar',{labels:monthKeys.map(m=>m.slice(5,7)+'/'+m.slice(0,4)),datasets:[{label:'Valor aplicado acumulado',data:cumulative,backgroundColor:'#31b77e',borderRadius:3}]},{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
 }
 function getDistinctChartColors(count){
- const total=Math.max(1,Number(count)||1);
- return Array.from({length:total},(_,index)=>{
+ const total=Math.max(1,Number(count)||1),hues=[];
+ // Prioriza tons frios e evita vermelho enquanto houver alternativas.
+ for(let index=0;hues.length<total&&index<1200;index++){
+  const hue=(210+index*137.507764)%360;
+  if(hue<18||hue>342)continue;
+  if(hues.some(existing=>Math.abs(existing-hue)<13||Math.abs(existing-hue)>347))continue;
+  hues.push(hue);
+ }
+ for(let index=0;hues.length<total&&index<120;index++){
   const hue=(index*137.507764)%360;
+  if(!hues.some(existing=>Math.abs(existing-hue)<10||Math.abs(existing-hue)>350))hues.push(hue);
+ }
+ return hues.slice(0,total).map((hue,index)=>{
   const lightness=index%3===0?62:index%3===1?55:68;
   return `hsl(${hue.toFixed(1)} 72% ${lightness}%)`;
  });
@@ -3415,7 +3466,7 @@ assetInput.addEventListener('blur',()=>{
 
 async function submitForm(id,url){document.getElementById(id).addEventListener('submit',async e=>{e.preventDefault();let data=Object.fromEntries(new FormData(e.target));if(id==='opForm'&&data.lado==='venda'&&!editingOperationId){await loadSellableAssets();const ticker=String(data.ticker||'').trim().toUpperCase();if(!sellableAssets.some(item=>item.ticker.toUpperCase()===ticker)){alert('Só é permitido vender ativos que já estão na sua carteira.');return;}const holding=sellableAssets.find(item=>item.ticker.toUpperCase()===ticker);if(Number(data.quantidade)>Number(holding.quantidade)+1e-8){alert('A quantidade informada é maior que a quantidade disponível na carteira.');return;}}if(id==='opForm'){data.preco=String(parseLocalizedNumber(data.preco));data.custos=String(parseLocalizedNumber(data.custos));data.data=data.data_hora.slice(0,10);data.detalhes=Object.fromEntries(Object.entries(data).filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));Object.keys(data).filter(k=>k.startsWith('detail_')).forEach(k=>delete data[k]);}try{const saved=await api(id==='opForm'&&editingOperationId?`/api/operacoes/${editingOperationId}`:url,{method:id==='opForm'&&editingOperationId?'PUT':'POST',body:JSON.stringify(data)});if(id==='opForm')editingOperationId=null;e.target.reset();if(id==='opForm'){quantityInput.value='1';updateOperationTotal();}closeModal();await refresh();if(id==='opForm'&&saved.status==='agendada'){toast('Operação agendada para '+new Date(saved.data_execucao).toLocaleString('pt-BR')+'.')}else if(id==='opForm'){toast('Lançamento salvo. Carteira, posições e gráficos atualizados.')}else toast('Registro salvo com sucesso.')}catch(err){toast(err.message)}})}submitForm('opForm','/api/operacoes');submitForm('provForm','/api/proventos');submitForm('metaForm','/api/metas');
 async function editOperation(id){const op=(state.operacoes||[]).find(x=>Number(x.id)===Number(id));if(!op){toast('Lançamento não encontrado.');return;}editingOperationId=Number(id);document.getElementById('modalback').style.display='flex';document.getElementById('opForm').classList.remove('hidden');document.getElementById('provForm').classList.add('hidden');document.getElementById('metaForm').classList.add('hidden');document.getElementById('modalTitle').textContent='Editar lançamento';syncAssetTypeOptions();const typeSelect=document.getElementById('assetType');if(![...typeSelect.options].some(option=>option.value===(op.tipo||'acao'))){const option=document.createElement('option');option.value=op.tipo||'acao';option.textContent=labels[op.tipo]||op.tipo;typeSelect.appendChild(option);}typeSelect.value=op.tipo||'acao';document.getElementById('operationSide').value=op.lado||'compra';document.querySelectorAll('.operation-side').forEach(button=>button.classList.toggle('active',button.dataset.side===(op.lado||'compra')));selectedAsset=null;closeSuggestions();document.getElementById('assetTicker').value=op.ticker||'';const stamp=op.data_execucao||op.data||new Date().toISOString().slice(0,10);document.getElementById('opDateTime').value=String(stamp).slice(0,16);document.getElementById('opDate').value=String(stamp).slice(0,10);try{const details=typeof op.detalhes==='string'?JSON.parse(op.detalhes||'{}'):(op.detalhes||{});renderSpecificFields(op.tipo||'acao');Object.entries(details).forEach(([key,value])=>{const field=document.querySelector(`#opForm [name="detail_${CSS.escape(key)}"]`);if(field)field.value=value;});}catch(e){renderSpecificFields(op.tipo||'acao')}document.getElementById('opQuantity').value=op.quantidade??1;document.getElementById('opUnitPrice').value=String(op.preco??0).replace('.',',');document.getElementById('opCosts').value=String(op.custos??0).replace('.',',');updateOperationTotal();const submit=document.querySelector('#opForm .modalactions button.primary');if(submit)submit.textContent='Salvar alterações';}
-async function removeOperation(id){if(!confirm('Excluir este lançamento?'))return;try{await api('/api/operacoes/'+id,{method:'DELETE'});refresh()}catch(e){toast(e.message)}}async function removeGoal(id){if(!confirm('Excluir esta meta?'))return;await api('/api/metas/'+id,{method:'DELETE'});refresh()}
+async function removeOperation(id){if(!confirm('Excluir este lançamento?'))return;try{await api('/api/operacoes/'+id,{method:'DELETE'});await refresh();toast('Lançamento excluído.')}catch(e){toast(e.message)}}async function removeGoal(id){if(!confirm('Excluir esta meta?'))return;try{await api('/api/metas/'+id,{method:'DELETE'});await refresh();toast('Meta excluída.')}catch(e){toast(e.message)}}
 
 // IRPF e DARFs: registros auxiliares separados das operações da carteira.
 function localISODate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}

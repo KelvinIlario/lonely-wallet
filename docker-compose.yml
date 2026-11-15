@@ -1,6 +1,9 @@
 services:
   lonely-wallet:
     image: lonker/lonely-wallet:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: lonely-wallet
     restart: unless-stopped
     network_mode: bridge
