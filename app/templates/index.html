@@ -2116,7 +2116,11 @@ function restorePositionColumns(){
 function applyPositionColumnPrefs(){
  const prefs=getPositionColumnPrefs();
  document.querySelectorAll('#positionGroups table[data-position-table],#summaryGroups table[data-position-table]').forEach(table=>{
-  table.querySelectorAll('[data-col]').forEach(cell=>{cell.style.display=prefs[cell.dataset.col]?'':'none'});
+  table.querySelectorAll('[data-col]').forEach(cell=>{
+   // A coluna Opções é fixa: não faz parte das preferências de colunas e nunca deve sumir.
+   const alwaysVisible=cell.dataset.col==='opcoes';
+   cell.style.display=(alwaysVisible||!!prefs[cell.dataset.col])?'':'none';
+  });
  });
 }
 function closeUtilityModal(id){const el=document.getElementById(id);if(el)el.style.display='none';}
