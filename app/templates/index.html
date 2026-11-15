@@ -1183,6 +1183,30 @@ body.light-theme .tax-tabs button.active{background:#fff}
  text-align:center!important;
 }
 
+
+/* v2.0.21 — ticker/logotipo sempre alinhados à mesma margem esquerda */
+.asset-category .data.proportional-assets-table tbody td[data-col="ticker"],
+.asset-category .data.proportional-assets-table tbody td.ticker{
+ text-align:left!important;
+ padding-left:20px!important;
+ padding-right:8px!important;
+}
+.asset-category .data.proportional-assets-table tbody td[data-col="ticker"] .asset-name-cell,
+.asset-category .data.proportional-assets-table tbody td.ticker .asset-name-cell{
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:flex-start!important;
+ width:auto!important;
+ max-width:100%;
+ min-width:0;
+ margin:0!important;
+ gap:9px!important;
+}
+.asset-category .data.proportional-assets-table tbody td[data-col="ticker"] .asset-name-text,
+.asset-category .data.proportional-assets-table tbody td.ticker .asset-name-text{
+ text-align:left!important;
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
