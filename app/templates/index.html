@@ -1432,18 +1432,44 @@ body.light-theme .tax-tabs button.active{background:#fff}
  .position-category-arrow{width:24px;height:23px}
 }
 
+
+/* v2.0.31 — filtros coerentes com o tema claro */
+body.light-theme select,
+body.light-theme .toolbar select,
+body.light-theme .panelhead select,
+body.light-theme .field select{
+ background-color:#fff!important;
+ color:#202633!important;
+ border-color:#d8dee8!important;
+ color-scheme:light!important;
+}
+body.light-theme .toolbar select,
+body.light-theme .panelhead select,
+body.light-theme .field select{
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23657184' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;
+}
+body.light-theme select option{background:#fff!important;color:#202633!important}
+.position-category-head,
+.summary-position-groups .summary-category-head{align-items:center}
+.position-category-move{align-self:stretch;justify-content:center;align-items:center}
+.position-category-arrow{flex:0 0 25px}
+.summary-position-groups .summary-category-head{grid-template-columns:30px minmax(0,1fr)}
+@media(max-width:700px){
+ .summary-position-groups .summary-category-head{grid-template-columns:27px minmax(0,1fr)}
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
 <button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar tabela da B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
-<nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="posicoes">▦ Posições</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="rentabilidade">⌁ Rentabilidade</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="metas">◎ Metas</button><button data-page="irpf">▣ IRPF</button><button data-page="darfs">▤ DARFs</button></nav>
+<nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="posicoes">▦ Posições</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="rentabilidade">⌁ Rentabilidade</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="metas">◎ Metas</button></nav>
 <main>
 <section id="page-resumo" class="page"><div class="pagehead summary-pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
 <div class="grid stats summary-investor10" id="stats"></div><div class="grid charts"><div class="panel"><div class="panelhead"><h2>Evolução do patrimônio</h2><div class="toolbar"><select id="aportePeriod" aria-label="Período da evolução" onchange="renderEvolutionChart()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="all">Todo o período</option></select><select id="aporteType" aria-label="Tipo de ativo da evolução" onchange="renderEvolutionChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div></div><div class="chartbox"><canvas id="aporteChart"></canvas></div><div class="chart-footnote">O ganho de capital atual aparece no mês mais recente; os meses anteriores mostram os aportes registrados, pois o sistema não mantém cotações históricas próprias.</div></div><div class="panel allocation-panel"><div class="panelhead"><h2>Ativos na carteira</h2><select id="allocationType" aria-label="Filtrar ativos na carteira" onchange="renderAllocationChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div><div class="allocation-content"><div class="chartbox small"><canvas id="allocationChart"></canvas></div><div id="allocationLegend" class="allocation-legend"></div></div></div></div>
 <div class="sectionhead summary-assets-head"><h2>Meus ativos <span class="mini" id="summaryAssetCount">(0)</span></h2><button class="ghost" onclick="showPage('posicoes')">Ver carteira →</button></div><div id="summaryGroups" class="position-groups summary-position-groups"></div></section>
-<section id="page-posicoes" class="page hidden"><div class="pagehead"><div><h1>Posições</h1><div class="sub">Sua carteira consolidada, organizada por categoria de ativo.</div></div><button class="primary" onclick="openModal('op')">＋ Adicionar ativo</button></div><div id="positionInsights" class="position-insights"></div><div id="positionGroups" class="position-groups"></div></section>
+<section id="page-posicoes" class="page hidden"><div class="pagehead"><div><h1>Posições</h1><div class="sub">Sua carteira consolidada, organizada por categoria de ativo.</div></div></div><div id="positionInsights" class="position-insights"></div><div id="positionGroups" class="position-groups"></div></section>
 <section id="page-proventos" class="page hidden">
 <div class="pagehead"><div><h1>Proventos</h1><div class="sub">Acompanhe dividendos, JCP, rendimentos recebidos e pagamentos anunciados.<span id="proventosSyncStatus" class="mini" style="display:block;margin-top:5px"></span></div></div><div class="toolbar"><button class="ghost" id="syncProventosButton" type="button" onclick="syncProventosHistory()">↻ Atualizar histórico</button><button class="primary" onclick="openModal('prov')">＋ Registrar provento</button></div></div>
 <div class="earnings-dashboard">
@@ -1510,58 +1536,7 @@ body.light-theme .tax-tabs button.active{background:#fff}
 <div class="panel section"><div class="panelhead"><h2>Posições importadas</h2><span id="importedBalancesDate" class="mini"></span></div><p class="mini imported-balance-note">Saldo-base da posição final em 31/10/2026. As operações anteriores continuam no histórico, mas não são somadas novamente ao saldo atual. Ações e FIIs usam preço médio e preço de referência da captura; em renda fixa, o custo foi reconstituído a partir do saldo e da rentabilidade exibidos.</p><div id="importedBalanceGroups" class="operation-groups"></div></div>
 </section>
 <section id="page-metas" class="page hidden"><div class="pagehead"><div><h1>Metas financeiras</h1><div class="sub">Defina objetivos e acompanhe o progresso da sua carteira.</div></div><button class="primary" onclick="openModal('meta')">＋ Criar meta</button></div><div id="goalRows"></div></section>
-<section id="page-irpf" class="page hidden">
- <div class="pagehead">
-  <div><h1>IRPF</h1><div class="sub">Organize as informações da carteira para a declaração anual.</div></div>
-  <div class="toolbar"><label class="tax-year-label" for="irpfYearFilter">Ano-base</label><select id="irpfYearFilter" onchange="loadIRPF()"></select><button class="ghost" onclick="exportIRPF()">Exportar dados</button><button class="primary" onclick="openTaxModal('irpf')">＋ Adicionar rendimento</button></div>
- </div>
- <div class="notice">Os dados são calculados a partir dos lançamentos cadastrados e das informações que você inserir. Confira informes, notas de corretagem, regras vigentes e orientações oficiais antes de declarar. Esta tela não transmite declaração nem substitui orientação contábil.</div>
- <div class="grid stats irpf-stats" id="irpfStats"></div>
- <div class="panel tax-panel">
-  <div class="tax-tabs" role="tablist" aria-label="Seções do IRPF">
-   <button class="active" type="button" data-irpf-tab="bens" onclick="showIRPFTab('bens')">Bens e direitos</button>
-   <button type="button" data-irpf-tab="isentos" onclick="showIRPFTab('isentos')">Rendimentos isentos</button>
-   <button type="button" data-irpf-tab="exclusivos" onclick="showIRPFTab('exclusivos')">Tributação exclusiva</button>
-   <button type="button" data-irpf-tab="comuns" onclick="showIRPFTab('comuns')">Operações comuns</button>
-   <button type="button" data-irpf-tab="fiis" onclick="showIRPFTab('fiis')">FIIs / Fiagro</button>
-  </div>
-  <div class="tax-tab-pane" id="irpfPane-bens">
-   <div class="panelhead"><div><h2>Bens e direitos</h2><span class="mini">Posições e custo de aquisição em 31/12 do ano-base, conforme operações registradas.</span></div><span class="mini" id="irpfPositionCount">0 ativos</span></div>
-   <div class="tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Classe</th><th>Quantidade</th><th>Custo médio</th><th>Custo total estimado</th></tr></thead><tbody id="irpfPositionRows"></tbody></table></div>
-  </div>
-  <div class="tax-tab-pane hidden" id="irpfPane-isentos">
-   <div class="panelhead"><div><h2>Rendimentos isentos e não tributáveis</h2><span class="mini">Cadastre os valores conforme os informes recebidos.</span></div><button class="ghost" onclick="openTaxModal('irpf','isento')">＋ Adicionar</button></div>
-   <div class="tablewrap"><table class="data"><thead><tr><th>Natureza</th><th>Fonte pagadora</th><th>Documento</th><th>Data</th><th>Valor</th><th></th></tr></thead><tbody id="irpfIsentoRows"></tbody></table></div>
-  </div>
-  <div class="tax-tab-pane hidden" id="irpfPane-exclusivos">
-   <div class="panelhead"><div><h2>Rendimentos sujeitos à tributação exclusiva</h2><span class="mini">Use os dados do informe da instituição pagadora.</span></div><button class="ghost" onclick="openTaxModal('irpf','exclusiva')">＋ Adicionar</button></div>
-   <div class="tablewrap"><table class="data"><thead><tr><th>Natureza</th><th>Fonte pagadora</th><th>Documento</th><th>Data</th><th>Valor</th><th></th></tr></thead><tbody id="irpfExclusivaRows"></tbody></table></div>
-  </div>
-  <div class="tax-tab-pane hidden" id="irpfPane-comuns">
-   <div class="panelhead"><div><h2>Operações comuns</h2><span class="mini">Resultado estimado das vendas de ativos que não estão classificados como FIIs/REITs.</span></div></div>
-   <div class="tablewrap"><table class="data"><thead><tr><th>Mês</th><th>Valor de vendas</th><th>Custo proporcional</th><th>Resultado estimado</th><th>Operações</th></tr></thead><tbody id="irpfComunsRows"></tbody></table></div>
-   <p class="tax-note">O cadastro atual não diferencia operações comuns de day trade, nem contempla todos os ajustes fiscais. A classificação e os valores devem ser conferidos antes do uso na declaração.</p>
-  </div>
-  <div class="tax-tab-pane hidden" id="irpfPane-fiis">
-   <div class="panelhead"><div><h2>Operações em FIIs ou Fiagro</h2><span class="mini">Resultado estimado das vendas registradas nas classes FIIs e REITs.</span></div></div>
-   <div class="tablewrap"><table class="data"><thead><tr><th>Mês</th><th>Valor de vendas</th><th>Custo proporcional</th><th>Resultado estimado</th><th>Operações</th></tr></thead><tbody id="irpfFiisRows"></tbody></table></div>
-   <p class="tax-note">Rendimentos distribuídos por fundos devem ser informados conforme os informes oficiais. Esta visão apresenta apenas o histórico estimado de vendas cadastrado.</p>
-  </div>
- </div>
-</section>
-<section id="page-darfs" class="page hidden">
- <div class="pagehead">
-  <div><h1>DARFs</h1><div class="sub">Organize guias, vencimentos e status de pagamento.</div></div>
-  <div class="toolbar"><label class="tax-year-label" for="darfYearFilter">Ano</label><select id="darfYearFilter" onchange="loadDARFs()"></select><button class="ghost" onclick="exportDARFs()">Exportar CSV</button><button class="primary" onclick="openTaxModal('darf')">＋ Cadastrar DARF</button></div>
- </div>
- <div class="notice">O sistema não apura imposto, não determina código de receita e não emite guia oficial. Cadastre os dados conferidos por você e valide código, valor e vencimento nos canais oficiais antes de realizar qualquer pagamento.</div>
- <div class="grid stats darf-stats" id="darfStats"></div>
- <div class="panel section">
-  <div class="panelhead"><div><h2>Controle de DARFs</h2><span class="mini">Registros manuais organizados por competência.</span></div><select id="darfStatusFilter" onchange="renderDARFs()"><option value="todos">Todos os status</option><option value="pendente">Pendentes</option><option value="pago">Pagos</option></select></div>
-  <div class="tablewrap"><table class="data"><thead><tr><th>Competência</th><th>Código</th><th>Vencimento</th><th>Pagamento</th><th>Valor</th><th>Status</th><th>Observações</th><th></th></tr></thead><tbody id="darfRows"></tbody></table></div>
- </div>
- <div class="panel darf-help"><div class="goal-title"><span class="goal-icon">▤</span>Conferência antes de pagar</div><p>Revise o período de apuração, o código de receita, o valor e a data de vencimento com base nos documentos e nas orientações oficiais. O status “Pago” serve apenas como controle interno e não confirma a compensação pela Receita Federal.</p></div>
-</section>
+
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
@@ -1775,6 +1750,17 @@ function movePositionCategory(key,direction){
  try{localStorage.setItem('lonelyWalletPositionCategoryOrderV1',JSON.stringify(order));}catch(e){}
  renderPositionGroups(state.itens||[]);
 }
+function moveSummaryCategory(key,direction){
+ const order=getSummaryCategoryOrder();
+ const visible=Array.from(document.querySelectorAll('#summaryGroups .asset-category[data-category-key]')).map(el=>el.dataset.categoryKey);
+ const index=visible.indexOf(key),targetIndex=index+Number(direction);
+ if(index<0||targetIndex<0||targetIndex>=visible.length)return;
+ const other=visible[targetIndex],from=order.indexOf(key),to=order.indexOf(other);
+ if(from<0||to<0)return;
+ [order[from],order[to]]=[order[to],order[from]];
+ try{localStorage.setItem('lonelyWalletSummaryCategoryOrderV1',JSON.stringify(order));}catch(e){}
+ renderPositionGroups(state.itens||[],'summaryGroups',true);
+}
 function getSummaryCategoryOrder(){
  const defaults=['acao','fii','renda_fixa','etf','internacional','stocks','bdr','reit','cripto','tesouro','fundo','outros'];
  try{
@@ -1976,9 +1962,10 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   const proportionalCols=`<colgroup>${widthKeys.map(key=>`<col style="width:${((columnWeights[key]||.9)/widthTotal*100).toFixed(3)}%">`).join('')}</colgroup>`;
   const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">Nenhum ativo cadastrado nesta categoria.</div>`;
   const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${items.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${items.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${items.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${items.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
+  const moveControls=`<div class="position-category-move">${categoryIndex>0?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para cima" aria-label="Mover ${cat.name} para cima" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',-1)">↑</button>`:''}${categoryIndex<visibleCategories.length-1?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para baixo" aria-label="Mover ${cat.name} para baixo" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',1)">↓</button>`:''}</div>`;
   const header=summaryMode
-   ? `<div class="summary-category-head"><button type="button" class="category-drag-handle" title="Arraste para mover esta categoria" aria-label="Mover ${cat.name}" onpointerdown="startSummaryCategoryPointer(event,'${cat.key}')">⠿</button><button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
-   : `<div class="position-category-head"><div class="position-category-move">${categoryIndex>0?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para cima" aria-label="Mover ${cat.name} para cima" onclick="event.stopPropagation();movePositionCategory('${cat.key}',-1)">↑</button>`:''}${categoryIndex<visibleCategories.length-1?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para baixo" aria-label="Mover ${cat.name} para baixo" onclick="event.stopPropagation();movePositionCategory('${cat.key}',1)">↓</button>`:''}</div><button type="button" class="asset-category-head position-group-toggle" onclick="toggleAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`;
+   ? `<div class="summary-category-head">${moveControls}<button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
+   : `<div class="position-category-head">${moveControls}<button type="button" class="asset-category-head position-group-toggle" onclick="toggleAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`;
   return `<section class="asset-category ${expanded?'':'collapsed'} ${summaryMode?'summary-draggable-category':''}" ${summaryMode?`data-category-key="${cat.key}"`:!summaryMode?`data-category-key="${cat.key}"`:``}>${header}<div class="asset-category-body">${body}</div></section>`;
  }).join('');
  applyPositionColumnPrefs();
@@ -2763,7 +2750,7 @@ document.getElementById('stats').innerHTML=`
  <div class="card stat"><div class="statlabel-row">Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição.">i</span></div><div class="statvalue">${brl(r.atual||0)}</div><div class="statdetail"><span>Valor investido</span><b>${brl(r.investido||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Lucro total<span class="info-tip" tabindex="0" aria-label="Sobre o lucro total" data-tip="Seu resultado acumulado na carteira: ganho de capital (valorização dos ativos) somado aos dividendos e proventos recebidos.">i</span></div><div class="statvalue ${totalProfit>=0?'green':'red'}">${brl(totalProfit)}</div><div class="statdetail"><span>Ganho de capital</span><b>${brl(r.lucro||0)}</b></div><div class="statdetail"><span>Dividendos recebidos</span><b>${brl(r.proventos||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Proventos recebidos (12M)<span class="info-tip" tabindex="0" aria-label="Sobre os proventos recebidos" data-tip="Total de dividendos, JCP e rendimentos recebidos nos últimos 12 meses.">i</span></div><div class="statvalue">${brl(provDash.total_12m||0)}</div><div class="statdetail"><span>Total confirmado</span><b>${brl(provDash.total_12m||0)}</b></div></div>
- <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Retorno consolidado de todos os ativos, ponderado pelo valor investido. Os dois indicadores mostram o resultado acumulado atual; não representam uma série histórica independente de 12 meses.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Acumulada</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade acumulada"></svg><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div></div></div>`;
+ <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Retorno consolidado de todos os ativos, ponderado pelo valor investido. Os dois indicadores mostram o resultado acumulado atual; não representam uma série histórica independente de 12 meses.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Últimos 12 meses</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade dos últimos 12 meses"></svg><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div></div></div>`;
 renderConsolidatedReturnSparklines(portfolioReturn);
 
 
