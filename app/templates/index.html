@@ -1814,7 +1814,7 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   ['nota','Nota',i=>`<td data-col="nota"><button class="note-inline" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">✎</button></td>`],
   ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;return `<td data-col="portfolioPct">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</td>`;}],
   ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);const action=share>ideal+0.005?'sell':share<ideal-0.005?'buy':'neutral';return `<td data-col="idealPct"><span class="ideal-balance-hint" data-action="${action}" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
-  ['comprar','Comprar?',i=>{const buy=Number(i.preco_atual)>0&&Number(i.preco_medio)>0&&Number(i.preco_atual)<Number(i.preco_medio);return `<td data-col="comprar">${buy?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
+  ['comprar','Comprar?',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const needsContribution=share<ideal-0.005;return `<td data-col="comprar">${needsContribution?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
  ];
  host.innerHTML=visibleCategories.map(cat=>{
   const items=rows.filter(item=>item.tipo===cat.key),total=items.reduce((sum,item)=>sum+Number(item.valor_atual||0),0),invested=items.reduce((sum,item)=>sum+Number(item.investido||0),0);
@@ -2716,8 +2716,29 @@ async function setOperationSide(side){
    : 'Você não possui ativos disponíveis nesta categoria para vender.';
   if(categoryHoldings.length){suggestions.classList.remove('hidden');searchAssets();}
  }else{
-  selectedAsset=null;assetInput.value='';assetPrice.value='';
-  assetHint.textContent='Digite pelo menos 2 caracteres para buscar na B3.';
+  // Alternar de Venda para Compra não deve apagar o ativo já escolhido.
+  const current=selectedAsset&&
+   String(selectedAsset.ticker||'').trim().toUpperCase()===previousTicker&&
+   String(selectedAsset.tipo||'').toLowerCase()===String(previousType||'').toLowerCase()
+    ? selectedAsset
+    : (state.itens||[]).find(item=>
+       String(item.ticker||'').trim().toUpperCase()===previousTicker&&
+       String(item.tipo||'').toLowerCase()===String(previousType||'').toLowerCase()
+      );
+  if(current&&previousTicker){
+   selectedAsset=current;
+   assetType.value=current.tipo||previousType;
+   assetInput.value=current.ticker;
+   quantityInput.step=['renda_fixa','tesouro'].includes(String(current.tipo||'').toLowerCase())?'0.000001':'1';
+   quantityInput.min=quantityInput.step;
+   if(!quantityInput.value||Number(quantityInput.value)<=0)quantityInput.value='1';
+   assetHint.textContent='Ativo mantido para compra. Você pode ajustar a quantidade e o preço.';
+   closeSuggestions();
+   updateOperationTotal();
+  }else{
+   selectedAsset=null;assetInput.value='';assetPrice.value='';
+   assetHint.textContent='Digite pelo menos 2 caracteres para buscar na B3.';
+  }
  }
 }
 async function syncProventosHistory(){
