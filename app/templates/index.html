@@ -1631,6 +1631,30 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 .prov-history-menu .history-menu-footer{display:flex;justify-content:space-between;gap:8px;padding:7px 6px 3px;border-top:1px solid var(--line);margin-top:4px}
 .prov-history-menu .history-menu-footer button{border:0;background:transparent;color:var(--accent);font:inherit;font-size:11px;cursor:pointer;padding:3px}
 .prov-history-asset-menu{width:230px}
+
+/* v2.0.49 — paginação e filtros temáticos em Meus proventos */
+.my-provents-toolbar .prov-history-trigger{
+ appearance:none!important;-webkit-appearance:none!important;
+ min-height:40px;padding:8px 11px!important;border:1px solid var(--line)!important;
+ border-radius:8px!important;background:var(--panel2)!important;color:var(--text)!important;
+ box-shadow:none!important;font:inherit!important;font-size:12px!important;line-height:1.2!important;
+}
+.my-provents-toolbar .prov-history-trigger:hover{border-color:var(--muted)!important;filter:brightness(1.04)}
+.my-provents-toolbar .prov-history-trigger:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.my-provents-toolbar .prov-history-menu{background:var(--panel2)!important;color:var(--text)!important;border-color:var(--line)!important;box-shadow:0 12px 32px #0004}
+.my-provents-toolbar .prov-history-menu .history-option{color:var(--text)!important}
+.my-provents-toolbar .prov-history-menu .history-option:hover,.my-provents-toolbar .prov-history-menu .history-option.active{background:var(--panel)!important}
+.my-provents-toolbar .prov-history-menu .history-search{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important}
+.my-prov-pagination{display:flex;justify-content:center;align-items:center;gap:0;margin:16px auto 6px;padding:0;}
+.my-prov-pagination button{min-width:48px;min-height:34px;padding:7px 13px;border:1px solid var(--line);border-right:0;background:var(--panel);color:var(--text);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.my-prov-pagination button:first-child{border-radius:8px 0 0 8px}
+.my-prov-pagination button:last-child{border-right:1px solid var(--line);border-radius:0 8px 8px 0}
+.my-prov-pagination button.active{background:var(--panel2);border-color:var(--blue);color:var(--text)}
+.my-prov-pagination button:disabled{opacity:.38;cursor:not-allowed}
+.my-prov-pagination button:not(:disabled):hover{background:var(--panel2)}
+.my-prov-pagination .page-ellipsis{min-width:34px;padding:7px 5px;text-align:center;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+body.light-theme .my-provents-toolbar .prov-history-menu{box-shadow:0 12px 32px #17203325}
+@media(max-width:650px){.my-prov-pagination{flex-wrap:wrap;gap:3px}.my-prov-pagination button{border:1px solid var(--line);border-radius:6px!important;min-width:40px;padding:7px 10px}}
 @media(max-width:760px){.earnings-history-toolbar{width:100%;display:grid;grid-template-columns:1fr 1fr}.earnings-history-toolbar>#provHistoryTotal{grid-column:1/-1}.prov-history-filter{min-width:0}.prov-history-menu{right:auto;left:0}.prov-history-asset-menu{width:min(230px,calc(100vw - 48px))}}
 
 .prov-chart-period-trigger{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;text-align:left}
@@ -1736,7 +1760,7 @@ body.light-theme .prov-total-menu button:hover,body.light-theme .prov-total-menu
 <div class="prov-history-filter my-prov-filter" id="myProvPeriodWrap"><button type="button" class="prov-history-trigger" onclick="toggleMyProvMenu('period')" aria-haspopup="true" aria-expanded="false"><span id="myProvPeriodLabel">Ano atual</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu my-prov-period-menu hidden" id="myProvPeriodMenu"></div></div>
 <div class="prov-history-filter my-prov-filter" id="myProvTypeWrap"><button type="button" class="prov-history-trigger" onclick="toggleMyProvMenu('type')" aria-haspopup="true" aria-expanded="false"><span>Tipo de ativo</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden" id="myProvTypeMenu"></div></div>
 <div class="prov-history-filter my-prov-filter" id="myProvAssetWrap"><button type="button" class="prov-history-trigger" onclick="toggleMyProvMenu('asset')" aria-haspopup="true" aria-expanded="false"><span>Ativos</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden prov-history-asset-menu" id="myProvAssetMenu"></div></div>
-</div></div><div class="tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Tipo</th><th>Status</th><th>Data-com</th><th>Data pagamento</th><th>Quantidade</th><th>Valor por ativo</th><th>Valor total</th></tr></thead><tbody id="provRows"></tbody></table></div><p class="mini">Pagamentos futuros são estimativas baseadas nos eventos anunciados pela fonte de cotação e na quantidade elegível na data-com. Confirme os valores com a B3 ou o RI do fundo/empresa.</p></div>
+</div></div><div class="tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Tipo</th><th>Status</th><th>Data-com</th><th>Data pagamento</th><th>Quantidade</th><th>Valor por ativo</th><th>Valor total</th></tr></thead><tbody id="provRows"></tbody></table></div><div id="myProvPagination" class="my-prov-pagination" aria-label="Paginação dos meus proventos"></div><p class="mini">Pagamentos futuros são estimativas baseadas nos eventos anunciados pela fonte de cotação e na quantidade elegível na data-com. Confirme os valores com a B3 ou o RI do fundo/empresa.</p></div>
 </section>
 <section id="page-patrimonio" class="page hidden">
 <div class="pagehead"><div><h1>Patrimônio</h1><div class="sub">Acompanhe a evolução dos aportes e a composição atual de cada classe.</div></div></div>
@@ -2911,14 +2935,28 @@ function renderProventosDashboard(){
  const myTotal=myRows.reduce((sum,x)=>sum+Number(x.valor_total||0),0);
  const myTotalEl=document.getElementById('myProvTotal');if(myTotalEl)myTotalEl.textContent=`Total ${brl(myTotal)}`;
  renderMyProvFilters(rows,eventType);
- const table=document.getElementById('provRows');
+ const table=document.getElementById('provRows'),pagination=document.getElementById('myProvPagination');
+ const pageSize=10,totalPages=Math.max(1,Math.ceil(myRows.length/pageSize));
+ myProvPage=Math.min(Math.max(1,myProvPage),totalPages);
  if(table){
-  const visible=myRows.slice(0,500);
+  const start=(myProvPage-1)*pageSize,visible=myRows.slice(start,start+pageSize);
   table.innerHTML=visible.length?visible.map(x=>`<tr><td class="ticker">${escapeHTML(x.ticker||'—')}${x.remarks?`<div class="mini">${escapeHTML(x.remarks)}</div>`:''}</td><td>${escapeHTML(x.tipo||'Provento')}</td><td><span class="prov-status ${x.status==='A receber'?'pending':''}">${escapeHTML(x.status||'—')}</span></td><td>${x.data_com?new Date(x.data_com+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.data_pagamento?new Date(x.data_pagamento+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.quantidade??'—'}</td><td>${x.valor_por_ativo!==null&&x.valor_por_ativo!==undefined?brl(x.valor_por_ativo):'—'}</td><td class="${x.status==='Pago'?'green':'blue'}">${brl(x.valor_total)}</td></tr>`).join(''):rowEmpty(8,'Nenhum provento encontrado para os filtros selecionados.');
+ }
+ if(pagination){
+  if(totalPages<=1)pagination.innerHTML='';
+  else{
+   let pages=[];
+   if(totalPages<=7)pages=Array.from({length:totalPages},(_,i)=>i+1);
+   else if(myProvPage<=4)pages=[1,2,3,4,5,'…',totalPages];
+   else if(myProvPage>=totalPages-3)pages=[1,'…',totalPages-4,totalPages-3,totalPages-2,totalPages-1,totalPages];
+   else pages=[1,'…',myProvPage-1,myProvPage,myProvPage+1,'…',totalPages];
+   pagination.innerHTML=`<button type="button" ${myProvPage===1?'disabled':''} onclick="setMyProvPage(${myProvPage-1})">Anterior</button>`+pages.map(page=>page==='…'?'<span class="page-ellipsis">…</span>':`<button type="button" class="${myProvPage===page?'active':''}" aria-current="${myProvPage===page?'page':'false'}" onclick="setMyProvPage(${page})">${page}</button>`).join('')+`<button type="button" ${myProvPage===totalPages?'disabled':''} onclick="setMyProvPage(${myProvPage+1})">Próximo</button>`;
+  }
  }
 }
 
-let myProvPeriod='ano_atual',myProvMonthYear=new Date().getFullYear(),myProvTypes=[],myProvAssets=[];
+let myProvPeriod='ano_atual',myProvMonthYear=new Date().getFullYear(),myProvTypes=[],myProvAssets=[],myProvPage=1;
+function setMyProvPage(page){myProvPage=Math.max(1,Number(page)||1);renderProventosDashboard();document.getElementById('myProvPagination')?.scrollIntoView({block:'nearest',behavior:'smooth'});}
 function toggleMyProvMenu(kind){
  const ids={period:'myProvPeriodMenu',type:'myProvTypeMenu',asset:'myProvAssetMenu'};
  const wraps={period:'myProvPeriodWrap',type:'myProvTypeWrap',asset:'myProvAssetWrap'};
@@ -2928,12 +2966,12 @@ function toggleMyProvMenu(kind){
  if(target&&opening){target.classList.remove('hidden');document.querySelector(`#${wraps[kind]} .prov-history-trigger`)?.setAttribute('aria-expanded','true');}
 }
 document.addEventListener('click',event=>{if(!event.target.closest('.my-prov-filter')){['myProvPeriodMenu','myProvTypeMenu','myProvAssetMenu'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));['myProvPeriodWrap','myProvTypeWrap','myProvAssetWrap'].forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));}});
-function setMyProvPeriod(value){myProvPeriod=value;renderProventosDashboard();}
-function setMyProvMonthYear(delta){myProvMonthYear=Math.max(1900,Math.min(2200,myProvMonthYear+delta));renderProventosDashboard();}
-function toggleMyProvType(value,checked){if(checked){if(!myProvTypes.includes(value))myProvTypes.push(value);}else myProvTypes=myProvTypes.filter(x=>x!==value);renderProventosDashboard();}
-function setMyProvAllTypes(){myProvTypes=[];renderProventosDashboard();}
-function toggleMyProvAsset(value,checked){if(checked){if(!myProvAssets.includes(value))myProvAssets.push(value);}else myProvAssets=myProvAssets.filter(x=>x!==value);renderProventosDashboard();}
-function setMyProvAllAssets(){myProvAssets=[];renderProventosDashboard();}
+function setMyProvPeriod(value){myProvPeriod=value;myProvPage=1;renderProventosDashboard();}
+function setMyProvMonthYear(delta){myProvMonthYear=Math.max(1900,Math.min(2200,myProvMonthYear+delta));myProvPage=1;renderProventosDashboard();}
+function toggleMyProvType(value,checked){if(checked){if(!myProvTypes.includes(value))myProvTypes.push(value);}else myProvTypes=myProvTypes.filter(x=>x!==value);myProvPage=1;renderProventosDashboard();}
+function setMyProvAllTypes(){myProvTypes=[];myProvPage=1;renderProventosDashboard();}
+function toggleMyProvAsset(value,checked){if(checked){if(!myProvAssets.includes(value))myProvAssets.push(value);}else myProvAssets=myProvAssets.filter(x=>x!==value);myProvPage=1;renderProventosDashboard();}
+function setMyProvAllAssets(){myProvAssets=[];myProvPage=1;renderProventosDashboard();}
 function filterMyProvAssetOptions(){const q=(document.getElementById('myProvAssetSearch')?.value||'').trim().toUpperCase();document.querySelectorAll('#myProvAssetOptions .history-option[data-search]').forEach(el=>el.style.display=el.dataset.search.includes(q)?'':'none');}
 function filterMyProvents(rows,eventType){
  const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),startMonth=new Date(now.getFullYear(),now.getMonth(),1);

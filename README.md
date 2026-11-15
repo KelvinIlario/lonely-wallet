@@ -1,4 +1,4 @@
-# Lonely Wallet v2.0.48\n\nAtualização de sincronização automática da interface após operações de gravação.\n\n# Lonely Wallet — atualização de interface v2.0.43
+# Lonely Wallet v2.0.49\n\nPaginação da tabela Meus proventos e correção visual dos filtros nos temas claro e escuro.\n\n# Lonely Wallet — atualização de interface v2.0.43
 
 # Lonely Wallet v2.0.44
 
