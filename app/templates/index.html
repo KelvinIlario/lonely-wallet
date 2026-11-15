@@ -1702,6 +1702,64 @@ body.light-theme .prov-total-menu button:hover,body.light-theme .prov-total-menu
 .goal-wizard-classes input{accent-color:var(--blue)}
 @media(max-width:650px){.goal-wizard-grid,.goal-wizard-grid.two{grid-template-columns:1fr}.goal-wizard-body{padding:8px 14px 18px}.goal-wizard-choice{padding:15px 12px}.prov-average-line{gap:5px}}
 
+
+/* v2.0.50 — 30 registros por página e filtros alinhados em Meus proventos */
+.my-provents-toolbar{
+ display:flex;align-items:center;justify-content:flex-end;gap:14px;
+ flex-wrap:nowrap;min-width:0;
+}
+.my-provents-toolbar>#myProvTotal{white-space:nowrap;margin-right:2px;flex:0 0 auto}
+.my-provents-toolbar .my-prov-filter{flex:0 1 auto;min-width:0}
+#myProvPeriodWrap{width:176px}
+#myProvTypeWrap{width:160px}
+#myProvAssetWrap{width:148px}
+.my-provents-toolbar .prov-history-trigger{
+ min-height:42px;padding:9px 13px!important;gap:12px;
+ display:flex;align-items:center;justify-content:space-between;
+ color:var(--text)!important;background:var(--panel2)!important;
+ border:1px solid var(--line)!important;border-radius:8px!important;
+}
+.my-provents-toolbar .prov-history-trigger .prov-total-chevron{color:var(--muted)}
+.my-provents-toolbar .prov-history-menu{
+ color:var(--text)!important;background:var(--panel2)!important;
+ border:1px solid var(--line)!important;border-radius:10px!important;
+ padding:9px!important;box-shadow:0 14px 34px #0004;
+}
+.my-provents-toolbar .prov-history-menu .history-option,
+.my-provents-toolbar .my-prov-period-menu .period-option{color:var(--text)!important}
+.my-provents-toolbar .prov-history-menu .history-option:hover,
+.my-provents-toolbar .prov-history-menu .history-option.active,
+.my-provents-toolbar .my-prov-period-menu .period-option:hover,
+.my-provents-toolbar .my-prov-period-menu .period-option.active{background:var(--hover,rgba(127,145,170,.16))!important}
+.my-provents-toolbar .prov-history-menu .history-search{
+ color:var(--text)!important;background:var(--panel)!important;border-color:var(--line)!important;
+}
+.my-provents-toolbar .my-prov-period-menu .period-divider{background:var(--line)}
+.my-provents-toolbar .my-prov-month-nav{background:var(--panel);color:var(--text)}
+body.light-theme .my-provents-toolbar .prov-history-menu,
+body.light-theme .my-provents-toolbar .my-prov-period-menu{
+ color:var(--text)!important;background:var(--panel2)!important;border-color:var(--line)!important;
+ box-shadow:0 14px 34px #17203325;
+}
+body.light-theme .my-provents-toolbar .prov-history-menu .history-option:hover,
+body.light-theme .my-provents-toolbar .prov-history-menu .history-option.active,
+body.light-theme .my-provents-toolbar .my-prov-period-menu .period-option:hover,
+body.light-theme .my-provents-toolbar .my-prov-period-menu .period-option.active{background:#e2e8f0!important}
+body.light-theme .my-provents-toolbar .prov-history-menu .history-search{background:#fff!important;color:#202633!important}
+@media(max-width:1050px){
+ .my-provents-toolbar{gap:9px}
+ #myProvPeriodWrap{width:165px}
+ #myProvTypeWrap{width:148px}
+ #myProvAssetWrap{width:132px}
+}
+@media(max-width:760px){
+ .panelhead:has(.my-provents-toolbar){align-items:flex-start;flex-direction:column;gap:12px}
+ .my-provents-toolbar{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .my-provents-toolbar>#myProvTotal{grid-column:1/-1}
+ #myProvPeriodWrap,#myProvTypeWrap,#myProvAssetWrap{width:100%}
+ .my-prov-period-menu{left:0;right:auto;width:min(285px,calc(100vw - 48px))}
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -2936,7 +2994,7 @@ function renderProventosDashboard(){
  const myTotalEl=document.getElementById('myProvTotal');if(myTotalEl)myTotalEl.textContent=`Total ${brl(myTotal)}`;
  renderMyProvFilters(rows,eventType);
  const table=document.getElementById('provRows'),pagination=document.getElementById('myProvPagination');
- const pageSize=10,totalPages=Math.max(1,Math.ceil(myRows.length/pageSize));
+ const pageSize=30,totalPages=Math.max(1,Math.ceil(myRows.length/pageSize));
  myProvPage=Math.min(Math.max(1,myProvPage),totalPages);
  if(table){
   const start=(myProvPage-1)*pageSize,visible=myRows.slice(start,start+pageSize);
