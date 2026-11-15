@@ -1458,26 +1458,56 @@ body.light-theme select option{background:#fff!important;color:#202633!important
  .summary-position-groups .summary-category-head{grid-template-columns:27px minmax(0,1fr)}
 }
 
-/* v2.0.34 — manter o layout dos cards e alinhar os controles à primeira logo */
-.asset-category{position:relative}
-.position-category-head{grid-template-columns:minmax(0,1fr)}
-.summary-position-groups .summary-category-head{grid-template-columns:minmax(0,1fr)}
+/* v2.0.35 — controles de movimentação fixos no cabeçalho da classe */
+.position-category-head,
+.summary-position-groups .summary-category-head{
+ display:grid!important;
+ grid-template-columns:30px minmax(0,1fr)!important;
+ align-items:center!important;
+ gap:8px!important;
+ min-width:0;
+}
 .position-category-move{
- position:absolute!important;
- z-index:5;
- display:flex;
+ position:static!important;
+ inset:auto!important;
+ z-index:auto;
+ display:flex!important;
  flex-direction:column;
- align-items:center;
- justify-content:center;
+ align-items:center!important;
+ justify-content:center!important;
+ align-self:center!important;
+ justify-self:center;
  gap:3px;
- padding:0;
- width:20px;
+ width:28px!important;
+ height:auto!important;
+ min-height:0!important;
+ margin:0;
+ padding:0!important;
  pointer-events:auto;
 }
-.position-category-arrow{flex:0 0 20px;width:20px;height:20px;padding:0}
+.position-category-arrow{
+ position:static!important;
+ display:grid!important;
+ place-items:center;
+ flex:0 0 24px!important;
+ width:25px!important;
+ height:24px!important;
+ margin:0;
+ padding:0!important;
+}
+.position-category-head>.asset-category-head,
+.summary-position-groups .summary-category-head>.summary-category-toggle{
+ min-width:0;
+ width:100%;
+}
 @media(max-width:700px){
- .position-category-move{width:20px}
- .position-category-arrow{width:20px;height:20px;flex-basis:20px}
+ .position-category-head,
+ .summary-position-groups .summary-category-head{
+  grid-template-columns:27px minmax(0,1fr)!important;
+  gap:4px!important;
+ }
+ .position-category-move{width:25px!important}
+ .position-category-arrow{width:23px!important;height:23px!important;flex-basis:23px!important}
 }
 
 </style></head><body>
@@ -1997,23 +2027,12 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
 // Mantém as setas na mesma altura do logotipo do primeiro ativo sem retirar
 // os controles do fluxo visual do cabeçalho (o cabeçalho continua ocupando 100%).
 function alignCategoryMoveControls(hostId){
+ // As setas pertencem ao cabeçalho da categoria, nunca à primeira linha de ativos.
  const host=document.getElementById(hostId);
  if(!host)return;
- host.querySelectorAll('.asset-category').forEach(category=>{
-  const controls=category.querySelector('.position-category-move');
-  if(!controls)return;
-  const logo=category.querySelector('.asset-category-body tbody tr:first-child td[data-col="ticker"] .asset-logo-wrap, .asset-category-body tbody tr:first-child td[data-col="ticker"] .asset-fixed-logo');
-  const target=logo||category.querySelector('.asset-category-icon');
-  if(!target)return;
-  const categoryRect=category.getBoundingClientRect();
-  const targetRect=target.getBoundingClientRect();
-  if(!categoryRect.width||!targetRect.width)return;
-  const controlRect=controls.getBoundingClientRect();
-  const controlWidth=20;
-  // Trilho estreito à esquerda da logo; o centro vertical acompanha a primeira linha.
-  const logoLeft=targetRect.left-categoryRect.left;
-  controls.style.left=`${Math.max(0,logoLeft-controlWidth-4)}px`;
-  controls.style.top=`${targetRect.top-categoryRect.top+targetRect.height/2-controlRect.height/2}px`;
+ host.querySelectorAll('.position-category-move').forEach(controls=>{
+  controls.style.removeProperty('left');
+  controls.style.removeProperty('top');
  });
 }
 window.addEventListener('resize',()=>{
