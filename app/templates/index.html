@@ -1048,6 +1048,31 @@ body.light-theme .tax-tabs button.active{background:#fff}
   box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 45%,transparent) inset;
 }
 
+
+/* v2.0.17 — alinhamento do cabeçalho Opções com os controles da coluna */
+.asset-category .data th[data-col="opcoes"],
+.asset-category .data td.asset-options-cell{
+ width:48px!important;
+ min-width:48px!important;
+ max-width:48px!important;
+ text-align:center!important;
+}
+.asset-category .data th[data-col="opcoes"]{
+ padding-left:0!important;
+ padding-right:0!important;
+}
+.asset-category .data td.asset-options-cell .asset-options-trigger{
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ width:100%!important;
+ min-width:0!important;
+ margin:0!important;
+ padding:5px 0!important;
+ letter-spacing:2px;
+ text-align:center!important;
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1570,8 +1595,53 @@ async function investor10Url(ticker,type){
 async function assetMenuAction(action,ticker){
  closeAssetMenu();
  if(action==='add'){
-  openModal('op');assetInput.value=ticker;
-  assetInput.dispatchEvent(new Event('input',{bubbles:true}));
+  const item=(state.itens||[]).find(x=>String(x.ticker||'').toUpperCase()===String(ticker||'').toUpperCase());
+  if(!item){toast('Não foi possível localizar o ativo na carteira.');return;}
+  openModal('op');
+  await setOperationSide('compra');
+  syncAssetTypeOptions();
+  if(![...assetType.options].some(option=>option.value===item.tipo)){
+   const option=document.createElement('option');
+   option.value=item.tipo;option.textContent=item.tipo==='renda_fixa'?'Renda Fixa':item.tipo==='tesouro'?'Tesouro Direto':item.tipo;
+   assetType.add(option);
+  }
+  assetType.value=item.tipo;
+  renderSpecificFields(item.tipo);
+  assetInput.value=item.ticker;
+  selectedAsset=item;
+  quantityInput.value='1';
+  costsInput.value='0,00';
+  assetPrice.value='';
+  updateOperationTotal();
+
+  if(['renda_fixa','tesouro'].includes(item.tipo)){
+   try{
+    const operations=await api('/api/operacoes');
+    const previous=(operations.itens||[])
+     .filter(op=>String(op.ticker||'').toUpperCase()===String(ticker).toUpperCase()&&op.lado==='compra'&&op.status!=='agendada')
+     .sort((a,b)=>String(b.data_execucao||b.data).localeCompare(String(a.data_execucao||a.data))||Number(b.id)-Number(a.id))[0];
+    let details={};
+    if(previous?.detalhes){
+     try{details=typeof previous.detalhes==='string'?JSON.parse(previous.detalhes):previous.detalhes||{};}catch(e){details={};}
+    }
+    Object.entries(details).forEach(([key,value])=>{
+     const field=document.querySelector(`#opForm [name="detail_${CSS.escape(key)}"]`);
+     if(field&&value!==null&&value!==undefined)field.value=String(value);
+    });
+    assetHint.textContent=previous
+     ? 'Dados do último lançamento carregados. Informe o valor aplicado.'
+     : 'Ativo selecionado. Preencha o valor aplicado e os dados do investimento.';
+   }catch(error){
+    assetHint.textContent='Ativo selecionado. Informe o valor aplicado.';
+   }
+   assetPrice.focus();
+   return;
+  }
+
+  assetHint.textContent='Ativo selecionado. Informe a quantidade; a cotação será preenchida automaticamente.';
+  if(Number(item.preco_atual)>0)moneyInput(item.preco_atual);
+  fillAssetQuote(item.ticker);
+  quantityInput.focus();
   return;
  }
  if(action==='transactions'){openAssetTransactions(ticker);return;}
