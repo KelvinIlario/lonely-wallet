@@ -981,6 +981,16 @@ body.light-theme .tax-tabs button.active{background:#fff}
  .return-summary-item>b{font-size:17px}
 }
 
+
+/* v2.0.14 — restaura os gráficos compactos do card Rentabilidade */
+.return-stat-card .return-spark-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:center;margin-top:10px;flex:1 1 auto}
+.return-stat-card .return-spark-item{display:grid;grid-template-rows:auto 40px auto;gap:5px;min-width:0;align-items:center}
+.return-stat-card .return-spark-item>span{font-size:11px;color:var(--muted);text-align:center}
+.return-stat-card .sparkline-svg{width:100%;height:40px;overflow:visible;display:block}
+.return-stat-card .return-spark-item>b{justify-self:start;font-size:16px;line-height:1.2;font-weight:750;border-radius:999px;padding:3px 11px;background:rgba(32,189,130,.16);font-variant-numeric:tabular-nums}
+.return-stat-card .return-spark-item>b.red{background:rgba(239,102,128,.16)}
+@media(max-width:700px){.return-stat-card .return-spark-grid{gap:9px}.return-stat-card .return-spark-item>b{font-size:14px;padding:3px 8px}}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -2003,6 +2013,21 @@ function renderReturnSparklines(series12m,seriesTotal,totalFallback){
  draw('returnTotalChart',totalSeries,'Histórico total indisponível');
 }
 
+function renderConsolidatedReturnSparklines(value){
+ const draw=id=>{
+  const svg=document.getElementById(id);if(!svg)return;
+  const width=300,height=40,pad=4;
+  const y0=height-pad, y1=value>=0?pad+7:height-pad-7;
+  const color=value>=0?'#20bd82':'#ef6680';
+  const endX=width-4;
+  const path=`M 0 ${y0} C 24 ${y0}, 24 ${y1+8}, 58 ${y1+5} S 112 ${y1+4}, 150 ${y1} S 220 ${y1-2}, ${endX} ${y1}`;
+  const baseline=height-pad;
+  svg.innerHTML=`<defs><linearGradient id="${id}-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".20"></stop><stop offset="100%" stop-color="${color}" stop-opacity="0"></stop></linearGradient></defs><line x1="0" y1="${baseline}" x2="${width}" y2="${baseline}" stroke="#596273" stroke-opacity=".30" stroke-width="1" stroke-dasharray="3 4"></line><path d="${path} L ${endX} ${baseline} L 0 ${baseline} Z" fill="url(#${id}-fill)"></path><path d="${path}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="${endX}" cy="${y1}" r="3.1" fill="${color}"></circle>`;
+ };
+ draw('return12mChart');
+ draw('returnTotalChart');
+}
+
 function operationQuantity(value){
  const n=Number(value||0);
  return n.toLocaleString('pt-BR',{maximumFractionDigits:8});
@@ -2063,7 +2088,8 @@ document.getElementById('stats').innerHTML=`
  <div class="card stat"><div class="statlabel-row">Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição.">i</span></div><div class="statvalue">${brl(r.atual||0)}</div><div class="statdetail"><span>Valor investido</span><b>${brl(r.investido||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Lucro total<span class="info-tip" tabindex="0" aria-label="Sobre o lucro total" data-tip="Seu resultado acumulado na carteira: ganho de capital (valorização dos ativos) somado aos dividendos e proventos recebidos.">i</span></div><div class="statvalue ${totalProfit>=0?'green':'red'}">${brl(totalProfit)}</div><div class="statdetail"><span>Ganho de capital</span><b>${brl(r.lucro||0)}</b></div><div class="statdetail"><span>Dividendos recebidos</span><b>${brl(r.proventos||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Proventos recebidos (12M)<span class="info-tip" tabindex="0" aria-label="Sobre os proventos recebidos" data-tip="Total de dividendos, JCP e rendimentos recebidos nos últimos 12 meses.">i</span></div><div class="statvalue">${brl(provDash.total_12m||0)}</div><div class="statdetail"><span>Total confirmado</span><b>${brl(provDash.total_12m||0)}</b></div></div>
- <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Retorno consolidado de todos os ativos, ponderado pelo valor investido. Inclui ganhos e perdas das posições e proventos recebidos.">i</span></div><div class="return-summary-grid"><div class="return-summary-item"><span>Rentabilidade acumulada</span><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div><div class="return-summary-item"><span>Lucro / prejuízo total</span><b class="${totalProfit>=0?'green':'red'}">${brl(totalProfit)}</b></div></div></div>`;
+ <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Retorno consolidado de todos os ativos, ponderado pelo valor investido. Os dois indicadores mostram o resultado acumulado atual; não representam uma série histórica independente de 12 meses.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Acumulada</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade acumulada"></svg><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div></div></div>`;
+renderConsolidatedReturnSparklines(portfolioReturn);
 
 
 const rows=state.itens||[];
