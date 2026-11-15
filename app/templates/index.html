@@ -1306,6 +1306,44 @@ body.light-theme .tax-tabs button.active{background:#fff}
  border-radius:4px;
 }
 
+
+/* v2.0.25 — tooltip de balanceamento exclusivo em % Ideal, fora do overflow da tabela */
+.asset-category .data.proportional-assets-table td[data-col="idealPct"]{
+ overflow:visible!important;
+}
+.ideal-balance-hint{
+ display:inline-flex;
+ align-items:center;
+ justify-content:center;
+ cursor:help;
+ border-bottom:1px dotted currentColor;
+ position:relative;
+}
+.ideal-balance-hint:focus-visible{
+ outline:2px solid var(--accent,#4b9cff);
+ outline-offset:3px;
+ border-radius:4px;
+}
+.ideal-balance-floating-tooltip{
+ position:fixed!important;
+ z-index:2147483000!important;
+ display:block;
+ box-sizing:border-box;
+ max-width:calc(100vw - 24px);
+ padding:12px 14px;
+ border:1px solid var(--green,#12c98b);
+ border-radius:10px;
+ background:var(--panel,#20232c);
+ color:var(--green,#12c98b);
+ font-size:12px;
+ line-height:1.5;
+ font-weight:600;
+ text-align:center;
+ white-space:pre-line;
+ box-shadow:0 10px 30px #0007;
+ pointer-events:none;
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1528,7 +1566,7 @@ async function refresh(){try{state=await api('/api/dashboard');render();applyPos
 
 
 function categoryKeyFromName(name){
- const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+ const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
  if(n==='acoes'||n==='acao')return 'acao';
  if(n==='fiis'||n==='fii'||n.includes('fundo imobiliario'))return 'fii';
  if(n==='renda fixa')return 'renda_fixa';
@@ -1771,8 +1809,8 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
   ['roe','ROE',i=>`<td data-col="roe">—</td>`],['margem_liquida','Margem Líquida',i=>`<td data-col="margem_liquida">—</td>`],
   ['margem_bruta','Margem Bruta',i=>`<td data-col="margem_bruta">—</td>`],['cagr_receitas','CAGR Receitas (5 anos)',i=>`<td data-col="cagr_receitas">—</td>`],['cagr_lucros','CAGR Lucros (5 anos)',i=>`<td data-col="cagr_lucros">—</td>`],
   ['nota','Nota',i=>`<td data-col="nota"><button class="note-inline" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">✎</button></td>`],
-  ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0,ideal=idealPercentForAsset(i),balanceClass=Math.abs(share-ideal)<0.005?'neutral':share>ideal?'positive':'negative';return `<td data-col="portfolioPct"><span class="value-hint ${balanceClass}" tabindex="0" data-hint="${escapeHTML(idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio))}">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
-  ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const balance=share-ideal,balanceClass=Math.abs(balance)<0.005?'neutral':balance>0?'positive':'negative';const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);return `<td data-col="idealPct"><span class="value-hint ${balanceClass}" tabindex="0" title="${escapeHTML(hint)}" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
+  ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;return `<td data-col="portfolioPct">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</td>`;}],
+  ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);return `<td data-col="idealPct"><span class="ideal-balance-hint" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const buy=Number(i.preco_atual)>0&&Number(i.preco_medio)>0&&Number(i.preco_atual)<Number(i.preco_medio);return `<td data-col="comprar">${buy?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
  ];
  host.innerHTML=visibleCategories.map(cat=>{
@@ -1811,6 +1849,43 @@ function idealBalanceHint(assetValue,share,ideal,totalPortfolio){
  const amount=(target*total-value)/(1-target);
  return `Quanto preciso aportar para atingir o balanceamento ideal?\n${brl(Math.max(0,amount))}`;
 }
+
+function hideIdealBalanceTooltip(){
+ const tip=document.getElementById('idealBalanceFloatingTooltip');
+ if(tip)tip.remove();
+}
+function showIdealBalanceTooltip(event,el){
+ const text=el?.dataset?.hint||'';
+ if(!text)return;
+ let tip=document.getElementById('idealBalanceFloatingTooltip');
+ if(!tip){
+  tip=document.createElement('div');
+  tip.id='idealBalanceFloatingTooltip';
+  tip.className='ideal-balance-floating-tooltip';
+  document.body.appendChild(tip);
+ }
+ tip.textContent=text;
+ tip.style.visibility='hidden';
+ tip.style.display='block';
+ const rect=el.getBoundingClientRect();
+ const width=Math.min(330,window.innerWidth-24);
+ tip.style.width=width+'px';
+ tip.style.left='0px';
+ tip.style.top='0px';
+ tip.style.visibility='visible';
+ const box=tip.getBoundingClientRect();
+ let left=rect.left+rect.width/2-box.width/2;
+ left=Math.max(12,Math.min(left,window.innerWidth-box.width-12));
+ let top=rect.top-box.height-10;
+ if(top<10)top=Math.min(window.innerHeight-box.height-10,rect.bottom+10);
+ tip.style.left=left+'px';
+ tip.style.top=Math.max(10,top)+'px';
+}
+function moveIdealBalanceTooltip(event,el){
+ const tip=document.getElementById('idealBalanceFloatingTooltip');
+ if(tip && document.activeElement!==el)showIdealBalanceTooltip(event,el);
+}
+
 function variationMoneyHint(item,change){
  const amount=Number(item.quantidade||0)*Number(item.preco_atual||0)*Number(change||0)/100;
  return `Quanto uma variação de ${pct(change)} representa?\n${brl(amount)}`;
