@@ -210,7 +210,7 @@ A importação não é automática: o usuário seleciona a planilha, confere a p
 - Setas, percentuais e indicadores numéricos alinhados de forma uniforme.
 
 
-## Lonely Wallet v2.0.38
+## Lonely Wallet v2.0.39
 
 - Os cards Patrimônio total, Destaques da carteira, Posições no lucro e Oportunidades de compra foram movidos para o Resumo, acima de Meus ativos.
 - A página Posições foi removida; o acompanhamento da carteira fica concentrado no Resumo.
