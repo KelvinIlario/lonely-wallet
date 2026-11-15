@@ -757,17 +757,102 @@ body.light-theme .tax-tabs button.active{background:#fff}
   .summary-investor10>.stat:nth-child(2){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 }
 
+
+/* v2.0.9 — Resumo inspirado na referência enviada */
+.summary-pagehead{display:none}
+.topright .primary{white-space:nowrap}
+.summary-assets-head{margin-top:22px;margin-bottom:12px}
+.summary-assets-head h2{display:flex;align-items:baseline;gap:6px}
+.summary-assets-head .mini{font-size:12px;color:var(--muted)}
+.summary-position-groups{display:grid;gap:10px;margin-bottom:24px}
+.summary-position-groups .asset-category{width:100%}
+.summary-position-groups .asset-category-head{
+  grid-template-columns:minmax(190px,1.35fr) repeat(5,minmax(85px,.7fr)) 28px;
+  gap:12px;padding:14px 16px;
+}
+.summary-position-groups .asset-category-title{font-size:14px}
+.summary-position-groups .asset-category .data{width:100%;min-width:0;table-layout:fixed}
+.summary-position-groups .asset-category .data th,
+.summary-position-groups .asset-category .data td{
+  padding:10px 7px;font-size:11px;overflow-wrap:anywhere;
+}
+.summary-position-groups .asset-category .data th:first-child,
+.summary-position-groups .asset-category .data td:first-child{width:18%;text-align:left}
+.summary-position-groups .asset-category .tablewrap{overflow-x:auto}
+.summary-position-groups .asset-category .data{min-width:1050px}
+.charts{
+  grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);
+  gap:14px;align-items:stretch;
+}
+.charts>.panel{
+  display:flex;flex-direction:column;min-width:0;
+  min-height:315px;height:100%;
+}
+.charts>.panel:first-child .chartbox{
+  height:255px;min-height:255px;flex:1 1 auto;width:100%;
+}
+.charts>.panel:first-child .chartbox canvas,
+.charts>.allocation-panel .chartbox canvas{
+  display:block;width:100%!important;height:100%!important;
+}
+.charts>.allocation-panel .allocation-content{
+  display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);
+  align-items:center;justify-content:stretch;gap:14px;width:100%;
+  max-width:none;min-height:255px;flex:1 1 auto;margin:0;
+}
+.charts>.allocation-panel .allocation-content .chartbox.small{
+  width:100%;max-width:250px;height:230px;min-height:230px;
+  justify-self:center;margin:0 auto;
+}
+.charts>.allocation-panel .allocation-legend{
+  width:100%;max-width:230px;justify-self:center;align-self:center;
+}
+.summary-investor10{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.summary-investor10>.stat{min-width:0}
+@media(max-width:1100px){
+ .charts{grid-template-columns:minmax(0,1fr)}
+ .charts>.panel{min-height:300px}
+ .summary-position-groups .asset-category-head{
+  grid-template-columns:minmax(150px,1.2fr) repeat(5,minmax(65px,.65fr)) 24px;
+  gap:7px;padding:12px;
+ }
+}
+@media(max-width:760px){
+ .summary-investor10{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .charts{grid-template-columns:minmax(0,1fr);gap:12px}
+ .charts>.panel{min-height:0}
+ .charts>.panel:first-child .chartbox{height:230px;min-height:230px}
+ .charts>.allocation-panel .allocation-content{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:220px
+ }
+ .charts>.allocation-panel .allocation-content .chartbox.small{height:210px;min-height:210px}
+ .summary-position-groups .asset-category-head{
+  grid-template-columns:minmax(100px,1.2fr) repeat(2,minmax(55px,.65fr)) 20px;
+  gap:5px;padding:10px 8px;
+ }
+ .summary-position-groups .asset-category-head .asset-category-metric:nth-of-type(n+4){display:none}
+ .summary-position-groups .asset-category .data{min-width:900px}
+ .topright .primary{padding:8px 9px;font-size:11px}
+}
+@media(max-width:480px){
+ .summary-investor10{grid-template-columns:minmax(0,1fr)}
+ .charts>.allocation-panel .allocation-content{grid-template-columns:minmax(0,1fr)}
+ .charts>.allocation-panel .allocation-content .chartbox.small{max-width:230px}
+ .summary-position-groups .asset-category-head{grid-template-columns:minmax(90px,1fr) minmax(0,.7fr) 18px}
+ .summary-position-groups .asset-category-head .asset-category-metric:nth-of-type(n+3){display:none}
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
-<button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar B3</button></div></header>
+<button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
 <nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="posicoes">▦ Posições</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="rentabilidade">⌁ Rentabilidade</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="metas">◎ Metas</button><button data-page="irpf">▣ IRPF</button><button data-page="darfs">▤ DARFs</button></nav>
 <main>
-<section id="page-resumo" class="page"><div class="pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
+<section id="page-resumo" class="page"><div class="pagehead summary-pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
 <div class="grid stats summary-investor10" id="stats"></div><div class="grid charts"><div class="panel"><div class="panelhead"><h2>Evolução do patrimônio</h2><div class="toolbar"><select id="aportePeriod" aria-label="Período da evolução" onchange="renderEvolutionChart()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="all">Todo o período</option></select><select id="aporteType" aria-label="Tipo de ativo da evolução" onchange="renderEvolutionChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div></div><div class="chartbox"><canvas id="aporteChart"></canvas></div><div class="chart-footnote">O ganho de capital atual aparece no mês mais recente; os meses anteriores mostram os aportes registrados, pois o sistema não mantém cotações históricas próprias.</div></div><div class="panel allocation-panel"><div class="panelhead"><h2>Ativos na carteira</h2><select id="allocationType" aria-label="Filtrar ativos na carteira" onchange="renderAllocationChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div><div class="allocation-content"><div class="chartbox small"><canvas id="allocationChart"></canvas></div><div id="allocationLegend" class="allocation-legend"></div></div></div></div>
-<div class="sectionhead"><h2>Meus ativos</h2><button class="ghost" onclick="showPage('posicoes')">Ver carteira →</button></div><div class="panel tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Classe</th><th>Quantidade</th><th>Preço médio</th><th>Preço atual</th><th>Valor atual</th><th>Resultado</th><th>Rentabilidade</th></tr></thead><tbody id="previewRows"></tbody></table></div></section>
+<div class="sectionhead summary-assets-head"><h2>Meus ativos <span class="mini" id="summaryAssetCount">(0)</span></h2><button class="ghost" onclick="showPage('posicoes')">Ver carteira →</button></div><div id="summaryGroups" class="position-groups summary-position-groups"></div></section>
 <section id="page-posicoes" class="page hidden"><div class="pagehead"><div><h1>Posições</h1><div class="sub">Sua carteira consolidada, organizada por categoria de ativo.</div></div><button class="primary" onclick="openModal('op')">＋ Adicionar ativo</button></div><div id="positionInsights" class="position-insights"></div><div id="positionGroups" class="position-groups"></div></section>
 <section id="page-proventos" class="page hidden">
 <div class="pagehead"><div><h1>Proventos</h1><div class="sub">Acompanhe dividendos, JCP, rendimentos recebidos e pagamentos anunciados.<span id="proventosSyncStatus" class="mini" style="display:block;margin-top:5px"></span></div></div><div class="toolbar"><button class="ghost" id="syncProventosButton" type="button" onclick="syncProventosHistory()">↻ Atualizar histórico</button><button class="primary" onclick="openModal('prov')">＋ Registrar provento</button></div></div>
@@ -1063,9 +1148,11 @@ function toggleAssetGroup(type){
   ? expandedAssetGroups[type]
   : (state.itens||[]).some(item=>item.tipo===type);
  expandedAssetGroups[type]=!isExpanded;
- renderPositionGroups(state.itens||[]);
+ const rows=state.itens||[];
+ renderPositionGroups(rows);
+ renderPositionGroups(rows,'summaryGroups',true);
 }
-function renderPositionGroups(rows){
+function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
  const categories=[
   {key:'acao',name:'Ações',icon:'▣'},{key:'fii',name:'FIIs',icon:'▥'},{key:'stocks',name:'Stocks',icon:'◎'},
   {key:'bdr',name:'BDRs',icon:'▧'},{key:'etf',name:'ETFs',icon:'◉'},{key:'internacional',name:'ETFs Internacionais',icon:'◎'},
@@ -1073,7 +1160,12 @@ function renderPositionGroups(rows){
   {key:'tesouro',name:'Tesouro Direto',icon:'▤'},{key:'fundo',name:'Fundos de Investimentos',icon:'▤'},{key:'outros',name:'Outros',icon:'▧'}
  ];
  const enabled=enabledCategoryKeys(),visibleCategories=categories.filter(cat=>enabled.has(cat.key));
- const host=document.getElementById('positionGroups');
+ if(summaryMode){
+  const order=['acao','fii','renda_fixa','etf','internacional','stocks','bdr','reit','cripto','tesouro','fundo','outros'];
+  visibleCategories.sort((a,b)=>order.indexOf(a.key)-order.indexOf(b.key));
+ }
+ const host=document.getElementById(hostId);
+ if(!host)return;
  if(!visibleCategories.length){host.innerHTML='<div class="empty">Configure e salve as classes na tela Distribuição para exibir suas categorias aqui.</div>';return;}
  const totalPortfolio=rows.reduce((sum,item)=>sum+Number(item.valor_atual||0),0),prefs=getPositionColumnPrefs();
  const defs=[
@@ -1796,8 +1888,12 @@ document.getElementById('stats').innerHTML=`
  <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Série mensal calculada com cotações históricas disponíveis, fluxos de compras e vendas ponderados pelo tempo e proventos registrados. A cobertura depende da disponibilidade histórica de cada ativo.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Últimos 12 meses</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade dos últimos 12 meses"></svg><b class="${has12mReturn?(twelveMonthReturn>=0?'green':'red'):'muted'}">${has12mReturn?pct(twelveMonthReturn):'—'}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${totalReturn>=0?'green':'red'}">${pct(totalReturn)}</b></div></div>${returnHistoryInfo}</div>`;
 renderReturnSparklines(returnHistory.series_12m,returnHistory.series_total,totalReturn);
 
-const rows=state.itens||[];document.getElementById('previewRows').innerHTML=rows.length?rows.slice(0,8).map(i=>`<tr><td class="ticker">${escapeHTML(i.tipo==='renda_fixa'?(i.nome||i.ticker):i.ticker)}</td><td><span class="tag">${labels[i.tipo]||i.tipo}</span></td><td>${i.quantidade}</td><td>${brl(i.preco_medio)}</td><td>${i.cotacao_disponivel?brl(i.preco_atual):'Sem cotação'}${i.cotacao_origem==='Posição importada'?'<div class="mini">Referência 31/10/2026</div>':''}</td><td title="Quando não há cotação, o valor é provisoriamente mantido pelo custo de aquisição">${brl(i.valor_atual)}${!i.cotacao_disponivel?'<div class="mini">Valor provisório</div>':''}</td><td class="${i.lucro>=0?'green':'red'}">${brl(i.lucro)}</td><td class="${i.lucro_pct>=0?'green':'red'}">${pct(i.lucro_pct)}</td></tr>`).join(''):rowEmpty(8,'Adicione sua primeira operação para visualizar a carteira.');
-renderPositionInsights(rows);renderPositionGroups(rows);
+const rows=state.itens||[];
+const countNode=document.getElementById('summaryAssetCount');
+if(countNode)countNode.textContent=`(${rows.length})`;
+renderPositionInsights(rows);
+renderPositionGroups(rows);
+renderPositionGroups(rows,'summaryGroups',true);
 const alloc=state.alocacao||{};const names=Object.keys(alloc),values=names.map(k=>alloc[k]);const palette=['#78b7f5','#f3d978','#42d49b','#b59af3','#ed8e9c','#74d7d2','#d7a36a'];const doughnut={labels:names.map(k=>labels[k]||k),datasets:[{data:values,backgroundColor:palette,borderWidth:0}]};chart('patrimonyChart','doughnut',doughnut,{cutout:'65%'});document.getElementById('allocationList').innerHTML=names.length?names.map((k,i)=>`<div style="display:flex;justify-content:space-between;padding:13px 4px;border-bottom:1px solid var(--line)"><span>${labels[k]||k}</span><b>${brl(alloc[k])}</b></div>`).join(''):'<div class="empty">Sem posições cadastradas.</div>';
 syncDashboardCategoryFilters();renderEvolutionChart();renderAllocationChart();syncLaunchTypeFilter();renderLaunchConsolidation();renderEvolutionChart('patrimonyEvolutionChart','patrimonyPeriod','patrimonyType');renderPatrimonyDashboard();
 renderProventosDashboard();
