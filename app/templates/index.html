@@ -1539,7 +1539,7 @@ body.light-theme select option{background:#fff!important;color:#202633!important
 
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
-<div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
+<div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="notice b3-fixed-income-notice"><b>Atenção:</b> ativos de renda fixa não são importados pela B3. Cadastre esses investimentos manualmente pela opção <b>Adicionar lançamento</b>.</div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
 <div class="modalback" id="modalback" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modalhead"><h2 id="modalTitle">Novo lançamento</h2><button class="close" onclick="closeModal()">×</button></div><form id="opForm" class="formgrid operation-form">
  <div class="operation-switch full">
   <button type="button" class="operation-side active" data-side="compra" onclick="setOperationSide('compra')">▣ Compra</button>
@@ -1696,25 +1696,25 @@ function renderPositionInsights(rows){
  const opportunities=rows.filter(x=>Number(x.preco_atual)>0&&Number(x.preco_medio)>0&&Number(x.preco_atual)<Number(x.preco_medio));
  document.getElementById('positionInsights').innerHTML=`
   <article class="insight-card">
-   <div class="insight-title"><span class="insight-icon">◉</span>Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição">i</span></div>
+   <div class="insight-title">Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição">i</span></div>
    <div class="insight-main">${brl(actual)} <small class="${change>=0?'green':'red'}" style="font-size:12px">${change>=0?'▲':'▼'} ${Math.abs(change).toLocaleString('pt-BR',{maximumFractionDigits:2})}%</small></div>
    <div class="insight-sub">Valor investido<br><b style="color:var(--text)">${brl(invested)}</b></div>
   </article>
   <article class="insight-card">
-   <div class="insight-title"><span class="insight-icon">♜</span>Destaques da carteira<span class="info-tip" tabindex="0" aria-label="Sobre os destaques da carteira" data-tip="Consideramos como destaque da carteira os ativos dos seguintes tipos: Ações, FIIs, Stocks, BDRs, REITs, ETFs e Criptomoedas.">i</span></div>
+   <div class="insight-title">Destaques da carteira<span class="info-tip" tabindex="0" aria-label="Sobre os destaques da carteira" data-tip="Consideramos como destaque da carteira os ativos dos seguintes tipos: Ações, FIIs, Stocks, BDRs, REITs, ETFs e Criptomoedas.">i</span></div>
    <div class="insight-split">
-    <div><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="${best&&Number(best.lucro_pct)>=0?'green':'red'} insight-sub">${best?pct(best.lucro_pct):'Sem posições'}</span></div>
-    <div><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="${worst&&Number(worst.lucro_pct)>=0?'green':'red'} insight-sub">${worst?pct(worst.lucro_pct):'Sem posições'}</span></div>
+    <div><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="green insight-sub">${best?pct(best.lucro_pct):'Sem posições'}</span></div>
+    <div><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="red insight-sub">${worst?pct(worst.lucro_pct):'Sem posições'}</span></div>
    </div>
   </article>
-  <article class="insight-card insight-card-clickable" role="button" tabindex="0" onclick="openProfitPositionsModal()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openProfitPositionsModal()}">
-   <div class="insight-title"><span class="insight-icon">▥</span>Posições no lucro<span class="info-tip" tabindex="0" aria-label="Sobre posições no lucro" data-tip="Consideramos a rentabilidade para fornecer a informação dos ativos no lucro e no prejuízo." onclick="event.stopPropagation()">i</span></div>
+  <article class="insight-card">
+   <div class="insight-title">Posições no lucro<span class="info-tip" tabindex="0" aria-label="Sobre posições no lucro" data-tip="Consideramos a rentabilidade para fornecer a informação dos ativos no lucro e no prejuízo.">i</span></div>
    <div class="insight-main">${winners} de ${total} <small style="font-size:12px;color:#d5b34f">${total?Math.round(positivePct)+'%':'—'}</small></div>
    <div class="insight-bar"><span class="positive" style="width:${positivePct}%"></span><span class="negative" style="width:${total?losers/total*100:0}%"></span></div>
-   <div class="insight-sub"><span class="green">${winners} no lucro ▲</span><span style="float:right" class="red">${losers} no prejuízo ▼</span></div>
+   <div class="insight-sub insight-profit-links"><button type="button" class="green" onclick="openProfitPositionsModal('lucro')">${winners} no lucro ▲</button><button type="button" class="red" onclick="openProfitPositionsModal('prejuizo')">${losers} no prejuízo ▼</button></div>
   </article>
   <article class="insight-card">
-   <div class="insight-title"><span class="insight-icon">🛒</span>Oportunidades de compra<span class="info-tip" tabindex="0" aria-label="Sobre oportunidades de compra" data-tip="Ativos marcados como “comprar” e com o valor atual abaixo do preço médio.">i</span></div>
+   <div class="insight-title">Oportunidades de compra<span class="info-tip" tabindex="0" aria-label="Sobre oportunidades de compra" data-tip="Ativos marcados como “comprar” e com o valor atual abaixo do preço médio.">i</span></div>
    <div class="insight-main">${opportunities.length} ativos</div>
    <div class="insight-sub">Preço atual abaixo do preço médio de aquisição</div>
    <button class="insight-action insight-action-animated" type="button" onclick="openOpportunityModal()">Ver ativos →</button>
@@ -2283,6 +2283,7 @@ function getProfitPositionRows(){
   .sort((a,b)=>profitPositionsFilter==='lucro'?Number(b.lucro_pct||0)-Number(a.lucro_pct||0):Number(a.lucro_pct||0)-Number(b.lucro_pct||0));
 }
 function renderProfitPositionsModal(){
+ document.querySelector('#profitPositionsBack .modalhead h2').textContent=profitPositionsFilter==='lucro'?'Posições no lucro':'Posições no prejuízo';
  const all=getProfitPositionRows(),size=5,totalPages=Math.max(1,Math.ceil(all.length/size));
  profitPositionsPage=Math.min(Math.max(1,profitPositionsPage),totalPages);
  const page=all.slice((profitPositionsPage-1)*size,profitPositionsPage*size);
@@ -2298,7 +2299,7 @@ function renderProfitPositionsModal(){
  document.getElementById('profitPositionsPagination').innerHTML=totalPages>1
   ?`<button type="button" onclick="changeProfitPositionsPage(${profitPositionsPage-1})" ${profitPositionsPage===1?'disabled':''}>Anterior</button>${Array.from({length:totalPages},(_,i)=>`<button type="button" class="${profitPositionsPage===i+1?'active':''}" onclick="changeProfitPositionsPage(${i+1})">${i+1}</button>`).join('')}<button type="button" onclick="changeProfitPositionsPage(${profitPositionsPage+1})" ${profitPositionsPage===totalPages?'disabled':''}>Próximo</button>`:'';
 }
-function openProfitPositionsModal(){profitPositionsFilter='lucro';profitPositionsPage=1;renderProfitPositionsModal();document.getElementById('profitPositionsBack').style.display='flex';}
+function openProfitPositionsModal(filter='lucro'){profitPositionsFilter=filter==='prejuizo'?'prejuizo':'lucro';profitPositionsPage=1;renderProfitPositionsModal();document.getElementById('profitPositionsBack').style.display='flex';}
 function closeProfitPositionsModal(){document.getElementById('profitPositionsBack').style.display='none';}
 function setProfitPositionsFilter(filter){profitPositionsFilter=filter;profitPositionsPage=1;renderProfitPositionsModal();}
 function changeProfitPositionsPage(page){profitPositionsPage=page;renderProfitPositionsModal();}
@@ -3335,3 +3336,13 @@ async function confirmB3Import(){
 }
 
 </script></body></html>
+
+
+/* v2.0.32 — alinhamento dos controles de categoria e ações dos cards */
+.position-category-head,.summary-category-head{align-items:center}
+.position-category-move{align-self:center;height:auto;min-height:28px;padding:0;gap:3px;justify-content:center}
+.position-category-arrow{width:25px;height:24px;flex:0 0 24px}
+.insight-profit-links{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:2px}
+.insight-profit-links button{padding:0;border:0;background:transparent;font:inherit;font-size:11px;cursor:pointer}
+.insight-profit-links button:hover{text-decoration:underline}
+.b3-fixed-income-notice{margin:2px 0 16px;padding:11px 13px}
