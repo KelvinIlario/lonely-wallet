@@ -959,6 +959,28 @@ body.light-theme .tax-tabs button.active{background:#fff}
  .summary-investor10>.stat{min-height:120px}
 }
 
+
+/* v2.0.13 — Rentabilidade consolidada da carteira */
+.summary-investor10>.return-stat-card{
+  display:flex;flex-direction:column;justify-content:flex-start;min-width:0;
+}
+.return-summary-grid{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:14px;align-items:end;flex:1 1 auto;margin-top:18px;min-width:0;
+}
+.return-summary-item{
+  display:flex;flex-direction:column;justify-content:flex-end;gap:9px;min-width:0;
+}
+.return-summary-item>span{color:var(--muted);font-size:11px;line-height:1.3}
+.return-summary-item>b{
+  font-size:19px;line-height:1.15;font-weight:750;
+  overflow-wrap:anywhere;font-variant-numeric:tabular-nums;
+}
+@media(max-width:700px){
+ .return-summary-grid{gap:10px;margin-top:14px}
+ .return-summary-item>b{font-size:17px}
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -2034,28 +2056,15 @@ function renderImportedBalances(rows,baseDate){
  }).join('');
 }
 
-function render(){const r=state.resumo||{},provDash=state.proventos_dashboard||{},returnHistory=state.rentabilidade_historica||{};
-const totalProfit=Number(r.lucro||0)+Number(r.proventos||0),fallbackReturn=Number(r.investido||0)?totalProfit/Number(r.investido)*100:0;
-const totalReturn=returnHistory.rentabilidade_total!==null&&returnHistory.rentabilidade_total!==undefined?Number(returnHistory.rentabilidade_total):fallbackReturn;
-const has12mReturn=returnHistory.rentabilidade_12m!==null&&returnHistory.rentabilidade_12m!==undefined;
-const twelveMonthReturn=has12mReturn?Number(returnHistory.rentabilidade_12m):null;
-let returnHistoryInfo='';
-if(Number(returnHistory.meses_disponiveis||0)){
- returnHistoryInfo='<div class="mini">Histórico desde '+escapeHTML(returnHistory.primeiro_mes||'')+'; '+Number(returnHistory.meses_disponiveis)+' mês(es) calculado(s)'+(returnHistory.historico_parcial?' · cobertura '+Number(returnHistory.ativos_com_historico||0)+'/'+Number(returnHistory.total_ativos||0)+' ativos':'')+'.</div>';
- if((returnHistory.ativos_sem_historico||[]).length) returnHistoryInfo+='<div class="mini">Sem histórico: '+escapeHTML(returnHistory.ativos_sem_historico.join(', '))+'. Verifique a cobertura da sua chave/plano brapi.</div>';
-}else if(returnHistory.resultado_por_saldo_base){
- returnHistoryInfo='<div class="mini">O ponto Total mostra o retorno atual pelo saldo-base; não há série histórica suficiente para traçar a evolução.</div>';
-}else if((returnHistory.ativos_sem_historico||[]).length){
- returnHistoryInfo='<div class="mini">Sem histórico de cotação para: '+escapeHTML(returnHistory.ativos_sem_historico.join(', '))+'. Verifique BRAPI_TOKEN e a cobertura do plano brapi.</div>';
-}else{
- returnHistoryInfo='<div class="mini">Não foi possível obter histórico de cotações. Verifique BRAPI_TOKEN e a disponibilidade dos ativos na fonte.</div>';
-}
+function render(){const r=state.resumo||{},provDash=state.proventos_dashboard||{};
+const totalProfit=Number(r.lucro||0)+Number(r.proventos||0);
+const portfolioReturn=Number(r.investido||0)>0?(totalProfit/Number(r.investido))*100:0;
 document.getElementById('stats').innerHTML=`
  <div class="card stat"><div class="statlabel-row">Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição.">i</span></div><div class="statvalue">${brl(r.atual||0)}</div><div class="statdetail"><span>Valor investido</span><b>${brl(r.investido||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Lucro total<span class="info-tip" tabindex="0" aria-label="Sobre o lucro total" data-tip="Seu resultado acumulado na carteira: ganho de capital (valorização dos ativos) somado aos dividendos e proventos recebidos.">i</span></div><div class="statvalue ${totalProfit>=0?'green':'red'}">${brl(totalProfit)}</div><div class="statdetail"><span>Ganho de capital</span><b>${brl(r.lucro||0)}</b></div><div class="statdetail"><span>Dividendos recebidos</span><b>${brl(r.proventos||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Proventos recebidos (12M)<span class="info-tip" tabindex="0" aria-label="Sobre os proventos recebidos" data-tip="Total de dividendos, JCP e rendimentos recebidos nos últimos 12 meses.">i</span></div><div class="statvalue">${brl(provDash.total_12m||0)}</div><div class="statdetail"><span>Total confirmado</span><b>${brl(provDash.total_12m||0)}</b></div></div>
- <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Série mensal calculada com cotações históricas disponíveis, fluxos de compras e vendas ponderados pelo tempo e proventos registrados. A cobertura depende da disponibilidade histórica de cada ativo.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Últimos 12 meses</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade dos últimos 12 meses"></svg><b class="${has12mReturn?(twelveMonthReturn>=0?'green':'red'):'muted'}">${has12mReturn?pct(twelveMonthReturn):'—'}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${totalReturn>=0?'green':'red'}">${pct(totalReturn)}</b></div></div>${returnHistoryInfo}</div>`;
-renderReturnSparklines(returnHistory.series_12m,returnHistory.series_total,totalReturn);
+ <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Retorno consolidado de todos os ativos, ponderado pelo valor investido. Inclui ganhos e perdas das posições e proventos recebidos.">i</span></div><div class="return-summary-grid"><div class="return-summary-item"><span>Rentabilidade acumulada</span><b class="${portfolioReturn>=0?'green':'red'}">${pct(portfolioReturn)}</b></div><div class="return-summary-item"><span>Lucro / prejuízo total</span><b class="${totalProfit>=0?'green':'red'}">${brl(totalProfit)}</b></div></div></div>`;
+
 
 const rows=state.itens||[];
 const countNode=document.getElementById('summaryAssetCount');
