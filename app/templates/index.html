@@ -1510,6 +1510,55 @@ body.light-theme select option{background:#fff!important;color:#202633!important
  .position-category-arrow{width:23px!important;height:23px!important;flex-basis:23px!important}
 }
 
+
+/* v2.0.36 — setas alinhadas ao logotipo e reveladas sob demanda */
+.asset-category{position:relative;overflow:visible}
+.position-category-head,
+.summary-position-groups .summary-category-head{
+ display:block!important;
+ position:relative;
+ min-width:0;
+}
+.position-category-head>.asset-category-head,
+.summary-position-groups .summary-category-head>.summary-category-toggle{
+ display:grid!important;
+ width:100%;
+}
+.position-category-move{
+ position:absolute!important;
+ left:0;
+ top:0;
+ z-index:5;
+ width:28px!important;
+ height:auto!important;
+ min-height:0!important;
+ margin:0!important;
+ padding:0!important;
+ display:flex!important;
+ flex-direction:column;
+ align-items:center!important;
+ justify-content:center!important;
+ gap:3px!important;
+ opacity:0;
+ visibility:visible;
+ pointer-events:auto;
+ transition:opacity .14s ease;
+}
+.position-category-move:hover,
+.position-category-move:focus-within{opacity:1}
+.position-category-arrow{
+ opacity:0;
+ transition:opacity .14s ease;
+}
+.position-category-move:hover .position-category-arrow,
+.position-category-move:focus-within .position-category-arrow{opacity:1}
+@media(hover:none){
+ .position-category-move,
+ .position-category-arrow{opacity:1}
+}
+@media(prefers-reduced-motion:reduce){
+ .position-category-move,.position-category-arrow{transition:none}
+}
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -2024,15 +2073,25 @@ function renderPositionGroups(rows,hostId='positionGroups',summaryMode=false){
  requestAnimationFrame(()=>alignCategoryMoveControls(hostId));
 }
 
-// Mantém as setas na mesma altura do logotipo do primeiro ativo sem retirar
-// os controles do fluxo visual do cabeçalho (o cabeçalho continua ocupando 100%).
+// Posiciona as setas sobre a coluna do logotipo: no primeiro ativo quando
+// a categoria está expandida e no ícone da categoria quando está recolhida.
 function alignCategoryMoveControls(hostId){
- // As setas pertencem ao cabeçalho da categoria, nunca à primeira linha de ativos.
  const host=document.getElementById(hostId);
  if(!host)return;
- host.querySelectorAll('.position-category-move').forEach(controls=>{
-  controls.style.removeProperty('left');
-  controls.style.removeProperty('top');
+ host.querySelectorAll('.asset-category').forEach(section=>{
+  const controls=section.querySelector('.position-category-move');
+  if(!controls)return;
+  const collapsed=section.classList.contains('collapsed');
+  const anchor=collapsed
+   ? section.querySelector('.asset-category-icon')
+   : (section.querySelector('.asset-category-body .asset-logo-wrap')||section.querySelector('.asset-category-icon'));
+  if(!anchor)return;
+  const sectionRect=section.getBoundingClientRect();
+  const anchorRect=anchor.getBoundingClientRect();
+  const left=anchorRect.left+anchorRect.width/2-sectionRect.left-controls.offsetWidth/2;
+  const top=anchorRect.top+anchorRect.height/2-sectionRect.top-controls.offsetHeight/2;
+  controls.style.left=`${Math.max(3,left)}px`;
+  controls.style.top=`${Math.max(3,top)}px`;
  });
 }
 window.addEventListener('resize',()=>{
