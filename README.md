@@ -208,3 +208,11 @@ A importação não é automática: o usuário seleciona a planilha, confere a p
 - Cards e gráficos com espaçamento, alinhamento e dimensões consistentes.
 - Os quatro indicadores da aba Posições ficam em uma única linha em telas desktop largas; em telas menores há reorganização responsiva.
 - Setas, percentuais e indicadores numéricos alinhados de forma uniforme.
+
+
+## Lonely Wallet v2.0.38
+
+- Os cards Patrimônio total, Destaques da carteira, Posições no lucro e Oportunidades de compra foram movidos para o Resumo, acima de Meus ativos.
+- A página Posições foi removida; o acompanhamento da carteira fica concentrado no Resumo.
+- Os controles de movimentação das classes agora ocupam uma coluna própria no cabeçalho, antes do ícone e do nome da classe, sem sobrepor os ativos ao expandir.
+- A movimentação por setas continua disponível no Resumo e mantém os limites de primeira e última classe.
