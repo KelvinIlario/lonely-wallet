@@ -1,4 +1,4 @@
-# Lonely Wallet — atualização de interface v2.0.42
+# Lonely Wallet — atualização de interface v2.0.43
 
 ## Novidades da v2.0.42
 - O card **Resumo** da aba Proventos agora permite alternar o total recebido entre **Total do mês**, **Total do ano** e **Total últimos 12 meses**. O cálculo considera somente pagamentos efetivamente recebidos.

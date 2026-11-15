@@ -79,7 +79,7 @@
 .distribution-add select{flex:1;min-width:190px;background:#171a22;color:var(--text);border:1px solid #3b4351;border-radius:7px;padding:10px}
 .distribution-footer{display:flex;justify-content:space-between;gap:12px;margin-top:14px;color:var(--muted);font-size:12px}
 .distribution-total.invalid{color:var(--red)}
-.brand{display:flex;align-items:center;gap:10px}.brand-logo{width:30px;height:30px;object-fit:cover;border-radius:8px}.brand-name{color:var(--text);font-size:18px;font-weight:750;letter-spacing:-.5px}
+.brand{display:flex;align-items:center;gap:10px}.brand-logo{width:190px;height:52px;object-fit:contain;object-position:left center;border-radius:0}.brand-name{color:var(--text);font-size:18px;font-weight:750;letter-spacing:-.5px}
 .position-groups{display:grid;gap:10px}
 .asset-category{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .asset-category-head{width:100%;display:grid;grid-template-columns:minmax(150px,1.3fr) repeat(3,minmax(90px,.7fr)) 30px;gap:12px;align-items:center;text-align:left;background:transparent;color:var(--text);border:0;padding:15px 17px}
@@ -99,7 +99,7 @@
 .asset-category .data td{font-size:12px}
 #loadingScreen{position:fixed;inset:0;z-index:1000;background:#10131b;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;transition:opacity .35s ease,visibility .35s ease}
 #loadingScreen.done{opacity:0;visibility:hidden;pointer-events:none}
-.loading-logo{width:150px;height:150px;border-radius:30px;box-shadow:0 15px 60px #0008;animation:logoPulse 1.5s ease-in-out infinite}
+.loading-logo{width:150px;height:150px;object-fit:contain;border-radius:30px;box-shadow:0 15px 60px #0008;animation:logoPulse 1.5s ease-in-out infinite}
 .loading-spinner{width:28px;height:28px;border:3px solid #394252;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite}
 .loading-label{font-size:13px;color:#aeb7c5;letter-spacing:.4px}
 @keyframes spin{to{transform:rotate(360deg)}}@keyframes logoPulse{50%{transform:scale(1.035);filter:brightness(1.12)}}
@@ -1603,17 +1603,29 @@ body.light-theme .insight-highlight-pill.negative{background:#fbe1e8;color:#cf36
 @media(max-width:650px){.prov-distribution-content{grid-template-columns:1fr}.prov-distribution-chart{height:280px}.prov-distribution-list{max-height:240px}}
 
 
-/* v2.0.42 — resumo de proventos, metas guiadas e controles por tema */
+/* v2.0.43 — Proventos interativos, proporções e identidade visual */
+@media(max-width:620px){.brand-logo{width:132px;height:44px}.top{padding:0 12px}.topright{gap:5px}}
+
 body.light-theme .segmented button.active{background:#fff;color:#202633;border:1px solid #cbd4e1;box-shadow:0 1px 2px #1d29390d}
 body:not(.light-theme) .segmented button.active{background:#303744;color:var(--text);border:1px solid #596578}
 .prov-average-line{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
 .prov-goal-link{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;color:var(--text);font:inherit;font-size:14px;padding:0;cursor:pointer}
 .prov-goal-link:hover{text-decoration:underline}
 .prov-goal-percent{margin-left:auto;font-size:14px;white-space:nowrap}
-.prov-total-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.prov-total-heading{position:relative;cursor:pointer}
-.prov-total-heading select{appearance:none;max-width:190px;width:auto;height:28px;opacity:1;position:static;pointer-events:auto;border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;padding:0 20px 0 0;cursor:pointer;outline:none}
-.prov-total-heading:after{content:'⌄';color:var(--muted);font-size:15px;margin-left:-17px;pointer-events:none}
+.prov-total-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;position:relative;min-height:28px}
+.prov-total-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:28px;padding:0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.prov-total-chevron{font-size:15px;line-height:1;transition:transform .15s}
+.prov-total-trigger[aria-expanded="true"] .prov-total-chevron{transform:rotate(180deg)}
+.prov-total-menu{position:absolute;z-index:12;left:0;top:calc(100% + 7px);min-width:210px;padding:6px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px #0004;display:grid;gap:2px}
+.prov-total-menu button{width:100%;padding:10px 11px;border:0;border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:12px;text-align:left;white-space:nowrap}
+.prov-total-menu button:hover,.prov-total-menu button.active{background:var(--panel);color:var(--text)}
+body.light-theme .prov-total-menu{background:#fff;border-color:#d5dce6;box-shadow:0 10px 28px #17203320}
+body.light-theme .prov-total-menu button:hover,body.light-theme .prov-total-menu button.active{background:#eef2f7;color:#202633}
+.earnings-sidebar,.earnings-main{min-width:0;min-height:0}.earnings-main{display:flex}
+.earnings-main>.panel{width:100%;height:100%;min-height:100%;display:flex;flex-direction:column}
+.earnings-main-chart{height:390px;min-height:320px;flex:1 1 390px}
+.earnings-dashboard{align-items:stretch}
+@media(max-width:900px){.earnings-main>.panel{height:auto;min-height:0}.earnings-main-chart{height:300px;min-height:250px;flex:none}}
 .goal-wizard-choice{display:flex;align-items:center;gap:16px;width:100%;padding:20px 18px;margin:0 0 14px;border:1px solid var(--muted);border-radius:13px;background:var(--panel);color:var(--text);text-align:left;cursor:pointer}
 .goal-wizard-choice:hover{border-color:var(--blue);background:var(--panel2)}
 .goal-wizard-choice .goal-icon{width:42px;height:42px;flex:none}
@@ -1640,7 +1652,7 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
-<header class="top"><div class="brand"><img src="/static/lonely-wallet-logo.png" alt="Lonely Wallet" class="brand-logo"><div class="brand-name">Lonely Wallet</div></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
+<header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
 <button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar tabela da B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
@@ -1656,7 +1668,14 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
   <div class="earnings-summary">
    <div class="panelhead"><h2>Resumo</h2></div>
    <div class="earnings-summary-block"><span class="summary-label">Média mensal (últimos 12 meses)</span><div class="prov-average-line"><div class="earnings-summary-value" id="provAverage">R$ 0,00</div><button type="button" id="provGoalLink" class="prov-goal-link hidden" onclick="showPage('metas')" aria-label="Abrir meta de proventos"><span id="provGoalTarget"></span><span>↗</span></button><strong id="provGoalPercent" class="prov-goal-percent hidden"></strong></div><div class="earnings-progress"><span id="provAverageProgress"></span></div></div>
-   <div class="earnings-summary-block"><div class="prov-total-heading"><select id="provTotalPeriod" aria-label="Período do total de proventos recebidos" onchange="renderProventosDashboard()"><option value="mes">Total do mês</option><option value="ano">Total do ano</option><option value="12m" selected>Total últimos 12 meses</option></select></div><div class="earnings-summary-value" id="provTotal12">R$ 0,00</div></div>
+   <div class="earnings-summary-block"><div class="prov-total-heading">
+    <button type="button" id="provTotalTrigger" class="prov-total-trigger" aria-haspopup="true" aria-expanded="false" onclick="toggleProvTotalMenu()"><span id="provTotalLabel">Total últimos 12 meses</span><span class="prov-total-chevron">⌄</span></button>
+    <div id="provTotalMenu" class="prov-total-menu hidden" role="menu">
+     <button type="button" role="menuitem" data-period="mes" onclick="setProvTotalPeriod('mes')">Total do mês</button>
+     <button type="button" role="menuitem" data-period="ano" onclick="setProvTotalPeriod('ano')">Total do ano</button>
+     <button type="button" role="menuitem" data-period="12m" onclick="setProvTotalPeriod('12m')">Total últimos 12 meses</button>
+    </div>
+   </div><div class="earnings-summary-value" id="provTotal12">R$ 0,00</div></div>
    <div class="earnings-summary-block"><span class="summary-label">Total de proventos</span><div class="earnings-summary-value" id="provPortfolioTotal">R$ 0,00</div></div>
    <div class="earnings-distribution"><span class="summary-label">Distribuição de proventos em 12 meses</span><div class="chartbox small"><canvas id="provDistributionChart"></canvas></div><div id="provDistributionLegend" class="earnings-legend"></div><button class="ghost" type="button" onclick="openProvDistributionModal()">Ver todos</button></div>
   </div>
@@ -1719,7 +1738,7 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="notice b3-fixed-income-notice"><b>Atenção:</b> ativos de renda fixa não são importados pela B3. Cadastre esses investimentos manualmente pela opção <b>Adicionar lançamento</b>.</div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
-<div class="modalback" id="provDistributionBack" onclick="if(event.target===this)closeProvDistributionModal()"><div class="modal prov-distribution-modal"><div class="modalhead"><h2>Distribuição de proventos em 12 meses</h2><button class="close" onclick="closeProvDistributionModal()">×</button></div><div class="prov-distribution-content"><div><div class="prov-distribution-switch segmented"><button type="button" id="provDistAssetTab" class="active" onclick="setProvDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="provDistTypeTab" onclick="setProvDistributionMode('tipo')">◉ Por Tipo</button></div><div class="prov-distribution-chart"><canvas id="provDistributionDetailChart"></canvas></div></div><div class="prov-distribution-side"><div class="prov-distribution-total"><span>Total</span><strong id="provDistributionTotal" class="green">R$ 0,00</strong></div><div id="provDistributionDetailList" class="prov-distribution-list"></div></div></div></div></div>
+<div class="modalback" id="provDistributionBack" onclick="if(event.target===this)closeProvDistributionModal()"><div class="modal prov-distribution-modal"><div class="modalhead"><h2 id="provDistributionTitle">Distribuição de proventos em 12 meses</h2><button class="close" onclick="closeProvDistributionModal()">×</button></div><div class="prov-distribution-content"><div><div class="prov-distribution-switch segmented"><button type="button" id="provDistAssetTab" class="active" onclick="setProvDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="provDistTypeTab" onclick="setProvDistributionMode('tipo')">◉ Por Tipo</button></div><div class="prov-distribution-chart"><canvas id="provDistributionDetailChart"></canvas></div></div><div class="prov-distribution-side"><div class="prov-distribution-total"><span>Total</span><strong id="provDistributionTotal" class="green">R$ 0,00</strong></div><div id="provDistributionDetailList" class="prov-distribution-list"></div></div></div></div></div>
 <div class="modalback" id="modalback" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modalhead"><h2 id="modalTitle">Novo lançamento</h2><button class="close" onclick="closeModal()">×</button></div><form id="opForm" class="formgrid operation-form">
  <div class="operation-switch full">
   <button type="button" class="operation-side active" data-side="compra" onclick="setOperationSide('compra')">▣ Compra</button>
@@ -1794,7 +1813,7 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 </div>
 <script>
 const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), pct=v=>`${Number(v||0).toLocaleString('pt-BR',{maximumFractionDigits:2})}%`;
-const labels={acao:'Ações',fii:'FIIs',etf:'ETFs',bdr:'BDRs',internacional:'ETFs Internacionais',renda_fixa:'Renda Fixa',cripto:'Criptomoedas',stocks:'Stocks',reit:'REITs',tesouro:'Tesouro Direto',fundo:'Fundos de Investimentos',outros:'Outros'};let state={itens:[],resumo:{},alocacao:{},operacoes:[],proventos:[],metas:[]};let charts={};let operationGroupPages={};let operationGroupsData=[];const OPERATION_GROUP_PAGE_SIZE=15;let provGroupPages={};let provGroupedRows={};let provDistributionData={ativo:[],tipo:[]};let provDistributionMode="ativo";let editingOperationId=null;let irpfData={posicoes:[],rendimentos:[],operacoes:[],resumo:{}};let darfItems=[];let activeIRPFTab='bens';
+const labels={acao:'Ações',fii:'FIIs',etf:'ETFs',bdr:'BDRs',internacional:'ETFs Internacionais',renda_fixa:'Renda Fixa',cripto:'Criptomoedas',stocks:'Stocks',reit:'REITs',tesouro:'Tesouro Direto',fundo:'Fundos de Investimentos',outros:'Outros'};let state={itens:[],resumo:{},alocacao:{},operacoes:[],proventos:[],metas:[]};let charts={};let operationGroupPages={};let operationGroupsData=[];const OPERATION_GROUP_PAGE_SIZE=15;let provGroupPages={};let provGroupedRows={};let provDistributionData={ativo:[],tipo:[]};let provDistributionMode="ativo";let provTotalPeriod="12m";let editingOperationId=null;let irpfData={posicoes:[],rendimentos:[],operacoes:[],resumo:{}};let darfItems=[];let activeIRPFTab='bens';
 let expandedAssetGroups={};
 // Estado independente dos grupos exibidos na página Resumo.
 let summaryExpandedAssetGroups={};
@@ -2523,6 +2542,61 @@ function confirmFixedIncomeSale(){
  closeSuggestions();closeFixedIncomeSalePicker();
 }
 
+function buildProvPalette(count){
+ const hues=[];let step=137.508,index=0;
+ while(hues.length<Math.max(1,count)&&index<720){
+  const hue=((210+index*step)%360+360)%360;
+  // Avoid red hues; reserve them only if every other hue has been exhausted.
+  if(!(hue<16||hue>344))hues.push(hue);
+  index++;
+ }
+ return hues.map((h,i)=>`hsl(${h.toFixed(1)} ${66+(i%3)*5}% ${55+(i%4)*3}%)`);
+}
+function buildProvDistribution(records,title){
+ const assetTotals={},typeTotals={};
+ (records||[]).filter(x=>!String(x.tipo_evento||x.tipo||'').toUpperCase().includes('AMORTIZA')).forEach(x=>{
+  const amount=Number(x.valor_total||0);if(!(amount>0))return;
+  const ticker=String(x.ticker||'Outros'),kind=x.tipo_ativo||((state.itens||[]).find(i=>i.ticker===ticker)||{}).tipo||'outros';
+  assetTotals[ticker]=(assetTotals[ticker]||0)+amount;typeTotals[kind]=(typeTotals[kind]||0)+amount;
+ });
+ const assetRows=Object.entries(assetTotals).sort((a,b)=>b[1]-a[1]);
+ const typeRows=Object.entries(typeTotals).sort((a,b)=>b[1]-a[1]);
+ const palette=buildProvPalette(Math.max(assetRows.length,typeRows.length));
+ provDistributionData={
+  ativo:assetRows.map(([name,value],i)=>({name,value,color:palette[i]})),
+  tipo:typeRows.map(([name,value],i)=>({name:labels[name]||name,value,color:palette[i]}))
+ };
+ const titleEl=document.getElementById('provDistributionTitle');if(titleEl)titleEl.textContent=title||'Distribuição de proventos em 12 meses';
+}
+function openProvDistributionForBar(key,mode){
+ const d=state.proventos_dashboard||{},typeSelect=document.getElementById('provTypeFilter'),assetSelect=document.getElementById('provAssetFilter');
+ const selectedType=typeSelect?.value||'todos',selectedAsset=assetSelect?.value||'todos';
+ const records=(d.recebidos||[]).filter(x=>{
+  const date=String(x.data_pagamento||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;
+  const dt=new Date(date+'T12:00:00');
+  const bucket=mode==='anual'?String(dt.getFullYear()):`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+  const kind=x.tipo_ativo||((state.itens||[]).find(i=>i.ticker===x.ticker)||{}).tipo||'outros';
+  return bucket===key&&(selectedType==='todos'||kind===selectedType)&&(selectedAsset==='todos'||x.ticker===selectedAsset);
+ });
+ const title=mode==='anual'?`Distribuição de proventos em ${key}`:`Distribuição de proventos em ${key.slice(5,7)}/${key.slice(0,4)}`;
+ buildProvDistribution(records,title);
+ openProvDistributionModal();
+}
+function toggleProvTotalMenu(){
+ const menu=document.getElementById('provTotalMenu'),trigger=document.getElementById('provTotalTrigger');
+ if(!menu||!trigger)return;
+ const opening=menu.classList.contains('hidden');
+ menu.classList.toggle('hidden',!opening);trigger.setAttribute('aria-expanded',String(opening));
+}
+function closeProvTotalMenu(){
+ const menu=document.getElementById('provTotalMenu'),trigger=document.getElementById('provTotalTrigger');
+ if(menu)menu.classList.add('hidden');if(trigger)trigger.setAttribute('aria-expanded','false');
+}
+function setProvTotalPeriod(period){
+ if(!['mes','ano','12m'].includes(period))return;
+ provTotalPeriod=period;closeProvTotalMenu();renderProventosDashboard();
+}
+document.addEventListener('click',event=>{if(!event.target.closest('.prov-total-heading'))closeProvTotalMenu();});
 function setProvMode(mode){
  const monthly=document.getElementById('provMonthlyMode'),annual=document.getElementById('provAnnualMode');
  if(monthly)monthly.classList.toggle('active',mode==='mensal');
@@ -2549,13 +2623,14 @@ function renderProventosDashboard(){
  if(goalPercentEl){goalPercentEl.classList.toggle('hidden',!activeIncomeGoal);goalPercentEl.textContent=activeIncomeGoal?pct(goalPercent):'';}
  const progress=document.getElementById('provAverageProgress');
  if(progress)progress.style.width=`${Math.min(100,activeIncomeGoal&&goalTarget>0?goalPercent:0)}%`;
- const totalPeriod=document.getElementById('provTotalPeriod')?.value||'12m';
+ const totalPeriod=provTotalPeriod||'12m';
  const today=new Date(),monthStart=new Date(today.getFullYear(),today.getMonth(),1),yearStart=new Date(today.getFullYear(),0,1),rollingStart=new Date(today.getFullYear(),today.getMonth()-11,1);
  const periodStart=totalPeriod==='mes'?monthStart:totalPeriod==='ano'?yearStart:rollingStart;
  const filteredReceived=receivedRows.filter(x=>{const dt=new Date(String(x.data_pagamento||'')+'T12:00:00');return Number.isFinite(dt.getTime())&&dt>=periodStart&&dt<=today;});
  const summaryTotal=filteredReceived.reduce((sum,x)=>sum+Number(x.valor_total||0),0);
  if(totalEl)totalEl.textContent=brl(summaryTotal);
  const totalLabel=document.getElementById('provTotalLabel');if(totalLabel)totalLabel.textContent=totalPeriod==='mes'?'Total do mês':totalPeriod==='ano'?'Total do ano':'Total últimos 12 meses';
+ document.querySelectorAll('#provTotalMenu [data-period]').forEach(button=>button.classList.toggle('active',button.dataset.period===totalPeriod));
 
  const typeSelect=document.getElementById('provTypeFilter'),assetSelect=document.getElementById('provAssetFilter');
  const priorType=typeSelect?.value||'todos',priorAsset=assetSelect?.value||'todos';
@@ -2583,7 +2658,7 @@ function renderProventosDashboard(){
  const distTotal=distValues.reduce((a,b)=>a+b,0);
  const typeDistribution={};
  distNames.forEach(ticker=>{const sample=(d.recebidos||[]).find(x=>x.ticker===ticker);const kind=sample?.tipo_ativo||((state.itens||[]).find(i=>i.ticker===ticker)||{}).tipo||'outros';typeDistribution[kind]=(typeDistribution[kind]||0)+distribution[ticker];});
- const paletteHues=[210,150,48,265,180,25,300,95,235,165,65,285,195,120,320,225,35,155,250,75,205,135,275,185,55,245,105,295,175,230,40,160,255,90,215,130];const palette=paletteHues.map((h,i)=>`hsl(${h} ${58+(i%3)*8}% ${52+(i%4)*4}%)`);
+ const palette=buildProvPalette(Math.max(distNames.length,Object.keys(typeDistribution).length));
  provDistributionData={ativo:distNames.map((name,i)=>({name,value:distValues[i],color:palette[i%palette.length]})),tipo:Object.keys(typeDistribution).sort((a,b)=>typeDistribution[b]-typeDistribution[a]).map((name,i)=>({name:labels[name]||name,value:typeDistribution[name],color:palette[i%palette.length]}))};
  chart('provDistributionChart','doughnut',{labels:distNames.slice(0,3),datasets:[{data:distValues.slice(0,3),backgroundColor:distNames.slice(0,3).map((_,i)=>palette[i%palette.length]),borderWidth:0}]},{cutout:'66%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)}`}}}});
  const legend=document.getElementById('provDistributionLegend');
@@ -2617,7 +2692,7 @@ function renderProventosDashboard(){
  if(mode==='anual'&&keys.length){const min=Number(keys[0]),max=Number(keys[keys.length-1]);keys=Array.from({length:max-min+1},(_,i)=>String(min+i));}
  const labelsChart=keys.map(k=>mode==='anual'?k:`${k.slice(5,7)}/${k.slice(0,4)}`);
  const got=keys.map(k=>Number((sums[k]?.recebido||0).toFixed(2))),due=keys.map(k=>Number((sums[k]?.a_receber||0).toFixed(2)));
- chart('provMonthlyChart','bar',{labels:labelsChart,datasets:[{label:'Proventos recebidos',data:got,backgroundColor:'#477bd0',borderRadius:4,stack:'proventos'},{label:'Proventos a receber',data:due,backgroundColor:'#b9c9e8',borderRadius:4,stack:'proventos'}]},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw||0)}`}}},scales:{x:{stacked:true,ticks:{color:'#8f99a8'},grid:{display:false}},y:{stacked:true,beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
+ chart('provMonthlyChart','bar',{labels:labelsChart,datasets:[{label:'Proventos recebidos',data:got,backgroundColor:'#477bd0',borderRadius:4,stack:'proventos'},{label:'Proventos a receber',data:due,backgroundColor:'#b9c9e8',borderRadius:4,stack:'proventos'}]},{onClick:(event,elements)=>{if(!elements?.length)return;const index=elements[0].index;if(index>=0&&keys[index])openProvDistributionForBar(keys[index],mode);},onHover:(event,elements)=>{if(event?.native?.target)event.native.target.style.cursor=elements?.length?'pointer':'default';},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw||0)}`}}},scales:{x:{stacked:true,ticks:{color:'#8f99a8'},grid:{display:false}},y:{stacked:true,beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
  const totalReceived=got.reduce((a,b)=>a+b,0);
  const totalUpcoming=due.reduce((a,b)=>a+b,0);
  const totalFiltered=totalReceived+totalUpcoming;
