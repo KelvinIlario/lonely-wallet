@@ -1620,7 +1620,7 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 .prov-chart-period{position:relative;min-width:170px}
 .earnings-history-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .prov-history-filter{position:relative;min-width:150px}
-.prov-history-trigger{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;text-align:left;white-space:nowrap}
+.my-provents-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.my-prov-filter{min-width:145px}.my-prov-period-menu{width:285px;max-height:min(72vh,520px);padding:12px 14px;gap:9px}.my-prov-period-menu .period-title{font-size:12px;font-weight:750;color:var(--text)}.my-prov-period-menu .period-section{display:grid;gap:8px}.my-prov-period-menu .period-option{display:flex;align-items:center;gap:9px;width:100%;padding:2px 0;border:0;background:transparent;color:var(--text);font:inherit;font-size:12px;text-align:left;cursor:pointer}.my-prov-period-menu .period-option input{accent-color:var(--accent);width:15px;height:15px;margin:0;flex:none}.my-prov-period-menu .period-divider{height:1px;background:var(--line);margin:2px 0}.my-prov-month-nav{display:flex;align-items:center;justify-content:space-between;background:var(--panel);border-radius:7px;padding:7px 10px;font-weight:750}.my-prov-month-nav button{border:0;background:transparent;color:var(--text);font-size:20px;cursor:pointer}.my-prov-period-menu .period-months{display:grid;gap:2px;max-height:220px;overflow:auto}@media(max-width:650px){.my-provents-toolbar{width:100%}.my-prov-filter{flex:1;min-width:125px}.my-prov-period-menu{right:auto;left:0;width:min(285px,calc(100vw - 40px))}}\n.prov-history-trigger{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;text-align:left;white-space:nowrap}
 .prov-history-menu{position:absolute;z-index:35;right:0;top:calc(100% + 7px);width:205px;max-height:min(65vh,360px);overflow:auto;padding:8px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 32px #0005;display:grid;gap:3px}
 .prov-history-menu.hidden{display:none}
 .prov-history-menu .history-option{display:flex;align-items:center;gap:9px;width:100%;padding:7px 8px;border:0;border-radius:6px;background:transparent;color:var(--text);font:inherit;font-size:12px;text-align:left;cursor:pointer}
@@ -1731,7 +1731,12 @@ body.light-theme .prov-total-menu button:hover,body.light-theme .prov-total-menu
 <div class="prov-history-filter" id="provHistoryTypeWrap"><button type="button" class="prov-history-trigger" onclick="toggleProvHistoryMenu('type')" aria-haspopup="true" aria-expanded="false"><span>Tipo de ativo</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden" id="provHistoryTypeMenu"></div></div>
 <div class="prov-history-filter" id="provHistoryAssetWrap"><button type="button" class="prov-history-trigger" onclick="toggleProvHistoryMenu('asset')" aria-haspopup="true" aria-expanded="false"><span>Ativos</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden prov-history-asset-menu" id="provHistoryAssetMenu"></div></div>
 </div></div><div class="tablewrap"><table class="data"><thead><tr><th>Ano</th><th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th><th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th><th>Total</th></tr></thead><tbody id="provMonthlyRows"></tbody></table></div></div>
-<div class="panel section"><div class="panelhead"><h2>Meus proventos</h2><span class="mini">Pagamentos recebidos e anunciados</span></div><div class="tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Tipo</th><th>Status</th><th>Data-com</th><th>Data pagamento</th><th>Quantidade</th><th>Valor por ativo</th><th>Valor total</th></tr></thead><tbody id="provRows"></tbody></table></div><p class="mini">Pagamentos futuros são estimativas baseadas nos eventos anunciados pela fonte de cotação e na quantidade elegível na data-com. Confirme os valores com a B3 ou o RI do fundo/empresa.</p></div>
+<div class="panel section"><div class="panelhead earnings-history-head"><h2>Meus proventos</h2><div class="toolbar my-provents-toolbar">
+<strong id="myProvTotal" class="green">Total R$ 0,00</strong>
+<div class="prov-history-filter my-prov-filter" id="myProvPeriodWrap"><button type="button" class="prov-history-trigger" onclick="toggleMyProvMenu('period')" aria-haspopup="true" aria-expanded="false"><span id="myProvPeriodLabel">Ano atual</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu my-prov-period-menu hidden" id="myProvPeriodMenu"></div></div>
+<div class="prov-history-filter my-prov-filter" id="myProvTypeWrap"><button type="button" class="prov-history-trigger" onclick="toggleMyProvMenu('type')" aria-haspopup="true" aria-expanded="false"><span>Tipo de ativo</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden" id="myProvTypeMenu"></div></div>
+<div class="prov-history-filter my-prov-filter" id="myProvAssetWrap"><button type="button" class="prov-history-trigger" onclick="toggleMyProvMenu('asset')" aria-haspopup="true" aria-expanded="false"><span>Ativos</span><span class="prov-total-chevron">⌄</span></button><div class="prov-history-menu hidden prov-history-asset-menu" id="myProvAssetMenu"></div></div>
+</div></div><div class="tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Tipo</th><th>Status</th><th>Data-com</th><th>Data pagamento</th><th>Quantidade</th><th>Valor por ativo</th><th>Valor total</th></tr></thead><tbody id="provRows"></tbody></table></div><p class="mini">Pagamentos futuros são estimativas baseadas nos eventos anunciados pela fonte de cotação e na quantidade elegível na data-com. Confirme os valores com a B3 ou o RI do fundo/empresa.</p></div>
 </section>
 <section id="page-patrimonio" class="page hidden">
 <div class="pagehead"><div><h1>Patrimônio</h1><div class="sub">Acompanhe a evolução dos aportes e a composição atual de cada classe.</div></div></div>
@@ -2902,17 +2907,67 @@ function renderProventosDashboard(){
  if(historyTotalEl)historyTotalEl.textContent=`Total ${brl(historyTotal)}`;
  const history=document.getElementById('provMonthlyRows');
  if(history)history.innerHTML=years.length?years.map(year=>{const vals=byYear[year],sum=vals.reduce((a,b)=>a+b,0);return `<tr><td class="ticker">${year}</td>${vals.map(v=>`<td>${brl(v)}</td>`).join('')}<td class="green">${brl(sum)}</td></tr>`}).join(''):`<tr><td colspan="14" class="empty">Nenhum provento encontrado para os filtros selecionados.</td></tr>`;
+ const myRows=filterMyProvents(rows,eventType);
+ const myTotal=myRows.reduce((sum,x)=>sum+Number(x.valor_total||0),0);
+ const myTotalEl=document.getElementById('myProvTotal');if(myTotalEl)myTotalEl.textContent=`Total ${brl(myTotal)}`;
+ renderMyProvFilters(rows,eventType);
  const table=document.getElementById('provRows');
  if(table){
-  const groupOrder=['renda_fixa','fii','acao','etf','bdr','internacional','stocks','reit','cripto','tesouro','fundo','outros'];
-  const groups=new Map();filtered.forEach(x=>{const kind=eventType(x);if(!groups.has(kind))groups.set(kind,[]);groups.get(kind).push(x)});
-  const groupKeys=[...groups.keys()].sort((a,b)=>{const ai=groupOrder.indexOf(a),bi=groupOrder.indexOf(b);return (ai<0?999:ai)-(bi<0?999:bi)||(labels[a]||a).localeCompare(labels[b]||b,'pt-BR')});
-  provGroupedRows={};
-  table.innerHTML=groupKeys.length?groupKeys.map(key=>{const items=groups.get(key);provGroupedRows[key]=items;const totalPages=Math.max(1,Math.ceil(items.length/15));const current=Math.min(Math.max(1,Number(provGroupPages[key])||1),totalPages);provGroupPages[key]=current;const visible=items.slice((current-1)*15,current*15);const records=visible.map(x=>`<tr><td class="ticker">${escapeHTML(x.ticker)}${x.remarks?`<div class="mini">${escapeHTML(x.remarks)}</div>`:''}</td><td>${escapeHTML(x.tipo||'Provento')}</td><td><span class="prov-status ${x.status==='A receber'?'pending':''}">${x.status}</span></td><td>${x.data_com?new Date(x.data_com+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.data_pagamento?new Date(x.data_pagamento+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.quantidade??'—'}</td><td>${x.valor_por_ativo!==null&&x.valor_por_ativo!==undefined?brl(x.valor_por_ativo):'—'}</td><td class="${x.status==='Pago'?'green':'blue'}">${brl(x.valor_total)}</td></tr>`).join('');return `<tr class="prov-class-row"><td colspan="8">${escapeHTML(labels[key]||key)} <span class="mini">· ${items.length} registro(s)</span></td></tr>${records}${totalPages>1?`<tr class="prov-class-pagination"><td colspan="8">${provGroupPagination(key,totalPages,current)}</td></tr>`:''}`}).join(''):rowEmpty(8,'Nenhum provento encontrado para esse filtro.');
+  const visible=myRows.slice(0,500);
+  table.innerHTML=visible.length?visible.map(x=>`<tr><td class="ticker">${escapeHTML(x.ticker||'—')}${x.remarks?`<div class="mini">${escapeHTML(x.remarks)}</div>`:''}</td><td>${escapeHTML(x.tipo||'Provento')}</td><td><span class="prov-status ${x.status==='A receber'?'pending':''}">${escapeHTML(x.status||'—')}</span></td><td>${x.data_com?new Date(x.data_com+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.data_pagamento?new Date(x.data_pagamento+'T12:00:00').toLocaleDateString('pt-BR'):'—'}</td><td>${x.quantidade??'—'}</td><td>${x.valor_por_ativo!==null&&x.valor_por_ativo!==undefined?brl(x.valor_por_ativo):'—'}</td><td class="${x.status==='Pago'?'green':'blue'}">${brl(x.valor_total)}</td></tr>`).join(''):rowEmpty(8,'Nenhum provento encontrado para os filtros selecionados.');
  }
 }
-function setProvGroupPage(encodedKey,page){const key=decodeURIComponent(encodedKey);const rows=provGroupedRows[key]||[];const total=Math.max(1,Math.ceil(rows.length/15));provGroupPages[key]=Math.min(Math.max(1,Number(page)||1),total);renderProventosDashboard();}
-function provGroupPagination(key,totalPages,currentPage){const encoded=encodeURIComponent(key);const pages=new Set([1,totalPages]);for(let n=Math.max(1,currentPage-1);n<=Math.min(totalPages,currentPage+1);n++)pages.add(n);const ordered=[...pages].sort((a,b)=>a-b);let previous=0;const buttons=ordered.map(n=>{const gap=previous&&n-previous>1?'<span class="mini">…</span>':'';previous=n;return gap+`<button type="button" class="${n===currentPage?'active':''}" ${n===currentPage?'aria-current="page"':''} onclick="setProvGroupPage('${encoded}',${n})">${n}</button>`}).join('');return `<nav class="prov-group-pagination" aria-label="Paginação dos proventos de ${escapeHTML(labels[key]||key)}"><button type="button" ${currentPage===1?'disabled':''} onclick="setProvGroupPage('${encoded}',${currentPage-1})">Anterior</button>${buttons}<button type="button" ${currentPage===totalPages?'disabled':''} onclick="setProvGroupPage('${encoded}',${currentPage+1})">Próximo</button><span class="page-info">Página ${currentPage} de ${totalPages}</span></nav>`;}
+
+let myProvPeriod='ano_atual',myProvMonthYear=new Date().getFullYear(),myProvTypes=[],myProvAssets=[];
+function toggleMyProvMenu(kind){
+ const ids={period:'myProvPeriodMenu',type:'myProvTypeMenu',asset:'myProvAssetMenu'};
+ const wraps={period:'myProvPeriodWrap',type:'myProvTypeWrap',asset:'myProvAssetWrap'};
+ const target=document.getElementById(ids[kind]),opening=target?.classList.contains('hidden');
+ Object.values(ids).forEach(id=>document.getElementById(id)?.classList.add('hidden'));
+ Object.values(wraps).forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
+ if(target&&opening){target.classList.remove('hidden');document.querySelector(`#${wraps[kind]} .prov-history-trigger`)?.setAttribute('aria-expanded','true');}
+}
+document.addEventListener('click',event=>{if(!event.target.closest('.my-prov-filter')){['myProvPeriodMenu','myProvTypeMenu','myProvAssetMenu'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));['myProvPeriodWrap','myProvTypeWrap','myProvAssetWrap'].forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));}});
+function setMyProvPeriod(value){myProvPeriod=value;renderProventosDashboard();}
+function setMyProvMonthYear(delta){myProvMonthYear=Math.max(1900,Math.min(2200,myProvMonthYear+delta));renderProventosDashboard();}
+function toggleMyProvType(value,checked){if(checked){if(!myProvTypes.includes(value))myProvTypes.push(value);}else myProvTypes=myProvTypes.filter(x=>x!==value);renderProventosDashboard();}
+function setMyProvAllTypes(){myProvTypes=[];renderProventosDashboard();}
+function toggleMyProvAsset(value,checked){if(checked){if(!myProvAssets.includes(value))myProvAssets.push(value);}else myProvAssets=myProvAssets.filter(x=>x!==value);renderProventosDashboard();}
+function setMyProvAllAssets(){myProvAssets=[];renderProventosDashboard();}
+function filterMyProvAssetOptions(){const q=(document.getElementById('myProvAssetSearch')?.value||'').trim().toUpperCase();document.querySelectorAll('#myProvAssetOptions .history-option[data-search]').forEach(el=>el.style.display=el.dataset.search.includes(q)?'':'none');}
+function filterMyProvents(rows,eventType){
+ const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),startMonth=new Date(now.getFullYear(),now.getMonth(),1);
+ const valid=rows.filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x.data_pagamento||'')));
+ return valid.filter(x=>{
+  const dt=new Date(String(x.data_pagamento)+'T12:00:00'),status=x.status||'';
+  let inPeriod=true;
+  if(myProvPeriod==='ano_atual')inPeriod=dt.getFullYear()===now.getFullYear();
+  else if(myProvPeriod==='30d'){const cut=new Date(today);cut.setDate(cut.getDate()-29);inPeriod=dt>=cut&&dt<=today;}
+  else if(myProvPeriod==='12m'){const cut=new Date(now.getFullYear(),now.getMonth()-11,1);inPeriod=dt>=cut&&dt<=today;}
+  else if(myProvPeriod==='5a')inPeriod=dt.getFullYear()>=now.getFullYear()-4&&dt.getFullYear()<=now.getFullYear();
+  else if(myProvPeriod==='mes_atual')inPeriod=dt>=startMonth&&dt<new Date(now.getFullYear(),now.getMonth()+1,1);
+  else if(myProvPeriod==='proximo_mes'){const next=new Date(now.getFullYear(),now.getMonth()+1,1);inPeriod=dt.getFullYear()===next.getFullYear()&&dt.getMonth()===next.getMonth();}
+  else if(myProvPeriod==='futuros')inPeriod=status==='A receber';
+  else if(myProvPeriod==='recebidos')inPeriod=status==='Pago';
+  else if(myProvPeriod.startsWith('mes:')){const [,year,month]=myProvPeriod.split(':');inPeriod=dt.getFullYear()===Number(year)&&dt.getMonth()+1===Number(month);}
+  return inPeriod&&(!myProvTypes.length||myProvTypes.includes(eventType(x)))&&(!myProvAssets.length||myProvAssets.includes(x.ticker));
+ }).sort((a,b)=>String(b.data_pagamento).localeCompare(String(a.data_pagamento)));
+}
+function renderMyProvFilters(rows,eventType){
+ const menu=document.getElementById('myProvPeriodMenu'),label=document.getElementById('myProvPeriodLabel');
+ const quick=[['ano_atual',`Ano atual ${new Date().getFullYear()}`],['30d','Últimos 30 dias'],['12m','Últimos 12 meses'],['5a','Últimos 5 anos'],['mes_atual','Mês atual'],['proximo_mes','Próximo mês'],['futuros','Futuros'],['recebidos','Recebidos'],['todos','Todos']];
+ const monthNames=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+ const quickLabel=quick.find(x=>x[0]===myProvPeriod)?.[1];
+ if(label)label.textContent=quickLabel||(myProvPeriod.startsWith('mes:')?`${monthNames[Number(myProvPeriod.split(':')[2])-1]}/${myProvPeriod.split(':')[1]}`:'Ano atual');
+ const option=(value,text)=>`<label class="period-option ${myProvPeriod===value?'active':''}"><input type="radio" name="myProvPeriodChoice" ${myProvPeriod===value?'checked':''} onchange="setMyProvPeriod('${value}')"><span>${text}</span></label>`;
+ if(menu)menu.innerHTML=`<div class="period-title">Período</div><div class="period-section"><div class="period-title">Filtros rápidos</div>${quick.map(([v,t])=>option(v,escapeHTML(t))).join('')}</div><div class="period-divider"></div><div class="period-section"><div class="period-title">Filtro mensal</div><div class="my-prov-month-nav"><button type="button" aria-label="Ano anterior" onclick="setMyProvMonthYear(-1)">‹</button><span>${myProvMonthYear}</span><button type="button" aria-label="Próximo ano" onclick="setMyProvMonthYear(1)">›</button></div><div class="period-months">${monthNames.map((m,i)=>option(`mes:${myProvMonthYear}:${String(i+1).padStart(2,'0')}`,m)).reverse().join('')}</div></div>`;
+ const typeMenu=document.getElementById('myProvTypeMenu'),typeValues=[...new Set([...((state.itens||[]).map(x=>x.tipo).filter(Boolean)),...rows.map(eventType).filter(Boolean)])].sort((a,b)=>(labels[a]||a).localeCompare(labels[b]||b,'pt-BR'));
+ myProvTypes=myProvTypes.filter(x=>typeValues.includes(x));
+ if(typeMenu)typeMenu.innerHTML='<div class="history-menu-title">Tipo de ativo</div><label class="history-option"><input type="checkbox" '+(!myProvTypes.length?'checked':'')+' onchange="setMyProvAllTypes()">Todos os tipos</label>'+typeValues.map(v=>`<label class="history-option"><input type="checkbox" ${myProvTypes.includes(v)?'checked':''} onchange="toggleMyProvType('${escapeHTML(v)}',this.checked)">${escapeHTML(labels[v]||v)}</label>`).join('');
+ const assetMenu=document.getElementById('myProvAssetMenu'),assetValues=[...new Set(rows.map(x=>x.ticker).filter(Boolean))].sort();
+ myProvAssets=myProvAssets.filter(x=>assetValues.includes(x));
+ if(assetMenu)assetMenu.innerHTML='<input id="myProvAssetSearch" class="history-search" type="search" placeholder="Pesquisar ativo..." oninput="filterMyProvAssetOptions()"><div id="myProvAssetOptions"><label class="history-option"><input type="checkbox" '+(!myProvAssets.length?'checked':'')+' onchange="setMyProvAllAssets()">Todos os ativos</label>'+assetValues.map(v=>`<label class="history-option" data-search="${escapeHTML(v.toUpperCase())}"><input type="checkbox" ${myProvAssets.includes(v)?'checked':''} onchange="toggleMyProvAsset('${escapeHTML(v)}',this.checked)">${escapeHTML(v)}</label>`).join('')+'</div><div class="history-menu-footer"><button type="button" onclick="setMyProvAllAssets()">Limpar seleção</button><span class="mini">'+(myProvAssets.length?myProvAssets.length+' selecionado(s)':'Todos')+'</span></div>';
+}
 function openProvDistributionModal(){
  const back=document.getElementById('provDistributionBack');if(!back)return;
  const d=state.proventos_dashboard||{},now=new Date(),cutoff=new Date(now.getFullYear(),now.getMonth()-11,1);
