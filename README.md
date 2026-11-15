@@ -194,3 +194,11 @@ A importação não é automática: o usuário seleciona a planilha, confere a p
 ## v2.0.4
 - Correções visuais na aba Posições e exibição correta da contagem de oportunidades de compra.
 - Ícone integrado à configuração do CasaOS e ao container Docker.
+
+## v2.0.5 — Renda fixa por indexador
+- Cálculo do saldo bruto de CDB, LCI, LCA e demais aplicações com base na data de cada aplicação e nos campos Indexador, Taxa e Forma salvos em `detalhes`.
+- CDI e Selic usam séries diárias oficiais do SGS; IPCA e IGP-M usam variações mensais compostas; Prefixado usa taxa anual efetiva em base 252 dias úteis.
+- Títulos híbridos acumulam o indexador e a taxa adicional informada.
+- A categoria Renda Fixa não exibe mais a coluna Proventos Recebidos.
+- Lançamentos antigos sem indexador/taxa não recebem rendimento estimado: precisam ter os dados contratuais preenchidos para cálculo correto.
+- Rendimentos exibidos são brutos, sem estimativa de IR/IOF ou taxas do emissor.

@@ -17,6 +17,8 @@ PORTFOLIO_HISTORY_CACHE, PORTFOLIO_HISTORY_TTL = {}, 1800
 PORTFOLIO_HISTORY_EMPTY_TTL = 120
 PROVENTOS_SYNC_CACHE = {'time': 0, 'result': None, 'signature': None}
 PROVENTOS_SYNC_TTL = 3600
+SGS_CACHE = {}
+SGS_CACHE_TTL = 12 * 3600
 
 
 def db():
@@ -272,6 +274,179 @@ def cotacao(ticker):
 
     CACHE[ticker] = (now, data)
     return data
+
+
+def _sgs_series(series_id, start_date, end_date):
+    """Busca séries históricas oficiais do BCB/SGS, em janelas inferiores a 10 anos."""
+    start = date.fromisoformat(str(start_date)[:10])
+    end = date.fromisoformat(str(end_date)[:10])
+    if end < start:
+        return []
+    key = (int(series_id), start.isoformat(), end.isoformat())
+    cached = SGS_CACHE.get(key)
+    if cached and time.time() - cached[0] < SGS_CACHE_TTL:
+        return cached[1]
+    points = []
+    cursor = start
+    while cursor <= end:
+        chunk_end = min(end, cursor + timedelta(days=8 * 365))
+        params = {
+            'formato': 'json',
+            'dataInicial': cursor.strftime('%d/%m/%Y'),
+            'dataFinal': chunk_end.strftime('%d/%m/%Y')
+        }
+        response = requests.get(
+            f'https://api.bcb.gov.br/dados/serie/bcdata.sgs.{int(series_id)}/dados',
+            params=params, timeout=18
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError('Resposta inválida do Banco Central')
+        for row in payload:
+            try:
+                d = datetime.strptime(row['data'], '%d/%m/%Y').date()
+                value = float(str(row['valor']).replace(',', '.'))
+                points.append((d, value))
+            except (KeyError, TypeError, ValueError):
+                continue
+        cursor = chunk_end + timedelta(days=1)
+    points.sort(key=lambda item: item[0])
+    SGS_CACHE[key] = (time.time(), points)
+    return points
+
+
+def _rate_number(value):
+    """Extrai a primeira taxa numérica de campos como '120% do CDI' ou '6,5% a.a.'."""
+    raw = str(value or '').strip().replace(',', '.')
+    match = re.search(r'(-?\d+(?:\.\d+)?)', raw)
+    return float(match.group(1)) if match else 0.0
+
+
+def _fixed_income_factor(details, start_date, end_date):
+    """Fator bruto de acumulação; não desconta IR/IOF nem taxas do emissor."""
+    details = details if isinstance(details, dict) else {}
+    indexer = str(details.get('indexador') or '').strip().upper()
+    form = str(details.get('forma') or '').strip().lower()
+    rate_text = str(details.get('taxa') or '').strip()
+    rate = _rate_number(rate_text)
+    if not indexer or not rate_text or rate <= 0:
+        return None, 'Indexador ou taxa não informado'
+    try:
+        start = date.fromisoformat(str(start_date)[:10])
+        end = date.fromisoformat(str(end_date)[:10])
+    except (TypeError, ValueError):
+        return None, 'Data da aplicação inválida'
+    if end <= start:
+        return 1.0, None
+    hybrid = form == 'híbrido' or '+' in rate_text
+    factor = 1.0
+    try:
+        if indexer == 'CDI':
+            for _, daily_pct in _sgs_series(12, start + timedelta(days=1), end):
+                daily = max(0.0, daily_pct) / 100.0
+                if hybrid:
+                    spread_daily = (1 + rate / 100.0) ** (1 / 252) - 1
+                    factor *= (1 + daily) * (1 + spread_daily)
+                else:
+                    factor *= 1 + daily * (rate / 100.0)
+        elif indexer in ('SELIC', 'SELIC OVER'):
+            for _, daily_pct in _sgs_series(11, start + timedelta(days=1), end):
+                daily = max(0.0, daily_pct) / 100.0
+                factor *= (1 + daily * (rate / 100.0))
+        elif indexer in ('IPCA', 'IGP-M'):
+            series_id = 433 if indexer == 'IPCA' else 189
+            # Índices de inflação são mensais: só entram competências completas
+            # posteriores ao mês da aplicação, evitando aplicar mês cheio em data parcial.
+            first_month = date(start.year + (start.month == 12), 1 if start.month == 12 else start.month + 1, 1)
+            last_complete_month = date(end.year, end.month, 1) - timedelta(days=1)
+            if first_month <= last_complete_month:
+                for point_date, monthly_pct in _sgs_series(series_id, first_month, last_complete_month):
+                    monthly = max(-99.0, monthly_pct) / 100.0
+                    if hybrid:
+                        spread_month = (1 + rate / 100.0) ** (1 / 12) - 1
+                        factor *= (1 + monthly) * (1 + spread_month)
+                    else:
+                        factor *= 1 + monthly * (rate / 100.0)
+        elif indexer in ('PREFIXADO', 'PRÉ-FIXADO', 'PRE-FIXADO'):
+            # Taxa anual efetiva composta em dias úteis (base 252).
+            business_days = 0
+            current = start + timedelta(days=1)
+            holidays = set()
+            for year in range(start.year, end.year + 1):
+                try:
+                    holidays.update(b3_holidays(year))
+                except Exception:
+                    pass
+            while current <= end:
+                if current.weekday() < 5 and current not in holidays:
+                    business_days += 1
+                current += timedelta(days=1)
+            factor = (1 + rate / 100.0) ** (business_days / 252)
+        else:
+            return None, f'Indexador {indexer} ainda não suportado'
+    except Exception as exc:
+        app.logger.warning('Falha ao calcular renda fixa (%s): %s', indexer, exc)
+        return None, 'Não foi possível consultar o histórico do indexador'
+    return max(0.01, factor), None
+
+
+def _fixed_income_position_value(ticker, invested_cost, fallback_value, as_of=None):
+    """Recalcula lotes de renda fixa desde cada aplicação, preservando legado sem taxa."""
+    cutoff = as_of or datetime.now(TZ).date().isoformat()
+    base_date = snapshot_date_for(cutoff)
+    if base_date:
+        ops = db().execute(
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data>? AND data<=? ORDER BY data,id",
+            (str(ticker).upper(), base_date, cutoff)
+        ).fetchall()
+        imported = imported_balance(ticker, cutoff)
+        base_cost = (float(imported['quantidade']) * float(imported['preco_medio'])) if imported else 0.0
+        # Saldos-base importados não possuem necessariamente os dados contratuais.
+        lots = [{'principal': base_cost, 'date': base_date, 'details': {}, 'legacy': True}] if base_cost > 0 else []
+    else:
+        ops = db().execute(
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data<=? ORDER BY data,id",
+            (str(ticker).upper(), cutoff)
+        ).fetchall()
+        lots = []
+    for op in ops:
+        quantity = float(op['quantidade'] or 0)
+        amount = quantity * float(op['preco'] or 0)
+        if op['lado'] == 'compra':
+            try:
+                details = json.loads(op['detalhes'] or '{}')
+            except Exception:
+                details = {}
+            lots.append({'principal': amount + float(op['custos'] or 0), 'date': op['data'], 'details': details, 'legacy': False})
+        else:
+            remaining = amount
+            for lot in lots:
+                if remaining <= 0:
+                    break
+                reduction = min(lot['principal'], remaining)
+                lot['principal'] -= reduction
+                remaining -= reduction
+    total_cost = sum(max(0.0, lot['principal']) for lot in lots)
+    total_value = 0.0
+    has_calculated = False
+    warnings = []
+    for lot in lots:
+        principal = max(0.0, lot['principal'])
+        if principal <= 0:
+            continue
+        factor, error = _fixed_income_factor(lot['details'], lot['date'], cutoff)
+        if factor is None:
+            total_value += principal
+            warnings.append(error)
+        else:
+            total_value += principal * factor
+            has_calculated = True
+    if not lots:
+        return invested_cost, fallback_value, False, 'Sem histórico de aplicação'
+    if not has_calculated and warnings:
+        return total_cost, fallback_value if fallback_value > 0 else total_cost, False, warnings[0]
+    return total_cost, total_value, True, (warnings[0] if warnings else None)
 
 
 def snapshot_date_for(reference_date=None):
@@ -688,7 +863,7 @@ def carteira():
         imported = imported_balance(ticker)
         op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
         kind = (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
-        # Renda fixa e saldos importados não devem depender de cotação de bolsa.
+        # Renda fixa usa o indexador e a data de cada aplicação, não cotação de bolsa.
         quote = {} if kind == 'renda_fixa' else cotacao(ticker)
         raw_price=quote.get('regularMarketPrice') or quote.get('close') or quote.get('price')
         market_quote_available=raw_price is not None and float(raw_price)>0
@@ -702,9 +877,16 @@ def carteira():
         annual_div = sum(float(x.get('rate') or 0) for x in divs)
         ceiling = annual_div / .06 if annual_div else None
         cost, value = qty*avg, qty*price
-        invested += cost; actual += value; received += dividends
+        fixed_calc_ok = False
+        fixed_calc_warning = None
+        if kind == 'renda_fixa':
+            cost, value, fixed_calc_ok, fixed_calc_warning = _fixed_income_position_value(ticker, cost, value)
+            price = value / qty if qty > 0 else value
+            quote_available = fixed_calc_ok
+            quote_source = 'Indexador' if fixed_calc_ok else 'Sem indexador'
+        invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
         default_name = imported.get('nome') if imported else ticker
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(value-cost,2),'lucro_pct':round((value/cost-1)*100,2) if cost else 0,'proventos':round(dividends,2),'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')})
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(value-cost,2),'lucro_pct':round((value/cost-1)*100,2) if cost else 0,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)
