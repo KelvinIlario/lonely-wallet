@@ -299,7 +299,7 @@ def api_integrations_save(provider):
     if request.method == 'DELETE':
         db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); db().commit()
         if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
-            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear()
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True})
     payload = request.get_json(silent=True) or {}
     token = str(payload.get('token') or '').strip()
@@ -311,7 +311,7 @@ def api_integrations_save(provider):
         db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
     db().commit()
     if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
-        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear()
+        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
     return jsonify({'ok':True,'configured':bool(_get_api_token(provider))})
 
 
@@ -371,7 +371,7 @@ def cotacao(ticker):
         response.raise_for_status()
         results = response.json().get('results') or []
         if results and isinstance(results[0], dict):
-            data = results[0]
+            data = {**results[0], 'quoteProvider': 'brapi'}
     except Exception:
         data = {}
 
@@ -1597,7 +1597,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
                     {'range': range_value, 'interval': '1d', 'sortOrder': 'asc'},
                     headers=headers
                 )
-                response_data.update(found)
+                response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de ações'} for point in points] for symbol, points in found.items()})
             # A resposta pode ser parcial mesmo com HTTP 200. Consulte individualmente
             # cada símbolo ausente; não deixe um ticker sem cobertura esconder os demais.
             missing_after_batch = [symbol for symbol in stock_symbols if symbol not in response_data]
@@ -1607,7 +1607,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
                     {'range': range_value, 'interval': '1d', 'sortOrder': 'asc'},
                     headers=headers
                 )
-                response_data.update(found)
+                response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de ações'} for point in points] for symbol, points in found.items()})
             if all(symbol in response_data for symbol in stock_symbols):
                 break
 
@@ -1623,13 +1623,13 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
             fii_found = _request_historical_batch(
                 fii_url, batch, fii_params, response_key='fiis', headers=headers
             )
-            response_data.update(fii_found)
+            response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de FIIs'} for point in points] for symbol, points in fii_found.items()})
         # Uma resposta parcial não deve encerrar a busca dos demais FIIs.
         for symbol in [item for item in fii_symbols if item not in response_data]:
             fii_found = _request_historical_batch(
                 fii_url, [symbol], fii_params, response_key='fiis', headers=headers
             )
-            response_data.update(fii_found)
+            response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de FIIs'} for point in points] for symbol, points in fii_found.items()})
 
     # Provedores alternativos autenticados: usados apenas para tickers sem série
     # válida na brapi. Mantemos uma fonte por ativo e não concatenamos preços distintos.
@@ -1651,7 +1651,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
                             close=float(row.get('adjusted_close') or row.get('close') or 0)
                             if close>0: points.append({'data':day,'preco':close,'fechamento':close,'ajustado':bool(row.get('adjusted_close'))})
                         except (TypeError,ValueError,AttributeError): continue
-                    if points: response_data[symbol]=sorted(points,key=lambda x:x['data'])
+                    if points: response_data[symbol]=[{**point, 'fonte':'Twelve Data · histórico diário'} for point in sorted(points,key=lambda x:x['data'])]
             except (requests.RequestException,ValueError,TypeError,AttributeError):
                 pass
         if symbol not in response_data and alpha_token:
@@ -1670,7 +1670,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
                         raw_close=float(row.get('4. close') or close)
                         if close>0: points.append({'data':day,'preco':close,'fechamento':raw_close,'ajustado':bool(row.get('5. adjusted close'))})
                     except (TypeError,ValueError,AttributeError): continue
-                if points: response_data[symbol]=sorted(points,key=lambda x:x['data'])
+                if points: response_data[symbol]=[{**point, 'fonte':'Alpha Vantage · histórico diário ajustado'} for point in sorted(points,key=lambda x:x['data'])]
             except (requests.RequestException,ValueError,TypeError,AttributeError):
                 pass
 
@@ -1684,7 +1684,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
     for symbol in fallback_symbols:
         points = _request_legacy_history(symbol, headers)
         if points:
-            response_data[symbol] = points
+            response_data[symbol] = [{**point, 'fonte':'brapi · histórico legado'} for point in points]
 
     # Respostas vazias ficam em cache por apenas 2 minutos; séries válidas, por 30 minutos.
     PORTFOLIO_HISTORY_CACHE[cache_key] = {'time': now, 'data': response_data}
@@ -1714,6 +1714,7 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
     history = history if history is not None else fetch_portfolio_price_history(operations, imported_positions)
     normalized = {}
     adjusted_tickers = set()
+    history_sources = {}
     for ticker, points in (history or {}).items():
         if str(ticker).upper() not in all_types:
             continue
@@ -1723,6 +1724,14 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         ]
         if valid:
             normalized[str(ticker).upper()] = sorted(valid, key=lambda item: item['data'])
+            source_counts = Counter(str(point.get('fonte') or 'Fonte não identificada') for point in valid)
+            history_sources[str(ticker).upper()] = {
+                'fonte': source_counts.most_common(1)[0][0],
+                'pontos': len(valid),
+                'inicio': min(point['data'] for point in valid).isoformat(),
+                'fim': max(point['data'] for point in valid).isoformat(),
+                'ajustado': all(bool(point.get('ajustado')) for point in valid)
+            }
             if all(bool(point.get('ajustado')) for point in valid):
                 adjusted_tickers.add(str(ticker).upper())
 
@@ -1734,6 +1743,7 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         'primeiro_mes': None, 'historico_completo': False,
         'ativos_sem_historico': missing_symbols,
         'ativos_com_historico': len(available_tickers), 'total_ativos': len(all_tickers),
+        'fontes_historico': history_sources,
         'historico_parcial': bool(missing_symbols) or bool(snapshot_date)
     }
     snapshot_map = {str(row.get('ticker') or '').upper(): row for row in imported_positions if row.get('ticker')}
@@ -2675,6 +2685,11 @@ def dashboard():
         aportes_mensais=monthly, proventos_mensais=received_by_month,
         metas=[dict(r) for r in db().execute('SELECT * FROM metas').fetchall()],
         rentabilidade_historica=performance, rentabilidade_por_tipo=performance_by_type,
+        integridade_dados={
+            'cotacoes': {item['ticker']: {'fonte': item.get('cotacao_origem'), 'disponivel': bool(item.get('cotacao_disponivel'))} for item in portfolio.get('itens', [])},
+            'historico_precos': performance.get('fontes_historico', {}),
+            'proventos': {'fonte_canonica': 'brapi + lançamentos manuais/B3', 'deduplicacao': 'chave de evento + ticker/data de pagamento/valor', 'sincronizacao': sync_status}
+        },
         proventos_dashboard={
             'mensal':monthly_values,'total_12m':total_12m,'media_mensal':round(total_12m/12,2),
             'total_carteira':portfolio_total,'recebidos':sorted(detailed,key=lambda x:x['data_pagamento'],reverse=True),

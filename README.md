@@ -1,3 +1,14 @@
+# Lonely Wallet v2.0.72
+
+## Integração de dados de mercado
+
+- Identificação explícita da fonte de cada cotação BRAPI e dos históricos por ativo (brapi, Twelve Data, Alpha Vantage ou fallback legado).
+- A API do dashboard passa a expor cobertura, período, quantidade de pontos e se a série histórica é ajustada por eventos, permitindo conferir a origem dos gráficos de rentabilidade.
+- A seção de integridade dos dados informa as fontes de cotações, histórico e sincronização de proventos.
+- Ao salvar, alterar ou remover credenciais, os caches de mercado e a janela de sincronização de proventos são invalidados para aplicar imediatamente a nova configuração.
+- Mantida uma fonte única por ativo para cotações e séries históricas. Séries de provedores diferentes não são somadas nem emendadas.
+- Proventos continuam centralizados na sincronização idempotente da brapi e conciliados com lançamentos manuais/importação B3. Não adicionamos fontes paralelas de dividendos, evitando duplicidade.
+
 # Lonely Wallet v2.0.59
 
 ## Atualização desta versão
