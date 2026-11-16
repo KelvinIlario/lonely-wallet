@@ -1446,9 +1446,59 @@ def clear_seed_snapshot_when_empty():
         )
 
 
+def cleanup_b3_operation_refs(operation_ids):
+    ids=[int(x) for x in operation_ids if x is not None]
+    if not ids:
+        return
+    con=db()
+    batch_ids=set()
+    for start in range(0,len(ids),500):
+        chunk=ids[start:start+500]
+        marks=','.join('?' for _ in chunk)
+        batch_ids.update(r[0] for r in con.execute(
+            f"SELECT DISTINCT lote_id FROM b3_importados WHERE categoria='operacao' AND registro_id IN ({marks}) AND lote_id IS NOT NULL", chunk
+        ).fetchall())
+        con.execute(f"DELETE FROM b3_importados WHERE categoria='operacao' AND registro_id IN ({marks})", chunk)
+    for batch_id in batch_ids:
+        counts=con.execute("SELECT COUNT(*) FROM b3_importados WHERE lote_id=? AND categoria='operacao'",(batch_id,)).fetchone()[0]
+        con.execute('UPDATE b3_import_lotes SET operacoes=? WHERE id=?',(int(counts),batch_id))
+
+
+@app.route('/api/operacoes/gerenciar', methods=['DELETE'])
+def excluir_operacoes_em_massa():
+    con=db()
+    payload=request.get_json(silent=True) or {}
+    scope=str(payload.get('escopo') or '').lower()
+    if scope=='todas':
+        ids=[int(r[0]) for r in con.execute('SELECT id FROM operacoes').fetchall()]
+    elif scope=='ativo':
+        tipo=str(payload.get('tipo') or '').strip().lower()
+        ticker=str(payload.get('ticker') or '').strip().upper()
+        if not tipo or not ticker:
+            return json_error('Selecione a classe e o ativo para excluir os lançamentos.')
+        ids=[int(r[0]) for r in con.execute('SELECT id FROM operacoes WHERE lower(tipo)=? AND upper(ticker)=?',(tipo,ticker)).fetchall()]
+    else:
+        return json_error('Escopo de exclusão inválido.')
+    if not ids:
+        return jsonify(ok=True,excluidos=0)
+    try:
+        cleanup_b3_operation_refs(ids)
+        for start in range(0,len(ids),500):
+            chunk=ids[start:start+500]
+            marks=','.join('?' for _ in chunk)
+            con.execute(f'DELETE FROM operacoes WHERE id IN ({marks})',chunk)
+        clear_seed_snapshot_when_empty()
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    return jsonify(ok=True,excluidos=len(ids))
+
+
 @app.route('/api/operacoes/<int:op_id>', methods=['DELETE','PUT'])
 def delete_operacao(op_id):
     if request.method == 'DELETE':
+        cleanup_b3_operation_refs([op_id])
         db().execute('DELETE FROM operacoes WHERE id=?', (op_id,))
         clear_seed_snapshot_when_empty()
         db().commit()

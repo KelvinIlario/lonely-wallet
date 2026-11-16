@@ -30,3 +30,11 @@ A versão foi verificada por compilação sintática Python, verificação sint�
 - Adiciona o gerenciamento de importações da B3 ao lado de Novo lançamento. Importações novas registram arquivo, data, quantidades e vínculo dos registros criados, permitindo excluir um lote sem apagar lançamentos manuais.
 - Importações antigas aparecem agrupadas pela data de importação, mas não podem ser excluídas individualmente porque a versão anterior não guardava vínculos seguros nem o nome do arquivo.
 - Preserva o banco SQLite e o volume `/data`.
+
+## v3.0.5
+
+- Substitui a confirmação nativa do navegador para exclusões de lançamentos e importações B3 por uma janela de confirmação no tema do Lonely Wallet.
+- Adiciona **Editar lançamentos de ativos**, com filtros por classe e ativo, listagem de operações, edição individual e exclusão individual.
+- Permite excluir todos os lançamentos do ativo selecionado ou todos os lançamentos da carteira, com confirmação explícita e quantidade de registros afetados.
+- A exclusão remove os vínculos de rastreamento B3 das operações apagadas e atualiza os totais dos lotes, permitindo reimportar posteriormente uma operação removida.
+- A exclusão global afeta somente a tabela de operações; saldos-base importados e proventos independentes são preservados.
