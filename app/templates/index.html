@@ -2253,8 +2253,26 @@ function renderPositionInsights(rows){
  const losers=rows.filter(x=>Number(x.lucro||0)<0).length;
  const total=rows.length,positivePct=total?(winners/total)*100:0;
  const opportunities=rows.filter(x=>Number(x.preco_atual)>0&&Number(x.preco_medio)>0&&Number(x.preco_atual)<Number(x.preco_medio));
+ const recentAssets=[];
+ const recentByAsset=new Map();
+ (state.operacoes||[]).forEach(op=>{
+  const ticker=String(op.ticker||'').trim().toUpperCase();
+  const rawDate=String(op.data_execucao||op.data||'').trim();
+  const date=rawDate.slice(0,10);
+  if(!ticker||!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
+  const key=`${ticker}|${String(op.tipo||'')}`;
+  const previous=recentByAsset.get(key);
+  if(!previous||date>previous.date)recentByAsset.set(key,{ticker,tipo:op.tipo||'',date});
+ });
+ recentAssets.push(...Array.from(recentByAsset.values()).sort((a,b)=>b.date.localeCompare(a.date)||a.ticker.localeCompare(b.ticker)).slice(0,3));
+ const recentDateLabel=date=>{const [year,month,day]=date.split('-');return `${day}/${month}/${year}`;};
  document.getElementById('positionInsights').innerHTML=`
-  <article class="insight-card insight-card-placeholder" aria-label="Espaço reservado para futura funcionalidade"></article>
+  <article class="insight-card insight-recent-card">
+   <div class="insight-title">Últimos ativos lançados</div>
+   <div class="insight-recent-list">
+    ${recentAssets.length?recentAssets.map(asset=>`<div class="insight-recent-row"><div><b>${escapeHTML(asset.ticker)}</b><span>${escapeHTML(labels[asset.tipo]||asset.tipo||'Ativo')}</span></div><time>${recentDateLabel(asset.date)}</time></div>`).join(''):'<div class="insight-recent-empty">Nenhum lançamento registrado.</div>'}
+   </div>
+  </article>
   <article class="insight-card">
    <div class="insight-title">Destaques da carteira<span class="info-tip" tabindex="0" aria-label="Sobre os destaques da carteira" data-tip="Consideramos como destaque da carteira os ativos dos seguintes tipos: Ações, FIIs, Stocks, BDRs, REITs, ETFs e Criptomoedas.">i</span></div>
    <div class="insight-split">
@@ -4899,5 +4917,16 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 .patrimony-category-card .patrimony-asset-row:hover{
  background:var(--table-hover)!important;
 }
+
+
+/* v2.0.68 — últimos ativos lançados no Resumo */
+.insight-recent-list{display:grid;gap:0;flex:1;align-content:start}
+.insight-recent-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);min-width:0}
+.insight-recent-row:last-child{border-bottom:0}
+.insight-recent-row>div{display:grid;gap:2px;min-width:0}
+.insight-recent-row b{font-size:13px;line-height:1.25}
+.insight-recent-row span,.insight-recent-row time{font-size:10px;color:var(--muted)}
+.insight-recent-row time{white-space:nowrap;font-variant-numeric:tabular-nums}
+.insight-recent-empty{font-size:11px;color:var(--muted);padding:12px 0}
 
 </style>

@@ -138,3 +138,13 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Cabeçalhos das tabelas passam a utilizar a variável de cor de superfície do tema.
 - Estados de hover usam uma variável compartilhada entre tema escuro e claro.
 - Listas de ativos da página Patrimônio alinhadas às cores dos demais painéis e tabelas.
+
+
+## v2.0.68
+
+### Resumo: últimos ativos lançados
+- O card vazio da página Resumo agora exibe os três ativos distintos com lançamentos mais recentes.
+- A ordenação considera a data de execução do lançamento, com fallback para a data registrada.
+- Cada linha apresenta ticker, classe do ativo e data do lançamento mais recente daquele ativo.
+- O card é atualizado junto com os demais indicadores da carteira.
+- Quando ainda não há lançamentos, é exibida uma mensagem informativa.
