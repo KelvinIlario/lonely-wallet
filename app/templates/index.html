@@ -2563,7 +2563,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['preco_alvo','Meu Preço-Alvo',i=>`<td data-col="preco_alvo">—</td>`],
   ['preco_graham','Preço Justo (Graham)',i=>`<td data-col="preco_graham">—</td>`],
   ['preco_teto_bazin','Preço-teto (Bazin)',i=>`<td data-col="preco_teto_bazin">${i.preco_teto_bazin?brl(i.preco_teto_bazin):'—'}</td>`],
-  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
+  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint variation-money-trigger" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}" onmouseenter="showVariationMoneyTooltip(event,this)" onmousemove="moveVariationMoneyTooltip(event,this)" onmouseleave="hideVariationMoneyTooltip()" onfocus="showVariationMoneyTooltip(event,this)" onblur="hideVariationMoneyTooltip()" tabindex="0">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
   ['lucro_pct','Rentabilidade',i=>`<td data-col="lucro_pct"><span class="variation-pill ${Number(i.lucro_pct)>=0?'positive':'negative'}">${Number(i.lucro_pct)>=0?'↗':'↘'} ${pct(i.lucro_pct)}</span></td>`],
   ['valor_atual','Saldo',i=>`<td data-col="valor_atual">${brl(i.valor_atual)}</td>`],
   ['buyhold','Pontuação Buy and Hold',i=>`<td data-col="buyhold">—</td>`],
@@ -2673,6 +2673,34 @@ function variationMoneyHint(item,change){
  const basis=item&&item.pluggy_primeira_compra?` desde a primeira compra em ${item.pluggy_primeira_compra}`:'';
  return `Resultado de ${pct(change)}${basis} (sem proventos):\n${brl(amount)}`;
 }
+ 
+function hideVariationMoneyTooltip(){
+ const tip=document.getElementById('variationMoneyFloatingTooltip');
+ if(tip)tip.remove();
+}
+function showVariationMoneyTooltip(event,el){
+ const text=el?.dataset?.hint||'';
+ if(!text)return;
+ let tip=document.getElementById('variationMoneyFloatingTooltip');
+ if(!tip){tip=document.createElement('div');tip.id='variationMoneyFloatingTooltip';document.body.appendChild(tip);}
+ tip.className='variation-money-floating-tooltip '+(el.classList.contains('positive')?'is-positive':'is-negative');
+ tip.textContent=text;
+ tip.style.visibility='hidden';tip.style.display='block';
+ const rect=el.getBoundingClientRect(),width=Math.min(340,window.innerWidth-24);
+ tip.style.width=width+'px';tip.style.left='0px';tip.style.top='0px';tip.style.visibility='visible';
+ const box=tip.getBoundingClientRect();
+ let left=rect.left+rect.width/2-box.width/2;
+ left=Math.max(12,Math.min(left,window.innerWidth-box.width-12));
+ let top=rect.top-box.height-10;
+ if(top<10)top=rect.bottom+10;
+ top=Math.max(10,Math.min(top,window.innerHeight-box.height-10));
+ tip.style.left=left+'px';tip.style.top=top+'px';
+}
+function moveVariationMoneyTooltip(event,el){
+ const tip=document.getElementById('variationMoneyFloatingTooltip');
+ if(tip && document.activeElement!==el)showVariationMoneyTooltip(event,el);
+}
+
 function closeAssetMenu(){
  const menu=document.getElementById('assetActionMenu');
  if(menu)menu.remove();
@@ -3937,9 +3965,12 @@ function renderOperationsByType(allOps){
   const visibleRows=rows.slice((currentPage-1)*OPERATION_GROUP_PAGE_SIZE,currentPage*OPERATION_GROUP_PAGE_SIZE);
   return `<section class="operation-group"><div class="operation-group-head"><div><div class="operation-group-title">${escapeHTML(labels[key]||key)} <span class="operation-group-count">${rows.length} lançamento(s)</span></div></div><div class="operation-group-totals"><span>Compras <b class="green">${brl(buys)}</b></span><span>Vendas <b class="red">${brl(sells)}</b></span><span>Saldo líquido <b>${brl(buys-sells)}</b></span></div></div><div class="tablewrap"><table class="data"><thead><tr><th>Execução / agendamento</th><th>Ativo</th><th>Operação</th><th>Quantidade</th><th>Preço unitário</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>${visibleRows.map(o=>{
    const when=o.data_execucao?new Date(o.data_execucao).toLocaleString('pt-BR'):(o.data||'');
-   const details=(()=>{try{return Object.entries(JSON.parse(o.detalhes||'{}')).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(' · ')}catch{return ''}})();
+   const metadata=(()=>{try{return typeof o.detalhes==='string'?JSON.parse(o.detalhes||'{}'):(o.detalhes||{})}catch{return {}}})();
+   const details=metadata.descricao||metadata.observacoes||'';
+   const source=metadata.origem==='Pluggy'?' · Pluggy':metadata.origem==='Importação B3'?' · B3':'';
    const total=Number(o.quantidade||0)*Number(o.preco||0)+Number(o.custos||0);
-   return `<tr><td>${escapeHTML(when)}</td><td class="ticker">${escapeHTML(o.ticker)}${details?`<div class="mini">${escapeHTML(details)}</div>`:''}</td><td class="${o.lado==='compra'?'green':'red'}">${o.lado==='compra'?'Compra':'Venda'}</td><td>${operationQuantity(o.quantidade)}</td><td>${brl(o.preco)}</td><td>${brl(total)}</td><td>${o.status==='agendada'?'<span class="tag">Agendada</span>':'<span class="tag">Executada</span>'}</td><td><div class="prov-edit-actions"><button class="ghost" type="button" onclick="editOperation(${Number(o.id)})">Editar lançamento</button><button class="ghost" type="button" onclick="removeOperation(${Number(o.id)})">Excluir</button></div></td></tr>`;
+   const locked=metadata.origem==='Pluggy';
+   return `<tr><td>${escapeHTML(when)}</td><td class="ticker">${escapeHTML(o.ticker)}${source?`<div class="mini">Origem${escapeHTML(source)}</div>`:''}${details?`<div class="mini">${escapeHTML(details)}</div>`:''}</td><td class="${o.lado==='compra'?'green':'red'}">${o.lado==='compra'?'Compra':'Venda'}</td><td>${operationQuantity(o.quantidade)}</td><td>${brl(o.preco)}</td><td>${brl(total)}</td><td>${o.status==='agendada'?'<span class="tag">Agendada</span>':'<span class="tag">Executada</span>'}</td><td>${locked?'<span class="tag" title="Importado pela Pluggy e protegido contra alterações">Somente leitura</span>':`<div class="prov-edit-actions"><button class="ghost" type="button" onclick="editOperation(${Number(o.id)})">Editar lançamento</button><button class="ghost" type="button" onclick="removeOperation(${Number(o.id)})">Excluir</button></div>`}</td></tr>`;
   }).join('')}</tbody></table></div>${operationGroupPagination(key,totalPages,currentPage)}</section>`;
  }).join('');
 }
@@ -4481,8 +4512,9 @@ assetInput.addEventListener('blur',()=>{
 });
 
 async function submitForm(id,url){document.getElementById(id).addEventListener('submit',async e=>{e.preventDefault();const isEdit=id==='opForm'&&!!editingOperationId;const labelsConfirm={opForm:isEdit?'Salvar alterações do lançamento':'Adicionar lançamento',provForm:'Registrar provento',metaForm:'Salvar meta'};const messagesConfirm={opForm:isEdit?'As alterações deste lançamento serão gravadas e os cálculos da carteira serão atualizados.':'O novo lançamento será adicionado à carteira e afetará os cálculos e gráficos.',provForm:'O registro de provento será salvo e poderá atualizar os totais e gráficos.',metaForm:'As informações da meta serão salvas.'};if(!await appConfirm(labelsConfirm[id]||'Confirmar alteração',messagesConfirm[id]||'Deseja salvar estas alterações?','Confirmar'))return;let data=Object.fromEntries(new FormData(e.target));if(id==='opForm'&&data.lado==='venda'&&!editingOperationId){await loadSellableAssets();const ticker=String(data.ticker||'').trim().toUpperCase();if(!sellableAssets.some(item=>item.ticker.toUpperCase()===ticker)){toast('Só é permitido vender ativos que já estão na sua carteira.');return;}const holding=sellableAssets.find(item=>item.ticker.toUpperCase()===ticker);if(Number(data.quantidade)>Number(holding.quantidade)+1e-8){toast('A quantidade informada é maior que a quantidade disponível na carteira.');return;}}if(id==='opForm'){data.preco=String(parseLocalizedNumber(data.preco));data.custos=String(parseLocalizedNumber(data.custos));data.data=data.data_hora.slice(0,10);data.detalhes=Object.fromEntries(Object.entries(data).filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));Object.keys(data).filter(k=>k.startsWith('detail_')).forEach(k=>delete data[k]);}try{const saved=await api(id==='opForm'&&editingOperationId?`/api/operacoes/${editingOperationId}`:url,{method:id==='opForm'&&editingOperationId?'PUT':'POST',body:JSON.stringify(data)});if(id==='opForm')editingOperationId=null;e.target.reset();if(id==='opForm'){quantityInput.value='1';updateOperationTotal();}closeModal();await refresh();if(id==='opForm'&&saved.status==='agendada'){toast('Operação agendada para '+new Date(saved.data_execucao).toLocaleString('pt-BR')+'.')}else if(id==='opForm'){toast('Lançamento salvo. Carteira, posições e gráficos atualizados.')}else toast('Registro salvo com sucesso.')}catch(err){toast(err.message)}})}submitForm('opForm','/api/operacoes');submitForm('provForm','/api/proventos');submitForm('metaForm','/api/metas');
-async function editOperation(id){const op=(state.operacoes||[]).find(x=>Number(x.id)===Number(id));if(!op){toast('Lançamento não encontrado.');return;}editingOperationId=Number(id);document.getElementById('modalback').style.display='flex';document.getElementById('opForm').classList.remove('hidden');document.getElementById('provForm').classList.add('hidden');document.getElementById('metaForm').classList.add('hidden');document.getElementById('modalTitle').textContent='Editar lançamento';syncAssetTypeOptions();const typeSelect=document.getElementById('assetType');if(![...typeSelect.options].some(option=>option.value===(op.tipo||'acao'))){const option=document.createElement('option');option.value=op.tipo||'acao';option.textContent=labels[op.tipo]||op.tipo;typeSelect.appendChild(option);}typeSelect.value=op.tipo||'acao';document.getElementById('operationSide').value=op.lado||'compra';document.querySelectorAll('.operation-side').forEach(button=>button.classList.toggle('active',button.dataset.side===(op.lado||'compra')));selectedAsset=null;closeSuggestions();document.getElementById('assetTicker').value=op.ticker||'';const stamp=op.data_execucao||op.data||new Date().toISOString().slice(0,10);document.getElementById('opDateTime').value=String(stamp).slice(0,10);document.getElementById('opDate').value=String(stamp).slice(0,10);try{const details=typeof op.detalhes==='string'?JSON.parse(op.detalhes||'{}'):(op.detalhes||{});renderSpecificFields(op.tipo||'acao');Object.entries(details).forEach(([key,value])=>{const field=document.querySelector(`#opForm [name="detail_${CSS.escape(key)}"]`);if(field)field.value=value;});}catch(e){renderSpecificFields(op.tipo||'acao')}document.getElementById('opQuantity').value=op.quantidade??1;document.getElementById('opUnitPrice').value=String(op.preco??0).replace('.',',');document.getElementById('opCosts').value=String(op.custos??0).replace('.',',');updateOperationTotal();const submit=document.querySelector('#opForm .modalactions button.primary');if(submit)submit.textContent='Salvar alterações';}
-async function removeOperation(id){if(!await appConfirm('Excluir lançamento','Tem certeza de que deseja excluir este lançamento? Esta ação não pode ser desfeita.','Excluir lançamento'))return;try{await api('/api/operacoes/'+id,{method:'DELETE'});await refresh();toast('Lançamento excluído.')}catch(e){toast(e.message)}}async function removeGoal(id){if(!await appConfirm('Excluir meta','Esta meta será removida permanentemente.','Excluir meta'))return;try{await api('/api/metas/'+id,{method:'DELETE'});await refresh();toast('Meta excluída.')}catch(e){toast(e.message)}}
+function isPluggyOperation(op){try{const meta=typeof op?.detalhes==='string'?JSON.parse(op.detalhes||'{}'):(op?.detalhes||{});return String(meta?.origem||'').trim().toLowerCase()==='pluggy';}catch{return false;}}
+async function editOperation(id){const op=(state.operacoes||[]).find(x=>Number(x.id)===Number(id));if(!op){toast('Lançamento não encontrado.');return;}if(isPluggyOperation(op)){toast('Lançamentos importados pela Pluggy são somente leitura.');return;}editingOperationId=Number(id);document.getElementById('modalback').style.display='flex';document.getElementById('opForm').classList.remove('hidden');document.getElementById('provForm').classList.add('hidden');document.getElementById('metaForm').classList.add('hidden');document.getElementById('modalTitle').textContent='Editar lançamento';syncAssetTypeOptions();const typeSelect=document.getElementById('assetType');if(![...typeSelect.options].some(option=>option.value===(op.tipo||'acao'))){const option=document.createElement('option');option.value=op.tipo||'acao';option.textContent=labels[op.tipo]||op.tipo;typeSelect.appendChild(option);}typeSelect.value=op.tipo||'acao';document.getElementById('operationSide').value=op.lado||'compra';document.querySelectorAll('.operation-side').forEach(button=>button.classList.toggle('active',button.dataset.side===(op.lado||'compra')));selectedAsset=null;closeSuggestions();document.getElementById('assetTicker').value=op.ticker||'';const stamp=op.data_execucao||op.data||new Date().toISOString().slice(0,10);document.getElementById('opDateTime').value=String(stamp).slice(0,10);document.getElementById('opDate').value=String(stamp).slice(0,10);try{const details=typeof op.detalhes==='string'?JSON.parse(op.detalhes||'{}'):(op.detalhes||{});renderSpecificFields(op.tipo||'acao');Object.entries(details).forEach(([key,value])=>{const field=document.querySelector(`#opForm [name="detail_${CSS.escape(key)}"]`);if(field)field.value=value;});}catch(e){renderSpecificFields(op.tipo||'acao')}document.getElementById('opQuantity').value=op.quantidade??1;document.getElementById('opUnitPrice').value=String(op.preco??0).replace('.',',');document.getElementById('opCosts').value=String(op.custos??0).replace('.',',');updateOperationTotal();const submit=document.querySelector('#opForm .modalactions button.primary');if(submit)submit.textContent='Salvar alterações';}
+async function removeOperation(id){const op=(state.operacoes||[]).find(x=>Number(x.id)===Number(id));if(op&&isPluggyOperation(op)){toast('Lançamentos importados pela Pluggy são somente leitura.');return;}if(!await appConfirm('Excluir lançamento','Tem certeza de que deseja excluir este lançamento? Esta ação não pode ser desfeita.','Excluir lançamento'))return;try{await api('/api/operacoes/'+id,{method:'DELETE'});await refresh();toast('Lançamento excluído.')}catch(e){toast(e.message)}}async function removeGoal(id){if(!await appConfirm('Excluir meta','Esta meta será removida permanentemente.','Excluir meta'))return;try{await api('/api/metas/'+id,{method:'DELETE'});await refresh();toast('Meta excluída.')}catch(e){toast(e.message)}}
 
 // IRPF e DARFs: registros auxiliares separados das operações da carteira.
 function localISODate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
@@ -4792,19 +4824,20 @@ function renderOperationManagerRows(){
  document.getElementById('operationManagerSummary').textContent=`${rows.length} lançamento(s) encontrados · ${document.getElementById('operationManagerType').value?(labels[document.getElementById('operationManagerType').value]||document.getElementById('operationManagerType').value):'Todas as classes'} · ${document.getElementById('operationManagerTicker').value||'Todos os ativos'}`;
  if(!rows.length){host.innerHTML='<div class="empty">Nenhum lançamento encontrado para os filtros selecionados.</div>';return;}
  const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
- host.innerHTML=`<table class="data"><thead><tr><th>Data</th><th>Classe</th><th>Ativo</th><th>Operação</th><th>Quantidade</th><th>Preço</th><th>Total</th><th></th></tr></thead><tbody>${rows.slice().sort((a,b)=>String(b.data_execucao||b.data).localeCompare(String(a.data_execucao||a.data))).map(o=>`<tr><td>${escapeHTML(String(o.data_execucao||o.data||'').replace('T',' ').slice(0,16))}</td><td>${escapeHTML(labels[String(o.tipo||'outros').toLowerCase()]||o.tipo||'Outros')}</td><td><b>${escapeHTML(o.ticker)}</b></td><td class="${o.lado==='compra'?'green':'red'}">${o.lado==='compra'?'Compra':'Venda'}</td><td>${operationQuantity(o.quantidade)}</td><td>${money(o.preco)}</td><td>${money(Number(o.quantidade||0)*Number(o.preco||0)+Number(o.custos||0))}</td><td><div class="toolbar"><button class="ghost" type="button" onclick="closeOperationManager();editOperation(${Number(o.id)})">Editar</button><button class="ghost" type="button" onclick="removeManagedOperation(${Number(o.id)})">Excluir</button></div></td></tr>`).join('')}</tbody></table>`;
+ host.innerHTML=`<table class="data"><thead><tr><th>Data</th><th>Classe</th><th>Ativo</th><th>Operação</th><th>Quantidade</th><th>Preço</th><th>Total</th><th></th></tr></thead><tbody>${rows.slice().sort((a,b)=>String(b.data_execucao||b.data).localeCompare(String(a.data_execucao||a.data))).map(o=>`<tr><td>${escapeHTML(String(o.data_execucao||o.data||'').replace('T',' ').slice(0,16))}</td><td>${escapeHTML(labels[String(o.tipo||'outros').toLowerCase()]||o.tipo||'Outros')}</td><td><b>${escapeHTML(o.ticker)}</b></td><td class="${o.lado==='compra'?'green':'red'}">${o.lado==='compra'?'Compra':'Venda'}</td><td>${operationQuantity(o.quantidade)}</td><td>${money(o.preco)}</td><td>${money(Number(o.quantidade||0)*Number(o.preco||0)+Number(o.custos||0))}</td><td>${isPluggyOperation(o)?'<span class="tag" title="Importado pela Pluggy e protegido contra alterações">Somente leitura</span>':`<div class="toolbar"><button class="ghost" type="button" onclick="closeOperationManager();editOperation(${Number(o.id)})">Editar</button><button class="ghost" type="button" onclick="removeManagedOperation(${Number(o.id)})">Excluir</button></div>`}</td></tr>`).join('')}</tbody></table>`;
 }
 async function removeManagedOperation(id){
+ const op=managedOperations.find(x=>Number(x.id)===Number(id));if(op&&isPluggyOperation(op)){toast('Lançamentos importados pela Pluggy são somente leitura.');return;}
  if(!await appConfirm('Excluir lançamento','Confirma a exclusão deste lançamento? A operação será removida do histórico e dos cálculos da carteira.','Excluir lançamento'))return;
  try{await api('/api/operacoes/'+id,{method:'DELETE',skipAutoRefresh:true});await refresh();await loadOperationManager();toast('Lançamento excluído.');}catch(e){toast(e.message||'Falha ao excluir lançamento.');}
 }
 async function confirmDeleteManaged(scope){
  const type=document.getElementById('operationManagerType').value,ticker=document.getElementById('operationManagerTicker').value;
  if(scope==='ativo'&&(!type||!ticker)){toast('Selecione uma classe e um ativo para excluir os lançamentos.');return;}
- const rows=scope==='todas'?managedOperations:getManagedOperationSelection().filter(x=>String(x.tipo||'').toLowerCase()===type&&String(x.ticker||'').toUpperCase()===ticker);
+ const selected=scope==='todas'?managedOperations:getManagedOperationSelection().filter(x=>String(x.tipo||'').toLowerCase()===type&&String(x.ticker||'').toUpperCase()===ticker);const rows=selected.filter(x=>!isPluggyOperation(x));
  if(!rows.length){toast('Não há lançamentos para excluir.');return;}
  const title=scope==='todas'?'Excluir todos os lançamentos':'Excluir lançamentos do ativo';
- const message=scope==='todas'?`Você está prestes a excluir TODOS os ${rows.length} lançamentos da carteira, de todas as classes e ativos. Os saldos-base importados e os proventos independentes serão preservados. Esta ação não pode ser desfeita.`:`Você está prestes a excluir os ${rows.length} lançamentos de ${ticker} (${labels[type]||type}). Os demais ativos serão preservados. Esta ação não pode ser desfeita.`;
+ const protectedCount=selected.length-rows.length;const message=scope==='todas'?`Você está prestes a excluir ${rows.length} lançamento(s) editável(is). ${protectedCount} lançamento(s) da Pluggy serão preservados como somente leitura. Esta ação não pode ser desfeita.`:`Você está prestes a excluir ${rows.length} lançamento(s) editável(is) de ${ticker}. ${protectedCount} lançamento(s) da Pluggy serão preservados. Esta ação não pode ser desfeita.`;
  if(!await appConfirm(title,message,scope==='todas'?'Excluir tudo':'Excluir lançamentos'))return;
  try{const result=await api('/api/operacoes/gerenciar',{method:'DELETE',body:JSON.stringify(scope==='todas'?{escopo:'todas'}:{escopo:'ativo',tipo,ticker}),skipAutoRefresh:true});await refresh();await loadOperationManager();toast(`${result.excluidos||0} lançamento(s) excluído(s).`);}catch(e){toast(e.message||'Não foi possível excluir os lançamentos.');}
 }
@@ -5348,3 +5381,44 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 .asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint.positive::after{border-color:var(--green)!important}
 .asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint.negative::after{border-color:var(--red)!important}
 </style>
+
+
+/* v3.3.17: tooltip da variação em camada global, fora do overflow da tabela. */
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-money-trigger{
+ cursor:help!important;
+ border:0!important;
+ outline:0!important;
+ text-decoration:none!important;
+ position:relative;
+ z-index:auto!important;
+}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-money-trigger::after{
+ display:none!important;
+ content:none!important;
+}
+.variation-money-floating-tooltip{
+ position:fixed!important;
+ z-index:2147483647!important;
+ display:block;
+ box-sizing:border-box;
+ max-width:calc(100vw - 24px);
+ padding:11px 13px;
+ border:1px solid var(--line,#3b4352);
+ border-radius:9px;
+ background:var(--panel2,#20232c);
+ color:var(--text,#f4f6fa);
+ font-size:12px;
+ line-height:1.45;
+ font-weight:600;
+ text-align:left;
+ white-space:pre-line;
+ box-shadow:0 12px 30px #0009;
+ pointer-events:none;
+}
+.variation-money-floating-tooltip.is-positive{border-color:var(--green,#12c98b)}
+.variation-money-floating-tooltip.is-negative{border-color:var(--red,#ff5b78)}
+.asset-category .data.proportional-assets-table tr:hover td[data-col="variacao_dia"],
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"]:hover{
+ background:transparent!important;
+ box-shadow:none!important;
+}

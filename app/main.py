@@ -1887,6 +1887,16 @@ def exportar_operacoes_b3():
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+def is_pluggy_operation(row):
+    """Return True for Pluggy-imported operations, which are read-only."""
+    try:
+        details = row['detalhes'] if hasattr(row, 'keys') else row.get('detalhes')
+        meta = json.loads(details or '{}') if isinstance(details, (str, bytes)) else (details or {})
+        return isinstance(meta, dict) and str(meta.get('origem') or '').strip().lower() == 'pluggy'
+    except Exception:
+        return False
+
+
 @app.route('/api/operacoes', methods=['GET','POST'])
 def operacoes():
     if request.method == 'GET':
@@ -2001,7 +2011,8 @@ def excluir_operacoes_em_massa():
     payload=request.get_json(silent=True) or {}
     scope=str(payload.get('escopo') or '').lower()
     if scope=='todas':
-        ids=[int(r[0]) for r in con.execute('SELECT id FROM operacoes').fetchall()]
+        all_rows=con.execute('SELECT id,detalhes FROM operacoes').fetchall()
+        ids=[int(r['id']) for r in all_rows if not is_pluggy_operation(r)]
         ticker=''
         tipo=''
     elif scope=='ativo':
@@ -2009,7 +2020,8 @@ def excluir_operacoes_em_massa():
         ticker=str(payload.get('ticker') or '').strip().upper()
         if not tipo or not ticker:
             return json_error('Selecione a classe e o ativo para excluir os lançamentos.')
-        ids=[int(r[0]) for r in con.execute('SELECT id FROM operacoes WHERE lower(tipo)=? AND upper(ticker)=?',(tipo,ticker)).fetchall()]
+        asset_rows=con.execute('SELECT id,detalhes FROM operacoes WHERE lower(tipo)=? AND upper(ticker)=?',(tipo,ticker)).fetchall()
+        ids=[int(r['id']) for r in asset_rows if not is_pluggy_operation(r)]
     else:
         return json_error('Escopo de exclusão inválido.')
     try:
@@ -2030,7 +2042,8 @@ def excluir_operacoes_em_massa():
             chunk=ids[start:start+500]
             marks=','.join('?' for _ in chunk)
             con.execute(f'DELETE FROM operacoes WHERE id IN ({marks})',chunk)
-        pluggy_removed = cleanup_pluggy_asset_refs(scope, tipo, ticker, ids, pluggy_investment_ids)
+        # Pluggy-imported operations and their source cache are immutable and excluded above.
+        pluggy_removed = {'pluggy_investments': 0, 'pluggy_transactions': 0, 'pluggy_events': 0}
         if scope == 'todas':
             # Limpeza integral da carteira: lançamentos, snapshots/importações e cache de posições.
             # Mantém tokens, conexões Pluggy e transações bancárias para permitir nova sincronização.
@@ -2039,9 +2052,7 @@ def excluir_operacoes_em_massa():
             con.execute('DELETE FROM proventos')
             con.execute('DELETE FROM b3_importados')
             con.execute('DELETE FROM b3_import_lotes')
-            con.execute('DELETE FROM pluggy_imported_events')
-            con.execute('DELETE FROM pluggy_investment_transactions')
-            con.execute('DELETE FROM pluggy_investments')
+            # Preserve Pluggy source records and imported-event ledger.
             con.execute('DELETE FROM integracao_estado WHERE chave LIKE ?', ('snapshot_%',))
             pluggy_removed = {'pluggy_investments': pluggy_removed.get('pluggy_investments',0),
                               'pluggy_transactions': pluggy_removed.get('pluggy_transactions',0),
@@ -2058,14 +2069,16 @@ def excluir_operacoes_em_massa():
 
 @app.route('/api/operacoes/<int:op_id>', methods=['DELETE','PUT'])
 def delete_operacao(op_id):
+    current=db().execute('SELECT * FROM operacoes WHERE id=?',(op_id,)).fetchone()
+    if not current: return json_error('Lançamento não encontrado.',404)
+    if is_pluggy_operation(current):
+        return json_error('Lançamentos importados pela Pluggy são somente leitura e não podem ser editados ou excluídos.', 403)
     if request.method == 'DELETE':
         cleanup_b3_operation_refs([op_id])
         db().execute('DELETE FROM operacoes WHERE id=?', (op_id,))
         clear_seed_snapshot_when_empty()
         db().commit()
         return jsonify(ok=True)
-    current=db().execute('SELECT * FROM operacoes WHERE id=?',(op_id,)).fetchone()
-    if not current: return json_error('Lançamento não encontrado.',404)
     j=request.get_json(silent=True) or {}
     try:
         ticker=str(j.get('ticker',current['ticker'])).strip().upper()

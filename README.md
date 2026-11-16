@@ -174,3 +174,17 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - **Rentabilidade** usa o mesmo histórico e inclui os proventos recebidos.
 - Tooltip da variação informa o resultado financeiro em reais e a data da primeira compra.
 - Quando não há histórico Pluggy suficiente, os cálculos locais anteriores são mantidos.
+
+
+## v3.3.18
+
+- Corrigido o tooltip da coluna **Variação**: agora ele é renderizado em uma camada fixa diretamente no documento, fora dos contêineres da tabela, evitando cortes por `overflow`.
+- Posicionamento automático acima ou abaixo do valor, respeitando os limites da janela.
+- Removido o destaque/escurecimento da célula ao passar o mouse; a variação continua sem ação de clique.
+
+
+## v3.3.18
+- Proventos recebidos consolidados por prioridade de origem: lançamentos manuais, pagamentos identificados pela Pluggy, tabela B3 e demais APIs.
+- Somente eventos com pagamento confirmado e data efetiva até hoje entram nos totais, rentabilidade e metas.
+- Proventos futuros continuam vindo das fontes de mercado e lançamentos manuais, sem usar Pluggy.
+- Edição de lançamentos importados preserva a identificação de origem Pluggy. Exclusões manuais são respeitadas em sincronizações futuras.
