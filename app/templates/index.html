@@ -2947,10 +2947,18 @@ function openProvDistributionForBar(key,mode,status='Pago'){
  const back=document.getElementById('provDistributionBack');
  if(back){back.style.display='flex';setProvDistributionMode(provDistributionMode||'ativo');}
 }
+window.closeAllProventosMenus=function(except){
+ if(except!=='total' && typeof closeProvTotalMenu==='function')closeProvTotalMenu();
+ if(except!=='chartPeriod' && typeof closeProvChartPeriodMenu==='function')closeProvChartPeriodMenu();
+ if(except!=='history' && typeof closeProvHistoryMenus==='function')closeProvHistoryMenus();
+ if(except!=='myProv' && typeof closeMyProvMenus==='function')closeMyProvMenus();
+ if(except!=='select' && typeof window.__lwCloseSelectMenu==='function')window.__lwCloseSelectMenu();
+};
 function toggleProvTotalMenu(){
  const menu=document.getElementById('provTotalMenu'),trigger=document.getElementById('provTotalTrigger');
  if(!menu||!trigger)return;
  const opening=menu.classList.contains('hidden');
+ window.closeAllProventosMenus('total');
  menu.classList.toggle('hidden',!opening);trigger.setAttribute('aria-expanded',String(opening));
 }
 function closeProvTotalMenu(){
@@ -2966,6 +2974,7 @@ function toggleProvChartPeriodMenu(){
  const menu=document.getElementById('provChartPeriodMenu'),trigger=document.getElementById('provChartPeriodTrigger');
  if(!menu||!trigger)return;
  const opening=menu.classList.contains('hidden');
+ window.closeAllProventosMenus('chartPeriod');
  menu.classList.toggle('hidden',!opening);trigger.setAttribute('aria-expanded',String(opening));
 }
 function closeProvChartPeriodMenu(){
@@ -3001,6 +3010,7 @@ function toggleProvHistoryMenu(kind){
  const wraps={status:'provHistoryStatusWrap',type:'provHistoryTypeWrap',asset:'provHistoryAssetWrap'};
  const menu=document.getElementById(ids[kind]);if(!menu)return;
  const opening=menu.classList.contains('hidden');
+ window.closeAllProventosMenus('history');
  Object.values(ids).forEach(id=>document.getElementById(id)?.classList.add('hidden'));
  Object.values(wraps).forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
  if(opening){menu.classList.remove('hidden');document.querySelector(`#${wraps[kind]} .prov-history-trigger`)?.setAttribute('aria-expanded','true');}
@@ -3205,10 +3215,15 @@ function renderProventosDashboard(){
 
 let myProvPeriod='ano_atual',myProvMonthYear=new Date().getFullYear(),myProvTypes=[],myProvAssets=[],myProvPage=1;
 function setMyProvPage(page){myProvPage=Math.max(1,Number(page)||1);renderProventosDashboard();document.getElementById('myProvPagination')?.scrollIntoView({block:'nearest',behavior:'smooth'});}
+function closeMyProvMenus(){
+ ['myProvPeriodMenu','myProvTypeMenu','myProvAssetMenu'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));
+ ['myProvPeriodWrap','myProvTypeWrap','myProvAssetWrap'].forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
+}
 function toggleMyProvMenu(kind){
  const ids={period:'myProvPeriodMenu',type:'myProvTypeMenu',asset:'myProvAssetMenu'};
  const wraps={period:'myProvPeriodWrap',type:'myProvTypeWrap',asset:'myProvAssetWrap'};
  const target=document.getElementById(ids[kind]),opening=target?.classList.contains('hidden');
+ window.closeAllProventosMenus('myProv');
  Object.values(ids).forEach(id=>document.getElementById(id)?.classList.add('hidden'));
  Object.values(wraps).forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
  if(target&&opening){target.classList.remove('hidden');document.querySelector(`#${wraps[kind]} .prov-history-trigger`)?.setAttribute('aria-expanded','true');}
@@ -4512,6 +4527,7 @@ async function confirmB3Import(){
   openMenu.button.setAttribute('aria-expanded','false');
   openMenu=null;
  }
+ window.__lwCloseSelectMenu=closeMenu;
  function enhance(select){
   if(!select || select.dataset.lwCustomSelect==='1' || select.classList.contains('hidden') || select.disabled || select.multiple || select.closest('[hidden]'))return;
   const rect=select.getBoundingClientRect();
@@ -4592,6 +4608,7 @@ async function confirmB3Import(){
   }
   button.addEventListener('click',()=>{
    if(openMenu?.button===button){closeMenu();return;}
+   if(typeof window.closeAllProventosMenus==='function')window.closeAllProventosMenus('select');
    renderMenu();
   });
   button.addEventListener('keydown',event=>{
@@ -4611,6 +4628,9 @@ async function confirmB3Import(){
  });
  window.addEventListener('scroll',closeMenu,true);
  window.addEventListener('resize',closeMenu);
+ document.addEventListener('keydown',event=>{
+  if(event.key==='Escape' && typeof window.closeAllProventosMenus==='function')window.closeAllProventosMenus();
+ });
 })();
 </script>
 </body></html>
@@ -4805,5 +4825,35 @@ body.light-theme .lw-select-menu{
   background:#fff!important;
   border-color:#c7cfda!important;
 }
+
+
+/* v2.0.65 — menus exclusivos e paleta única na página Proventos */
+.prov-history-menu,.my-prov-period-menu,.prov-chart-period-menu,.prov-total-menu,.lw-select-menu{
+ background:#1d222d!important;
+ border:1px solid #3b4658!important;
+ border-radius:10px!important;
+ box-shadow:0 10px 24px rgba(0,0,0,.36)!important;
+}
+.prov-history-menu .history-option.active,
+.prov-history-menu .history-option[aria-selected="true"],
+.my-prov-period-menu .period-option.active,
+.prov-chart-period-menu .period-option.active{
+ background:#9ecbff!important;
+ color:#172033!important;
+ border-radius:5px!important;
+}
+.prov-chart-period-menu .period-option{
+ min-height:29px!important;padding:5px 8px!important;border-radius:5px!important;
+}
+.prov-chart-period-menu .period-title,
+.prov-chart-period-menu .period-section{color:#f3f5f8!important}
+body.light-theme .prov-history-menu,
+body.light-theme .my-prov-period-menu,
+body.light-theme .prov-chart-period-menu,
+body.light-theme .prov-total-menu{
+ background:#fff!important;border-color:#c7cfda!important;color:#202633!important;
+}
+body.light-theme .prov-chart-period-menu .period-title,
+body.light-theme .prov-chart-period-menu .period-section{color:#202633!important}
 
 </style>

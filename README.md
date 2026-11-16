@@ -104,3 +104,13 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Opções com altura uniforme e destaque azul com cantos levemente arredondados.
 - Largura do menu alinhada à largura do respectivo filtro.
 - Aplicado ao componente global de seletores simples, mantendo suporte aos temas escuro e claro.
+
+
+## v2.0.65
+
+### Correções nos filtros da página Proventos
+- Menus de filtros agora funcionam de forma exclusiva: abrir um fecha os demais.
+- Aplicada coordenação entre filtros de status, tipo, ativo, período e seletores personalizados.
+- Clique fora e tecla Esc fecham os menus abertos.
+- Padronizada a paleta dos menus expandidos, incluindo o seletor de período da Evolução de Proventos.
+- Mantidos os controles específicos de período, incluindo opções rápidas e seleção anual.
