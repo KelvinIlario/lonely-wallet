@@ -1875,52 +1875,47 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 @media(max-width:620px){.return-investor-chart-panel{min-height:440px}.return-main-chart{min-height:270px;padding:8px}.api-grid{grid-template-columns:1fr}.return-investor-filters select{min-width:0;flex:1}}
 
 
-/* v2.0.59 — posicionamento fixo das setas dos filtros de Proventos */
-.earnings-history-toolbar .prov-history-trigger,
-.my-provents-toolbar .prov-history-trigger{
- position:relative!important;
- padding-right:36px!important;
-}
-.earnings-history-toolbar .prov-history-trigger>.prov-total-chevron,
-.my-provents-toolbar .prov-history-trigger>.prov-total-chevron{
- position:absolute!important;
- top:50%!important;right:12px!important;
- display:inline-flex!important;align-items:center!important;justify-content:center!important;
- width:14px!important;height:14px!important;
- margin:0!important;flex:none!important;
- line-height:1!important;
- transform:translateY(-50%)!important;
- pointer-events:none;
-}
 
+/* v2.0.61 — padrão global de filtros e listas de opções */
+select:not([multiple]):not(.no-chevron){
+  -webkit-appearance:none!important;appearance:none!important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23929baa' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;
+  background-repeat:no-repeat!important;background-position:right 13px center!important;background-size:12px 12px!important;
+  padding-right:34px!important;
+}
+select:not([multiple]) option{background:#171a22!important;color:#f3f5f8!important}
+select:not([multiple]) option:checked{background:#9ecbff!important;color:#172033!important}
+body.light-theme select:not([multiple]){
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23657184' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;
+}
+body.light-theme select:not([multiple]) option{background:#fff!important;color:#202633!important}
+.prov-history-trigger .prov-total-chevron,.prov-chart-period-trigger .prov-total-chevron,.prov-total-trigger .prov-total-chevron{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;align-self:center!important;
+  flex:0 0 12px!important;width:12px!important;height:12px!important;margin:0 0 0 auto!important;padding:0!important;
+  position:static!important;inset:auto!important;transform:none!important;font-size:0!important;line-height:0!important;color:#929baa!important;
+}
+.prov-history-trigger .prov-total-chevron::before,.prov-chart-period-trigger .prov-total-chevron::before,.prov-total-trigger .prov-total-chevron::before{
+  content:"";display:block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin-top:-3px;
+}
+.prov-total-trigger[aria-expanded="true"] .prov-total-chevron{transform:rotate(180deg)!important}
+.prov-history-menu{
+  width:max-content!important;min-width:100%!important;max-width:min(260px,calc(100vw - 24px))!important;
+  max-height:min(65vh,360px)!important;overflow-y:auto!important;display:flex!important;flex-direction:column!important;gap:0!important;
+  padding:1px!important;border:1px solid #465164!important;border-radius:4px!important;background:#171a22!important;box-shadow:0 8px 20px #0005!important;
+}
+.prov-history-menu.hidden{display:none!important}
+.prov-history-menu .native-dropdown-option{
+  display:block!important;width:100%!important;min-height:27px!important;padding:5px 12px!important;border:0!important;border-radius:0!important;
+  background:transparent!important;color:#f3f5f8!important;font:inherit!important;font-size:13px!important;line-height:1.25!important;
+  text-align:left!important;white-space:nowrap!important;cursor:pointer!important;
+}
+.prov-history-menu .native-dropdown-option:hover,.prov-history-menu .native-dropdown-option.active,.prov-history-menu .native-dropdown-option[aria-selected="true"]{
+  background:#9ecbff!important;color:#172033!important;
+}
+body.light-theme .prov-history-menu{background:#fff!important;border-color:#c7cfda!important}
+body.light-theme .prov-history-menu .native-dropdown-option{color:#202633!important}
+body.light-theme .prov-history-menu .native-dropdown-option:hover,body.light-theme .prov-history-menu .native-dropdown-option.active,body.light-theme .prov-history-menu .native-dropdown-option[aria-selected="true"]{background:#9ecbff!important;color:#172033!important}
 
-/* v2.0.60 — setas centralizadas no eixo vertical e alinhadas à direita */
-.earnings-history-toolbar .prov-history-trigger,
-.my-provents-toolbar .prov-history-trigger{
-  display:flex!important;
-  align-items:center!important;
-  justify-content:flex-start!important;
-  gap:12px!important;
-  padding-right:13px!important;
-}
-.earnings-history-toolbar .prov-history-trigger>.prov-total-chevron,
-.my-provents-toolbar .prov-history-trigger>.prov-total-chevron{
-  position:static!important;
-  inset:auto!important;
-  top:auto!important;
-  right:auto!important;
-  transform:none!important;
-  display:inline-flex!important;
-  align-items:center!important;
-  justify-content:center!important;
-  align-self:center!important;
-  flex:0 0 16px!important;
-  width:16px!important;
-  height:16px!important;
-  margin:0 0 0 auto!important;
-  line-height:1!important;
-  pointer-events:none;
-}
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -2993,45 +2988,36 @@ function setProvHistoryStatus(value){
  const label=document.getElementById('provHistoryStatusLabel');if(label)label.textContent=labels[value]||labels.todos;
  renderProventosDashboard();
 }
-function toggleProvHistoryType(value,checked){
- if(checked){if(!provHistoryTypes.includes(value))provHistoryTypes.push(value);}
- else provHistoryTypes=provHistoryTypes.filter(x=>x!==value);
- renderProventosDashboard();
-}
-function toggleProvHistoryAsset(value,checked){
- if(checked){if(!provHistoryAssets.includes(value))provHistoryAssets.push(value);}
- else provHistoryAssets=provHistoryAssets.filter(x=>x!==value);
- renderProventosDashboard();
-}
-function setProvHistoryAllTypes(){
- provHistoryTypes=[];renderProventosDashboard();
-}
-function setProvHistoryAllAssets(){
- provHistoryAssets=[];renderProventosDashboard();
-}
-function filterProvHistoryAssetOptions(){
- const input=document.getElementById('provHistoryAssetSearch'),query=(input?.value||'').trim().toUpperCase();
- document.querySelectorAll('#provHistoryAssetOptions .history-option').forEach(option=>{
-  option.style.display=option.dataset.search.includes(query)?'flex':'none';
- });
-}
+function setProvHistoryType(value){provHistoryTypes=value==='todos'?[]:[value];renderProventosDashboard();}
+function setProvHistoryAsset(value){provHistoryAssets=value==='todos'?[]:[value];renderProventosDashboard();}
+function setProvHistoryAllTypes(){setProvHistoryType('todos');}
+function setProvHistoryAllAssets(){setProvHistoryAsset('todos');}
+
 function renderProvHistoryFilters(rows,eventType){
  const statusMenu=document.getElementById('provHistoryStatusMenu');
  if(statusMenu){
-  const choices=[['A receber','Futuros'],['Pago','Recebidos'],['todos','Todos']];
-  statusMenu.innerHTML='<div class="history-menu-title">Status dos proventos</div>'+choices.map(([value,label])=>`<button type="button" class="history-option ${provHistoryStatus===value?'active':''}" onclick="setProvHistoryStatus('${value}')"><span class="history-radio">${provHistoryStatus===value?'◉':'○'}</span>${label}${value==='todos'?' <b class="mini">Recebidos e Futuros</b>':''}</button>`).join('');
+  const choices=[['todos','Recebidos e Futuros'],['Pago','Recebidos'],['A receber','Futuros']];
+  statusMenu.innerHTML=choices.map(([value,label])=>`<button type="button" role="option" aria-selected="${provHistoryStatus===value}" class="native-dropdown-option ${provHistoryStatus===value?'active':''}" onclick="setProvHistoryStatus('${value}')">${label}</button>`).join('');
  }
  const typeMenu=document.getElementById('provHistoryTypeMenu');
  const typeValues=[...new Set([...((state.itens||[]).map(x=>x.tipo).filter(Boolean)),...rows.map(eventType).filter(Boolean)])].sort((a,b)=>(labels[a]||a).localeCompare(labels[b]||b,'pt-BR'));
  provHistoryTypes=provHistoryTypes.filter(x=>typeValues.includes(x));
  if(typeMenu){
-  typeMenu.innerHTML='<div class="history-menu-title">Tipo de ativo</div><label class="history-option"><input type="checkbox" '+(!provHistoryTypes.length?'checked':'')+' onchange="setProvHistoryAllTypes()">Todos os tipos</label>'+typeValues.map(value=>`<label class="history-option"><input type="checkbox" ${provHistoryTypes.includes(value)?'checked':''} onchange="toggleProvHistoryType('${escapeHTML(value)}',this.checked)">${escapeHTML(labels[value]||value)}</label>`).join('')+'<div class="history-menu-footer"><button type="button" onclick="setProvHistoryAllTypes()">Limpar seleção</button></div>';
+  const selected=provHistoryTypes[0]||'todos';
+  typeMenu.innerHTML=[['todos','Todos os tipos'],...typeValues.map(value=>[value,labels[value]||value])]
+   .map(([value,text])=>`<button type="button" role="option" aria-selected="${selected===value}" class="native-dropdown-option ${selected===value?'active':''}" onclick="setProvHistoryType('${escapeHTML(value)}')">${escapeHTML(text)}</button>`).join('');
+  const trigger=document.querySelector('#provHistoryTypeWrap .prov-history-trigger span:first-child');
+  if(trigger)trigger.textContent=selected==='todos'?'Tipo de ativo':(labels[selected]||selected);
  }
  const assetMenu=document.getElementById('provHistoryAssetMenu');
  const assetValues=[...new Set(rows.map(x=>x.ticker).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
  provHistoryAssets=provHistoryAssets.filter(x=>assetValues.includes(x));
  if(assetMenu){
-  assetMenu.innerHTML='<input id="provHistoryAssetSearch" class="history-search" type="search" placeholder="Pesquisar ativo..." oninput="filterProvHistoryAssetOptions()"><div id="provHistoryAssetOptions"><label class="history-option"><input type="checkbox" '+(!provHistoryAssets.length?'checked':'')+' onchange="setProvHistoryAllAssets()">Todos os ativos</label>'+assetValues.map(value=>`<label class="history-option" data-search="${escapeHTML(value.toUpperCase())}"><input type="checkbox" ${provHistoryAssets.includes(value)?'checked':''} onchange="toggleProvHistoryAsset('${escapeHTML(value)}',this.checked)">${escapeHTML(value)}</label>`).join('')+'</div><div class="history-menu-footer"><button type="button" onclick="setProvHistoryAllAssets()">Limpar seleção</button><span class="mini">'+(provHistoryAssets.length?provHistoryAssets.length+' selecionado(s)':'Todos')+'</span></div>';
+  const selected=provHistoryAssets[0]||'todos';
+  assetMenu.innerHTML=[['todos','Todos os ativos'],...assetValues.map(value=>[value,value])]
+   .map(([value,text])=>`<button type="button" role="option" aria-selected="${selected===value}" class="native-dropdown-option ${selected===value?'active':''}" onclick="setProvHistoryAsset('${escapeHTML(value)}')">${escapeHTML(text)}</button>`).join('');
+  const trigger=document.querySelector('#provHistoryAssetWrap .prov-history-trigger span:first-child');
+  if(trigger)trigger.textContent=selected==='todos'?'Ativos':selected;
  }
 }
 
@@ -3199,11 +3185,11 @@ function toggleMyProvMenu(kind){
 document.addEventListener('click',event=>{if(!event.target.closest('.my-prov-filter')){['myProvPeriodMenu','myProvTypeMenu','myProvAssetMenu'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));['myProvPeriodWrap','myProvTypeWrap','myProvAssetWrap'].forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));}});
 function setMyProvPeriod(value){myProvPeriod=value;myProvPage=1;renderProventosDashboard();}
 function setMyProvMonthYear(delta){myProvMonthYear=Math.max(1900,Math.min(2200,myProvMonthYear+delta));myProvPage=1;renderProventosDashboard();}
-function toggleMyProvType(value,checked){if(checked){if(!myProvTypes.includes(value))myProvTypes.push(value);}else myProvTypes=myProvTypes.filter(x=>x!==value);myProvPage=1;renderProventosDashboard();}
-function setMyProvAllTypes(){myProvTypes=[];myProvPage=1;renderProventosDashboard();}
-function toggleMyProvAsset(value,checked){if(checked){if(!myProvAssets.includes(value))myProvAssets.push(value);}else myProvAssets=myProvAssets.filter(x=>x!==value);myProvPage=1;renderProventosDashboard();}
-function setMyProvAllAssets(){myProvAssets=[];myProvPage=1;renderProventosDashboard();}
-function filterMyProvAssetOptions(){const q=(document.getElementById('myProvAssetSearch')?.value||'').trim().toUpperCase();document.querySelectorAll('#myProvAssetOptions .history-option[data-search]').forEach(el=>el.style.display=el.dataset.search.includes(q)?'':'none');}
+function setMyProvType(value){myProvTypes=value==='todos'?[]:[value];myProvPage=1;renderProventosDashboard();}
+function setMyProvAllTypes(){setMyProvType('todos');}
+function setMyProvAsset(value){myProvAssets=value==='todos'?[]:[value];myProvPage=1;renderProventosDashboard();}
+function setMyProvAllAssets(){setMyProvAsset('todos');}
+
 function filterMyProvents(rows,eventType){
  const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate()),startMonth=new Date(now.getFullYear(),now.getMonth(),1);
  const valid=rows.filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x.data_pagamento||'')));
@@ -3232,10 +3218,22 @@ function renderMyProvFilters(rows,eventType){
  if(menu)menu.innerHTML=`<div class="period-title">Período</div><div class="period-section"><div class="period-title">Filtros rápidos</div>${quick.map(([v,t])=>option(v,escapeHTML(t))).join('')}</div><div class="period-divider"></div><div class="period-section"><div class="period-title">Filtro mensal</div><div class="my-prov-month-nav"><button type="button" aria-label="Ano anterior" onclick="setMyProvMonthYear(-1)">‹</button><span>${myProvMonthYear}</span><button type="button" aria-label="Próximo ano" onclick="setMyProvMonthYear(1)">›</button></div><div class="period-months">${monthNames.map((m,i)=>option(`mes:${myProvMonthYear}:${String(i+1).padStart(2,'0')}`,m)).reverse().join('')}</div></div>`;
  const typeMenu=document.getElementById('myProvTypeMenu'),typeValues=[...new Set([...((state.itens||[]).map(x=>x.tipo).filter(Boolean)),...rows.map(eventType).filter(Boolean)])].sort((a,b)=>(labels[a]||a).localeCompare(labels[b]||b,'pt-BR'));
  myProvTypes=myProvTypes.filter(x=>typeValues.includes(x));
- if(typeMenu)typeMenu.innerHTML='<div class="history-menu-title">Tipo de ativo</div><label class="history-option"><input type="checkbox" '+(!myProvTypes.length?'checked':'')+' onchange="setMyProvAllTypes()">Todos os tipos</label>'+typeValues.map(v=>`<label class="history-option"><input type="checkbox" ${myProvTypes.includes(v)?'checked':''} onchange="toggleMyProvType('${escapeHTML(v)}',this.checked)">${escapeHTML(labels[v]||v)}</label>`).join('');
+ const selectedType=myProvTypes[0]||'todos';
+ if(typeMenu){
+  typeMenu.innerHTML=[['todos','Todos os tipos'],...typeValues.map(v=>[v,labels[v]||v])]
+   .map(([value,text])=>`<button type="button" role="option" aria-selected="${selectedType===value}" class="native-dropdown-option ${selectedType===value?'active':''}" onclick="setMyProvType('${escapeHTML(value)}')">${escapeHTML(text)}</button>`).join('');
+  const trigger=document.querySelector('#myProvTypeWrap .prov-history-trigger span:first-child');
+  if(trigger)trigger.textContent=selectedType==='todos'?'Tipo de ativo':(labels[selectedType]||selectedType);
+ }
  const assetMenu=document.getElementById('myProvAssetMenu'),assetValues=[...new Set(rows.map(x=>x.ticker).filter(Boolean))].sort();
  myProvAssets=myProvAssets.filter(x=>assetValues.includes(x));
- if(assetMenu)assetMenu.innerHTML='<input id="myProvAssetSearch" class="history-search" type="search" placeholder="Pesquisar ativo..." oninput="filterMyProvAssetOptions()"><div id="myProvAssetOptions"><label class="history-option"><input type="checkbox" '+(!myProvAssets.length?'checked':'')+' onchange="setMyProvAllAssets()">Todos os ativos</label>'+assetValues.map(v=>`<label class="history-option" data-search="${escapeHTML(v.toUpperCase())}"><input type="checkbox" ${myProvAssets.includes(v)?'checked':''} onchange="toggleMyProvAsset('${escapeHTML(v)}',this.checked)">${escapeHTML(v)}</label>`).join('')+'</div><div class="history-menu-footer"><button type="button" onclick="setMyProvAllAssets()">Limpar seleção</button><span class="mini">'+(myProvAssets.length?myProvAssets.length+' selecionado(s)':'Todos')+'</span></div>';
+ const selectedAsset=myProvAssets[0]||'todos';
+ if(assetMenu){
+  assetMenu.innerHTML=[['todos','Todos os ativos'],...assetValues.map(v=>[v,v])]
+   .map(([value,text])=>`<button type="button" role="option" aria-selected="${selectedAsset===value}" class="native-dropdown-option ${selectedAsset===value?'active':''}" onclick="setMyProvAsset('${escapeHTML(value)}')">${escapeHTML(text)}</button>`).join('');
+  const trigger=document.querySelector('#myProvAssetWrap .prov-history-trigger span:first-child');
+  if(trigger)trigger.textContent=selectedAsset==='todos'?'Ativos':selectedAsset;
+ }
 }
 function openProvDistributionModal(){
  const back=document.getElementById('provDistributionBack');if(!back)return;
@@ -4549,4 +4547,45 @@ body.light-theme .prov-chart-period-menu,body.light-theme .prov-total-menu{
   line-height:1!important;
   pointer-events:none;
 }
+
+/* v2.0.61 — padrão global de filtros e listas de opções */
+select:not([multiple]):not(.no-chevron){
+  -webkit-appearance:none!important;appearance:none!important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23929baa' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;
+  background-repeat:no-repeat!important;background-position:right 13px center!important;background-size:12px 12px!important;
+  padding-right:34px!important;
+}
+select:not([multiple]) option{background:#171a22!important;color:#f3f5f8!important}
+select:not([multiple]) option:checked{background:#9ecbff!important;color:#172033!important}
+body.light-theme select:not([multiple]){
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23657184' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;
+}
+body.light-theme select:not([multiple]) option{background:#fff!important;color:#202633!important}
+.prov-history-trigger .prov-total-chevron,.prov-chart-period-trigger .prov-total-chevron,.prov-total-trigger .prov-total-chevron{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;align-self:center!important;
+  flex:0 0 12px!important;width:12px!important;height:12px!important;margin:0 0 0 auto!important;padding:0!important;
+  position:static!important;inset:auto!important;transform:none!important;font-size:0!important;line-height:0!important;color:#929baa!important;
+}
+.prov-history-trigger .prov-total-chevron::before,.prov-chart-period-trigger .prov-total-chevron::before,.prov-total-trigger .prov-total-chevron::before{
+  content:"";display:block;width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin-top:-3px;
+}
+.prov-total-trigger[aria-expanded="true"] .prov-total-chevron{transform:rotate(180deg)!important}
+.prov-history-menu{
+  width:max-content!important;min-width:100%!important;max-width:min(260px,calc(100vw - 24px))!important;
+  max-height:min(65vh,360px)!important;overflow-y:auto!important;display:flex!important;flex-direction:column!important;gap:0!important;
+  padding:1px!important;border:1px solid #465164!important;border-radius:4px!important;background:#171a22!important;box-shadow:0 8px 20px #0005!important;
+}
+.prov-history-menu.hidden{display:none!important}
+.prov-history-menu .native-dropdown-option{
+  display:block!important;width:100%!important;min-height:27px!important;padding:5px 12px!important;border:0!important;border-radius:0!important;
+  background:transparent!important;color:#f3f5f8!important;font:inherit!important;font-size:13px!important;line-height:1.25!important;
+  text-align:left!important;white-space:nowrap!important;cursor:pointer!important;
+}
+.prov-history-menu .native-dropdown-option:hover,.prov-history-menu .native-dropdown-option.active,.prov-history-menu .native-dropdown-option[aria-selected="true"]{
+  background:#9ecbff!important;color:#172033!important;
+}
+body.light-theme .prov-history-menu{background:#fff!important;border-color:#c7cfda!important}
+body.light-theme .prov-history-menu .native-dropdown-option{color:#202633!important}
+body.light-theme .prov-history-menu .native-dropdown-option:hover,body.light-theme .prov-history-menu .native-dropdown-option.active,body.light-theme .prov-history-menu .native-dropdown-option[aria-selected="true"]{background:#9ecbff!important;color:#172033!important}
+
 </style>

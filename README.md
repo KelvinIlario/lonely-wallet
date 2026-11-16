@@ -59,3 +59,14 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Corrigido o alinhamento vertical das setas dos filtros em **Histórico mensal**.
 - Setas posicionadas no centro vertical dos campos e alinhadas à direita, dentro dos filtros.
 - Mantido o estilo e o espaçamento dos demais elementos da página.
+
+
+## v2.0.61
+
+### Padronização global dos filtros
+- Unificado o chevron dos filtros fechados, com traço fino, centralização vertical e alinhamento à direita.
+- Aplicado o mesmo padrão aos campos select do projeto, incluindo filtros e formulários.
+- Padronizadas as listas nativas de opções para tema escuro e claro, com destaque azul para a opção selecionada.
+- Os menus de **Histórico Mensal** e **Meus Proventos** agora usam listas retangulares de texto, sem checkboxes.
+- Os filtros de tipo de ativo e ativo passaram a permitir uma seleção por vez, com opção para mostrar todos.
+- Mantido o seletor de período com seu layout próprio de opções rápidas e filtro mensal.
