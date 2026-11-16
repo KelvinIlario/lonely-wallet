@@ -1,4 +1,4 @@
-import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid
+import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil
 from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
 from zoneinfo import ZoneInfo
@@ -8,7 +8,10 @@ from openpyxl import load_workbook
 from flask import Flask, g, jsonify, render_template, request
 
 app = Flask(__name__)
-DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
+# Dados da carteira ficam em um banco próprio; segredos de APIs ficam em tokens.db.
+DB_PATH = os.environ.get('ASSETS_DB_PATH', '/data/ativos.db')
+LEGACY_DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
+TOKEN_DB_PATH = os.environ.get('TOKEN_DB_PATH', '/data/tokens.db')
 TOKEN = os.environ.get('BRAPI_TOKEN') or os.environ.get('BRAPI_API_KEY', '')
 API_KEY_FILE = os.environ.get('API_KEYS_KEY_FILE', '/data/.api-credentials.key')
 TZ = ZoneInfo('America/Sao_Paulo')
@@ -33,11 +36,62 @@ def db():
     return g.db
 
 
+def token_db():
+    if 'token_db' not in g:
+        os.makedirs(os.path.dirname(TOKEN_DB_PATH) or '.', exist_ok=True)
+        g.token_db = sqlite3.connect(TOKEN_DB_PATH)
+        g.token_db.row_factory = sqlite3.Row
+    return g.token_db
+
+
 @app.teardown_appcontext
 def close_db(_):
     con = g.pop('db', None)
     if con:
         con.close()
+    secrets = g.pop('token_db', None)
+    if secrets:
+        secrets.close()
+
+
+def prepare_database_files():
+    os.makedirs(os.path.dirname(DB_PATH) or '.', exist_ok=True)
+    if os.path.abspath(DB_PATH) != os.path.abspath(LEGACY_DB_PATH) and not os.path.exists(DB_PATH) and os.path.exists(LEGACY_DB_PATH):
+        shutil.copy2(LEGACY_DB_PATH, DB_PATH)
+    os.makedirs(os.path.dirname(TOKEN_DB_PATH) or '.', exist_ok=True)
+    con = sqlite3.connect(TOKEN_DB_PATH)
+    con.execute('''CREATE TABLE IF NOT EXISTS api_credentials (
+        provider TEXT PRIMARY KEY, token_encrypted TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+    )''')
+    con.commit()
+    con.close()
+
+
+def migrate_api_credentials():
+    if not os.path.exists(DB_PATH):
+        return
+    assets = sqlite3.connect(DB_PATH)
+    assets.row_factory = sqlite3.Row
+    try:
+        exists = assets.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_credentials'").fetchone()
+        if not exists:
+            return
+        rows = assets.execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()
+        if rows:
+            secrets = sqlite3.connect(TOKEN_DB_PATH)
+            secrets.executemany(
+                'INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) '
+                'ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted, '
+                'enabled=excluded.enabled,updated_at=excluded.updated_at',
+                [(r['provider'],r['token_encrypted'],r['enabled'],r['updated_at']) for r in rows]
+            )
+            secrets.commit()
+            secrets.close()
+        assets.execute('DELETE FROM api_credentials')
+        assets.commit()
+    finally:
+        assets.close()
 
 
 def init_db():
@@ -116,12 +170,6 @@ def init_db():
     CREATE TABLE IF NOT EXISTS integracao_estado (
       chave TEXT PRIMARY KEY,
       valor TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS api_credentials (
-      provider TEXT PRIMARY KEY,
-      token_encrypted TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS b3_importados (
       fingerprint TEXT PRIMARY KEY,
@@ -289,13 +337,8 @@ def init_db():
         elif existing_snapshot_count:
             lifecycle_value = 'active'
         elif operations_count > 0:
-            con.executemany(
-                'INSERT OR IGNORE INTO saldos_importados '
-                '(ticker,tipo,quantidade,preco_medio,preco_base,data_base,nome,origem) '
-                'VALUES(?,?,?,?,?,?,?,?)',
-                [(*row[:5], snapshot_date, row[5], snapshot_origin) for row in snapshot_rows]
-            )
-            lifecycle_value = 'active'
+            # Não recriar posições históricas fixas em uma carteira nova/limpa.
+            lifecycle_value = 'empty'
         else:
             # Instalação vazia: não plantar posições pré-cadastradas.
             lifecycle_value = 'empty'
@@ -322,7 +365,9 @@ def init_db():
     con.commit(); con.close()
 
 
+prepare_database_files()
 init_db()
+migrate_api_credentials()
 
 API_PROVIDERS = {
     'pluggy': {'name':'Pluggy', 'category':'Open Finance · contas e investimentos', 'description':'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.', 'auth':True, 'credential_type':'client_id_secret', 'url':'https://dashboard.pluggy.ai/', 'docs':'https://docs.pluggy.ai/'},
@@ -355,7 +400,7 @@ def _api_fernet():
 
 def _get_api_token(provider):
     try:
-        row = db().execute('SELECT token_encrypted,enabled FROM api_credentials WHERE provider=?', (provider,)).fetchone()
+        row = token_db().execute('SELECT token_encrypted,enabled FROM api_credentials WHERE provider=?', (provider,)).fetchone()
         if row and row['enabled']:
             return _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
     except (InvalidToken, OSError, ValueError):
@@ -368,7 +413,7 @@ def _get_api_token(provider):
 def _brapi_token():
     # Um token cadastrado e desativado deve prevalecer sobre o fallback do ambiente.
     try:
-        row = db().execute('SELECT enabled FROM api_credentials WHERE provider=?', ('brapi',)).fetchone()
+        row = token_db().execute('SELECT enabled FROM api_credentials WHERE provider=?', ('brapi',)).fetchone()
         if row is not None and not row['enabled']:
             return ''
     except Exception:
@@ -933,7 +978,7 @@ def pluggy_sync():
 
 @app.route('/api/integracoes', methods=['GET'])
 def api_integrations_list():
-    rows = {row['provider']: row for row in db().execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()}
+    rows = {row['provider']: row for row in token_db().execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()}
     providers = []
     for key, meta in API_PROVIDERS.items():
         row = rows.get(key)
@@ -957,7 +1002,7 @@ def api_integrations_save(provider):
     if provider not in API_PROVIDERS or not API_PROVIDERS[provider]['auth']:
         return jsonify({'error':'Este provedor não aceita token nesta tela.'}), 400
     if request.method == 'DELETE':
-        db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); db().commit()
+        token_db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); token_db().commit()
         if provider == 'pluggy': PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
         if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
@@ -965,14 +1010,14 @@ def api_integrations_save(provider):
     payload = request.get_json(silent=True) or {}
     if 'enabled' in payload and not any(k in payload for k in ('token','client_id','client_secret')):
         enabled = 1 if bool(payload.get('enabled')) else 0
-        db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?',
+        token_db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?',
                      (enabled, datetime.now(TZ).isoformat(timespec='seconds'), provider))
-        db().commit()
+        token_db().commit()
         if provider == 'pluggy' and not enabled:
             PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
         if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
-        return jsonify({'ok':True,'enabled':bool(enabled),'configured':bool(db().execute('SELECT 1 FROM api_credentials WHERE provider=?',(provider,)).fetchone())})
+        return jsonify({'ok':True,'enabled':bool(enabled),'configured':bool(token_db().execute('SELECT 1 FROM api_credentials WHERE provider=?',(provider,)).fetchone())})
     if provider == 'pluggy':
         client_id = str(payload.get('client_id') or '').strip()
         client_secret = str(payload.get('client_secret') or '').strip()
@@ -980,18 +1025,18 @@ def api_integrations_save(provider):
             return jsonify({'error':'Informe Client ID e Client Secret.'}), 400
         packed = json.dumps({'client_id':client_id,'client_secret':client_secret}, separators=(',',':'))
         encrypted = _api_fernet().encrypt(packed.encode()).decode()
-        db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', ('pluggy',encrypted,1,datetime.now(TZ).isoformat(timespec='seconds')))
-        db().commit()
+        token_db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', ('pluggy',encrypted,1,datetime.now(TZ).isoformat(timespec='seconds')))
+        token_db().commit()
         PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
         return jsonify({'ok':True,'configured':True})
     token = str(payload.get('token') or '').strip()
     enabled = bool(payload.get('enabled', True))
     if token:
         encrypted = _api_fernet().encrypt(token.encode()).decode()
-        db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', (provider,encrypted,1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds')))
+        token_db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', (provider,encrypted,1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds')))
     else:
-        db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
-    db().commit()
+        token_db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
+    token_db().commit()
     if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
         CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
     return jsonify({'ok':True,'configured':bool(_get_api_token(provider))})
@@ -1664,6 +1709,23 @@ def excluir_operacoes_em_massa():
             marks=','.join('?' for _ in chunk)
             con.execute(f'DELETE FROM operacoes WHERE id IN ({marks})',chunk)
         pluggy_removed = cleanup_pluggy_asset_refs(scope, tipo, ticker, ids, pluggy_investment_ids)
+        if scope == 'todas':
+            # Limpeza integral da carteira: lançamentos, snapshots/importações e cache de posições.
+            # Mantém tokens, conexões Pluggy e transações bancárias para permitir nova sincronização.
+            con.execute('DELETE FROM saldos_importados')
+            con.execute('DELETE FROM proventos_api')
+            con.execute('DELETE FROM proventos')
+            con.execute('DELETE FROM b3_importados')
+            con.execute('DELETE FROM b3_import_lotes')
+            con.execute('DELETE FROM pluggy_imported_events')
+            con.execute('DELETE FROM pluggy_investment_transactions')
+            con.execute('DELETE FROM pluggy_investments')
+            con.execute('DELETE FROM integracao_estado WHERE chave LIKE ?', ('snapshot_%',))
+            pluggy_removed = {'pluggy_investments': pluggy_removed.get('pluggy_investments',0),
+                              'pluggy_transactions': pluggy_removed.get('pluggy_transactions',0),
+                              'pluggy_events': pluggy_removed.get('pluggy_events',0)}
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear()
+            PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         clear_seed_snapshot_when_empty()
         con.commit()
     except Exception:

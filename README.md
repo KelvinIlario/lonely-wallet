@@ -1,4 +1,4 @@
-# Lonely Wallet v3.0.4
+# Lonely Wallet v3.2.1
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
 
@@ -69,3 +69,21 @@ A versão foi verificada por compilação sintática Python, verificação sint�
 - Atualiza o favicon do navegador com o ícone arredondado.
 - O gerenciamento de lançamentos também remove o cache de investimentos e movimentações de investimento vinculados à Pluggy.
 - A exclusão de todos os lançamentos remove os registros de investimentos sincronizados e eventos importados da Pluggy, preservando conexões, credenciais, contas e transações bancárias.
+
+
+## v3.2.1
+
+- Substitui o ícone principal pela arte enviada, mantendo o fundo preto quadrado.
+- Atualiza o ícone da tela de inicialização com a nova identidade visual.
+- Atualiza o favicon do navegador com máscara de cantos arredondados.
+- Mantém o Docker Compose/YAML da versão anterior sem alterações.
+- Preserva o volume `/data`, o banco SQLite e as credenciais existentes.
+
+
+## Armazenamento v3.3.0
+
+A partir desta versão, o volume persistente `/data` contém dois bancos SQLite: `ativos.db` (carteira, lançamentos, posições, proventos e dados importados) e `tokens.db` (credenciais de APIs criptografadas). A chave de criptografia permanece em `/data/.api-credentials.key`.
+
+Na primeira inicialização, se `ativos.db` ainda não existir e `carteira.db` estiver presente, o sistema copia o banco legado para `ativos.db` e migra as credenciais para `tokens.db`, sem apagar o arquivo legado. Mantenha o volume `/DATA/AppData/lonely-wallet/data:/data` ao atualizar. Não remova `carteira.db`, `ativos.db`, `tokens.db` nem `.api-credentials.key` manualmente durante a migração.
+
+A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, posições e movimentações de investimento importadas pela Pluggy, proventos e referências de importação B3. Ela preserva credenciais, conexões Pluggy, contas e transações bancárias para permitir uma nova sincronização.
