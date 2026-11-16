@@ -1786,6 +1786,40 @@ body.light-theme .earnings-history-toolbar .prov-history-menu .history-search,bo
 body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!important;color:#202633!important}body.light-theme .my-provents-toolbar .my-prov-month-nav button{color:#202633!important}
 @media(max-width:760px){.earnings-history-toolbar,.my-provents-toolbar{gap:8px}#provHistoryStatusWrap,#myProvPeriodWrap{width:100%}#provHistoryTypeWrap,#provHistoryAssetWrap,#myProvTypeWrap,#myProvAssetWrap{width:calc(50% - 4px)}.earnings-history-toolbar>#provHistoryTotal,.my-provents-toolbar>#myProvTotal{grid-column:1/-1}}
 
+
+/* v2.0.52 — reconstrução da página Rentabilidade baseada na referência */
+.return-investor-layout{grid-template-columns:minmax(205px,215px) minmax(0,1fr);gap:14px;align-items:stretch;margin:0 0 20px}
+.return-investor-sidebar{display:grid;grid-template-rows:repeat(3,minmax(112px,1fr));gap:14px;align-content:stretch}
+.return-investor-sidebar .return-summary-card{min-height:0;padding:14px;gap:7px;align-content:start}
+.return-investor-sidebar .return-summary-card>b{font-size:13px}
+.return-investor-sidebar .return-summary-card>span{font-size:11px}
+.return-investor-sidebar .return-summary-card>strong{font-size:19px;line-height:1.25}
+.return-investor-sidebar .return-summary-card>small{font-size:11px;line-height:1.35}
+.return-investor-sidebar .return-summary-card .return-card-comparison{display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--muted)}
+.return-investor-chart-panel{min-width:0;padding:0;overflow:hidden}
+.return-investor-head{min-height:64px;align-items:center;gap:14px;padding:14px 16px;margin:0;border-bottom:1px solid var(--line)}
+.return-investor-head h2{font-size:16px;margin:0}
+.return-investor-filters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.return-investor-filters select{min-width:145px;height:36px}
+.return-chart-legend{display:flex;justify-content:center;align-items:center;gap:12px 15px;flex-wrap:wrap;padding:13px 12px 0;color:var(--muted);font-size:10px}
+.return-chart-legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.return-chart-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;background:#8da8ed}
+.return-chart-legend .return-legend-muted{opacity:.48}
+.return-chart-legend .return-legend-muted i{background:#9ca3af}
+.return-main-chart{height:320px;padding:8px 18px 16px}
+.return-chart-note{text-align:center;color:var(--muted);font-size:10px;padding:0 14px 13px;line-height:1.45}
+.return-monthly-panel{padding:0;overflow:hidden}
+.return-monthly-panel>.panelhead{padding:17px 16px;margin:0;border-bottom:1px solid var(--line)}
+.return-monthly-panel .tablewrap{overflow-x:auto}
+.return-monthly-table{min-width:960px}
+.return-monthly-table th,.return-monthly-table td{text-align:center;white-space:nowrap;padding:11px 9px}
+.return-monthly-table th:first-child,.return-monthly-table td:first-child{text-align:left;font-weight:650}
+.return-monthly-table th:nth-last-child(-n+2),.return-monthly-table td:nth-last-child(-n+2){background:var(--panel2);font-weight:700}
+.return-monthly-table td.return-empty-cell{color:var(--muted)}
+.return-monthly-table .return-positive{color:#00c995}.return-monthly-table .return-negative{color:#f06b82}
+@media(max-width:900px){.return-investor-layout{grid-template-columns:1fr}.return-investor-sidebar{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:1fr}.return-main-chart{height:300px}}
+@media(max-width:620px){.return-investor-sidebar{grid-template-columns:1fr}.return-investor-head{align-items:stretch;flex-direction:column}.return-investor-filters{width:100%}.return-investor-filters select{flex:1;min-width:0}.return-main-chart{height:260px;padding:6px 8px 12px}.return-chart-legend{gap:8px 10px}}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1866,14 +1900,16 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 <div class="distribution-footer"><span>As metas de distribuição são independentes dos valores atuais da carteira.</span><span id="distributionStatus" class="mini">Alterações ainda não salvas</span></div>
 </section>
 <section id="page-rentabilidade" class="page hidden">
-<div class="pagehead"><div><h1>Rentabilidade</h1><div class="sub">Acompanhe o desempenho da carteira e o resultado de cada posição.</div></div></div>
-<div class="return-dashboard">
- <aside class="return-sidebar" id="returnSummaryCards"></aside>
- <div class="return-main">
-  <div class="panel section"><div class="panelhead"><h2>Rentabilidade por ativo</h2><span class="mini">Retorno atual calculado sobre o custo de aquisição</span></div><div class="chartbox return-main-chart"><canvas id="returnPerformanceChart"></canvas></div></div>
+<div class="return-dashboard return-investor-layout">
+ <aside class="return-sidebar return-investor-sidebar" id="returnSummaryCards"></aside>
+ <div class="panel return-investor-chart-panel">
+  <div class="panelhead return-investor-head"><h2>Rentabilidade comparada com índices</h2><div class="toolbar return-investor-filters"><select id="returnPeriodFilter" aria-label="Período da rentabilidade" onchange="renderRentabilidadePage()"><option value="all">Desde o início</option><option value="12">Últimos 12 meses</option></select><select id="returnTypeFilter" aria-label="Tipo de ativo" onchange="renderRentabilidadePage()"><option value="todos">Todos os tipos</option></select></div></div>
+  <div class="return-chart-legend"><span><i class="return-legend-portfolio"></i>Rentabilidade</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>CDI</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IPCA</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IFIX</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IBOV</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>SMLL</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IDIV</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IVVB11</span></div>
+  <div class="chartbox return-main-chart"><canvas id="returnPerformanceChart"></canvas></div>
+  <div id="returnChartNote" class="return-chart-note">A linha representa o retorno acumulado calculado com o histórico disponível da carteira. Índices de referência serão exibidos quando suas séries históricas estiverem conectadas.</div>
  </div>
 </div>
-<p class="notice">O gráfico mostra a rentabilidade atual por ativo. A comparação histórica com CDI, IPCA e Ibovespa depende de séries históricas confiáveis; esses índices não são estimados nem simulados.</p>
+<div class="panel section return-monthly-panel"><div class="panelhead"><h2>Rentabilidade</h2><span id="returnTableNote" class="mini"></span></div><div class="tablewrap"><table class="data return-monthly-table"><thead><tr><th>Ano</th><th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th><th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th><th>Retorno anual</th><th>Acumulado</th></tr></thead><tbody id="returnMonthlyRows"></tbody></table></div></div>
 </section>
 <section id="page-lancamentos" class="page hidden">
 <div class="pagehead"><div><h1>Lançamentos</h1><div class="sub">Consolidação de compras, vendas e histórico das operações cadastradas.</div></div><button class="primary" onclick="openModal('op')">＋ Novo lançamento</button></div>
@@ -3310,6 +3346,66 @@ function renderPatrimonyDashboard(){
   chart(canvasId,'doughnut',{labels:group.map(item=>item.ticker),datasets:[{data:group.map(item=>Number(item.valor_atual||item.investido||0)),backgroundColor:assetColors,borderWidth:0,hoverOffset:4}]},{cutout:'64%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)}`}}}});
  });
 }
+let returnPageInitialized=false;
+function getReturnPerformance(){
+ const selected=document.getElementById('returnTypeFilter')?.value||'todos';
+ return selected==='todos'?(state.rentabilidade_historica||{}):(state.rentabilidade_por_tipo||{})[selected]||{};
+}
+function returnMonthlyRows(performance){
+ const cumulative=Array.isArray(performance.series_total)?performance.series_total:[];
+ const rows=[];let previousFactor=1;
+ cumulative.forEach(point=>{
+  const currentFactor=1+Number(point.valor||0)/100;
+  const monthlyFactor=previousFactor>0?currentFactor/previousFactor:1;
+  const [year,month]=String(point.mes||'').split('-').map(Number);
+  if(year&&month>=1&&month<=12)rows.push({year,month,monthly:(monthlyFactor-1)*100,cumulative:Number(point.valor||0)});
+  previousFactor=currentFactor;
+ });
+ return rows;
+}
+function renderRentabilidadePage(){
+ const typeSelect=document.getElementById('returnTypeFilter');
+ if(!typeSelect)return;
+ const available=[...new Set((state.itens||[]).map(x=>String(x.tipo||'').toLowerCase()).filter(Boolean))].sort();
+ const previous=typeSelect.value||'todos';
+ typeSelect.innerHTML='<option value="todos">Todos os tipos</option>'+available.map(key=>`<option value="${escapeHTML(key)}">${escapeHTML(labels[key]||key)}</option>`).join('');
+ typeSelect.value=available.includes(previous)?previous:'todos';
+ const performance=getReturnPerformance();
+ const monthly=returnMonthlyRows(performance);
+ const period=document.getElementById('returnPeriodFilter')?.value||'all';
+ const visible=period==='12'?monthly.slice(-12):monthly;
+ const last=monthly.length?monthly[monthly.length-1].monthly:null;
+ const summary=state.resumo||{};
+ const total=performance.rentabilidade_total!==undefined&&performance.rentabilidade_total!==null?Number(performance.rentabilidade_total):Number(summary.lucro_pct||0);
+ const twelve=performance.rentabilidade_12m!==undefined&&performance.rentabilidade_12m!==null?Number(performance.rentabilidade_12m):null;
+ const hasSeries=monthly.length>0;
+ const coverage=performance.historico_parcial?'Histórico parcial, conforme dados disponíveis':performance.historico_completo?'Histórico completo disponível':'Histórico disponível limitado';
+ const cards=document.getElementById('returnSummaryCards');
+ if(cards)cards.innerHTML=`
+  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total>=0?'green':'red'}">${pct(total)} ${total>=0?'↗':'↘'}</strong><small>Resultado financeiro: ${brl(summary.lucro||0)}</small><small class="return-card-comparison">Comparação com CDI <span>Não disponível</span></small></div>
+  <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${twelve===null?'':twelve>=0?'green':'red'}">${twelve===null?'—':`${pct(twelve)} ${twelve>=0?'↗':'↘'}`}</strong><small>${twelve===null?'Não há 12 meses completos de histórico':'Retorno acumulado no período'}</small><small class="return-card-comparison">Comparação com CDI <span>Não disponível</span></small></div>
+  <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':`${pct(last)} ${last>=0?'↗':'↘'}`}</strong><small>${last===null?'Histórico mensal indisponível':'Retorno do último mês calculado'}</small><small class="return-card-comparison">${coverage}</small></div>`;
+ const labelsX=visible.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`);
+ const values=visible.map(x=>Number(x.cumulative.toFixed(4)));
+ const note=document.getElementById('returnChartNote');
+ if(note)note.textContent=typeSelect.value==='todos'?'A linha representa o retorno acumulado da carteira com o histórico disponível. CDI, IPCA, IFIX, IBOV, SMLL, IDIV e IVVB11 ainda não possuem séries conectadas e não são simulados.':`Série histórica calculada somente para ${labels[typeSelect.value]||typeSelect.value}, com os dados disponíveis. Os índices de referência ainda não estão conectados.`;
+ chart('returnPerformanceChart','line',{labels:labelsX,datasets:[{label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false}]},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>pct(ctx.raw)}}},interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#aab3c2',maxRotation:0,autoSkip:true},grid:{display:false}},y:{ticks:{color:'#aab3c2',callback:v=>`${Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})}%`},grid:{color:'#383e49'}}}});
+ const yearGroups=new Map();
+ monthly.forEach(row=>{if(!yearGroups.has(row.year))yearGroups.set(row.year,[]);yearGroups.get(row.year).push(row);});
+ const tbody=document.getElementById('returnMonthlyRows');
+ if(tbody){
+  const years=[...yearGroups.keys()].sort((a,b)=>b-a);
+  tbody.innerHTML=years.length?years.map(year=>{
+   const entries=yearGroups.get(year),byMonth=new Map(entries.map(x=>[x.month,x]));
+   const annualFactor=entries.reduce((factor,x)=>factor*(1+x.monthly/100),1),annual=(annualFactor-1)*100;
+   const lastEntry=entries[entries.length-1];
+   const cells=Array.from({length:12},(_,index)=>{const item=byMonth.get(index+1);return item?`<td class="${item.monthly>=0?'return-positive':'return-negative'}">${pct(item.monthly)}</td>`:'<td class="return-empty-cell">-</td>';}).join('');
+   return `<tr><td>${year}</td>${cells}<td class="${annual>=0?'return-positive':'return-negative'}">${pct(annual)}</td><td class="${lastEntry.cumulative>=0?'return-positive':'return-negative'}">${pct(lastEntry.cumulative)}</td></tr>`;
+  }).join(''):rowEmpty(15,'Ainda não há histórico mensal suficiente para montar a tabela.');
+ }
+ const tableNote=document.getElementById('returnTableNote');
+ if(tableNote)tableNote.textContent=typeSelect.value==='todos'?'Retornos mensais calculados a partir da série histórica da carteira.':'Retornos mensais da classe selecionada.';
+}
 function setReturnBenchmark(value){
  const allowed=['CDI','IPCA','IBOV','IVVB11'];
  const benchmark=allowed.includes(value)?value:'CDI';
@@ -3471,13 +3567,7 @@ renderPositionGroups(rows,'summaryGroups',true);
 syncDashboardCategoryFilters();renderEvolutionChart();renderAllocationChart();syncLaunchTypeFilter();renderLaunchConsolidation();renderEvolutionChart('patrimonyEvolutionChart','patrimonyPeriod','patrimonyType');renderPatrimonyDashboard();
 renderProventosDashboard();
 const allOps=[...(state.operacoes||[]),...(state.agendadas||[])].sort((a,b)=>String(b.data_execucao||b.data).localeCompare(String(a.data_execucao||a.data)));renderOperationsByType(allOps);renderImportedBalances(state.saldos_importados||[],state.data_base_snapshot);
-const returnSidebar=document.getElementById('returnSummaryCards');
-if(returnSidebar){const hasMonthlyReturn=r.rentabilidade_mes!==null&&r.rentabilidade_mes!==undefined,hasTwelveMonthReturn=r.rentabilidade_12m!==null&&r.rentabilidade_12m!==undefined,monthlyReturn=Number(r.rentabilidade_mes||0),twelveMonthReturn=Number(r.rentabilidade_12m||0);returnSidebar.innerHTML=`
- <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${Number(r.lucro_pct||0)>=0?'green':'red'}">${pct(r.lucro_pct||0)} ${Number(r.lucro_pct||0)>=0?'↗':'↘'}</strong><small>Resultado financeiro: ${brl(r.lucro||0)}</small><label class="return-benchmark-label" for="returnBenchmark">Comparar com</label><select id="returnBenchmark" class="return-benchmark-select" onchange="setReturnBenchmark(this.value)"><option value="CDI">CDI</option><option value="IPCA">IPCA</option><option value="IBOV">IBOV</option><option value="IVVB11">IVVB11</option></select><small id="returnBenchmarkStatus" class="return-benchmark-status">Série histórica do índice ainda não conectada.</small></div>
- <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${!hasTwelveMonthReturn?'':twelveMonthReturn>=0?'green':'red'}">${hasTwelveMonthReturn?pct(twelveMonthReturn):'—'} ${hasTwelveMonthReturn?(twelveMonthReturn>=0?'↗':'↘'):''}</strong><small>${hasTwelveMonthReturn?'Sobre o custo das posições':'Histórico de 12 meses ainda indisponível'}</small></div>
- <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${!hasMonthlyReturn?'':monthlyReturn>=0?'green':'red'}">${hasMonthlyReturn?pct(monthlyReturn):'—'} ${hasMonthlyReturn?(monthlyReturn>=0?'↗':'↘'):''}</strong><small>${hasMonthlyReturn?'Indicador do período disponível':'Histórico mensal ainda indisponível'}</small></div>
- <div class="panel return-summary-card return-summary-extra"><b>Patrimônio atual</b><strong>${brl(r.atual||0)}</strong><small>Valor de mercado · Proventos registrados: ${brl(r.proventos||0)}</small></div>`;let savedReturnBenchmark='CDI';try{savedReturnBenchmark=localStorage.getItem('lonelyWalletReturnBenchmark')||'CDI';}catch(e){}setReturnBenchmark(savedReturnBenchmark);}const returnRowsEl=document.getElementById('returnRows');if(returnRowsEl)returnRowsEl.innerHTML=rows.length?rows.map(i=>`<tr><td class="ticker">${i.ticker}</td><td>${brl(i.investido)}</td><td>${i.cotacao_disponivel?brl(i.valor_atual):'Sem cotação · '+brl(i.investido)}</td><td class="${i.lucro>=0?'green':'red'}">${brl(i.lucro)}</td><td class="${i.lucro_pct>=0?'green':'red'}">${pct(i.lucro_pct)}</td></tr>`).join(''):rowEmpty(5);
-renderReturnPerformanceChart(rows);
+renderRentabilidadePage();
 
 document.getElementById('goalRows').innerHTML=(state.metas||[]).length?state.metas.map(m=>{
  let current=0,currentLabel='Patrimônio atual';
