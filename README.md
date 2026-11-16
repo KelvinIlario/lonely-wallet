@@ -124,3 +124,13 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Os formulários de compra, venda e edição de lançamentos solicitam somente a data, sem campo de horário.
 - Na seção Resumo > Meus ativos > Renda Fixa, a tabela passa a exibir somente: Ativo, Variação, Rentabilidade, Saldo, Nota, % Carteira, % Ideal, Comprar? e Opções.
 - As demais classes e as tabelas fora do Resumo mantêm suas colunas configuráveis.
+
+
+## v3.3.7
+- Importação do histórico completo de compras e vendas da Pluggy, inclusive operações anteriores ao saldo-base.
+- Preço unitário de compra/venda preservado a partir do campo `value`, com despesas de corretagem e taxas registradas separadamente.
+- Preço médio ponderado calculado a partir das movimentações importadas, usando a posição atual da Pluggy como referência de quantidade.
+- Importação de distribuições identificadas como `INTEREST` e eventos de dividendos/JCP, com deduplicação pelo ID externo.
+- Posições com status de retirada total ou ausentes da lista atual são tratadas como encerradas, evitando ressuscitar ativos vendidos no histórico.
+- Classificação de ativos enriquecida com `subType`/`type` do cadastro B3 da brapi, incluindo identificação de FIIs como MXRF11 sem inferir classe apenas pelo sufixo do ticker.
+- Card Destaques da carteira passa a exibir saldo e resultado financeiro das melhores/piores posições e utiliza melhor o espaço disponível.

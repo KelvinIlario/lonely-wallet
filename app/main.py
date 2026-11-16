@@ -583,6 +583,81 @@ def _pluggy_ticker(investment):
     return ''
 
 
+_ASSET_CLASS_CACHE = {}
+_ASSET_CLASS_CACHE_TTL = 24 * 60 * 60
+
+
+def _refine_pluggy_asset_type(investment):
+    """Classifica pelo subtipo Pluggy e valida com o cadastro de ativos da brapi."""
+    kind = _pluggy_asset_type(investment)
+    ticker = _pluggy_ticker(investment)
+    if not ticker:
+        return kind
+    now = time.time()
+    cached = _ASSET_CLASS_CACHE.get(ticker)
+    if cached and now - cached[0] < _ASSET_CLASS_CACHE_TTL:
+        return cached[1]
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
+    resolved = kind
+    try:
+        response = requests.get('https://brapi.dev/api/quote/list',
+            params={'search': ticker, 'limit': 50}, headers=headers, timeout=10)
+        response.raise_for_status()
+        stocks = response.json().get('stocks') or []
+        match = next((row for row in stocks if str(row.get('stock') or row.get('symbol') or '').upper() == ticker), None)
+        if match:
+            subtype = str(match.get('subType') or '').strip().lower().replace('_', '-')
+            market_type = str(match.get('type') or '').strip().lower()
+            mapping = {'fii':'fii','etf':'etf','bdr':'bdr','stock':'acao','unit':'acao',
+                       'fi-infra':'fundo','fi-agro':'fundo','fidc':'fundo','fip':'fundo'}
+            if subtype in mapping: resolved = mapping[subtype]
+            elif market_type == 'bdr': resolved = 'bdr'
+            elif market_type == 'fund': resolved = 'fundo'
+            elif market_type == 'stock': resolved = 'acao'
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        pass
+    _ASSET_CLASS_CACHE[ticker] = (now, resolved)
+    return resolved
+
+
+def _pluggy_expenses_total(movement):
+    expenses = movement.get('expenses')
+    if not isinstance(expenses, dict): return 0.0
+    total = 0.0
+    for value in expenses.values():
+        try: total += abs(float(value or 0))
+        except (TypeError, ValueError): pass
+    return round(total, 2)
+
+
+def _pluggy_average_purchase_price(ticker):
+    """Calcula preço médio ponderado com compras/vendas efetivamente importadas."""
+    rows = db().execute(
+        "SELECT movement_type,quantity,unit_value,amount,raw_json FROM pluggy_investment_transactions "
+        "WHERE UPPER(ticker)=? ORDER BY transaction_date,transaction_id", (str(ticker).upper(),)
+    ).fetchall()
+    quantity = cost = 0.0
+    found_buy = False
+    for row in rows:
+        movement = str(row['movement_type'] or '').upper()
+        qty = abs(float(row['quantity'] or 0))
+        if qty <= 0: continue
+        price = abs(float(row['unit_value'] or 0))
+        if price <= 0: price = abs(float(row['amount'] or 0)) / qty
+        if movement == 'BUY':
+            try: raw = json.loads(row['raw_json'] or '{}')
+            except (TypeError, ValueError): raw = {}
+            quantity += qty
+            cost += qty * price + _pluggy_expenses_total(raw)
+            found_buy = True
+        elif movement == 'SELL' and quantity > 0:
+            sold = min(qty, quantity)
+            average = cost / quantity
+            quantity -= sold
+            cost = max(0.0, cost - sold * average)
+    return (cost / quantity) if found_buy and quantity > 1e-8 else None
+
+
 def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_text):
     """Converte posições sincronizadas em lançamentos por classe.
 
@@ -594,19 +669,23 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
     fixed_count = market_count = skipped_fixed = 0
     origin_tag = 'PluggySnapshot:' + item_id
     # Recria somente os lançamentos-snapshot desta conexão, sem tocar nos manuais.
+    previous_snapshots = [dict(row) for row in db().execute(
+        'SELECT * FROM pluggy_position_snapshots WHERE item_id=?', (item_id,)
+    ).fetchall()]
+    current_investment_ids = {str(row.get('id') or '') for row in investments}
     db().execute("DELETE FROM operacoes WHERE detalhes LIKE ?", ('%' + origin_tag + '%',))
     db().execute('DELETE FROM pluggy_position_snapshots WHERE item_id=?', (item_id,))
     for investment in investments:
-        asset_type = _pluggy_asset_type(investment)
+        asset_type = _refine_pluggy_asset_type(investment)
         investment_id = str(investment.get('id') or '').strip()
         if not investment_id:
             continue
-        balance = float(investment.get('balance') or investment.get('value') or 0)
+        balance = float(investment.get('balance') or investment.get('amount') or investment.get('value') or 0)
         principal = float(investment.get('amountOriginal') or investment.get('amountInvested') or balance)
-        if balance <= 0 or principal <= 0:
-            continue
         details = investment.get('details') if isinstance(investment.get('details'), dict) else {}
         if asset_type == 'renda_fixa':
+            if balance <= 0 or principal <= 0:
+                continue
             indexer = str(investment.get('indexer') or investment.get('indexerName') or details.get('indexer') or details.get('indexerName') or '').strip().upper()
             rate = investment.get('rate') or investment.get('percentage') or details.get('rate') or details.get('percentage')
             maturity = _pluggy_date(investment.get('maturityDate') or investment.get('dueDate') or details.get('maturityDate') or details.get('dueDate'))
@@ -626,14 +705,14 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
                         'nome': name, 'indexador': indexer, 'taxa': rate, 'vencimento': maturity,
                         'saldo_atual': balance, 'subtipo': investment.get('subtype') or ''}
             fixed_count += 1
-        elif asset_type in ('acao', 'fii', 'etf', 'bdr', 'fundo'):
-            # Não transformar posição atual de renda variável em uma compra
-            # sintética. As compras/vendas reais já vêm de /investments/{id}/transactions.
-            # Inserir também o snapshot como compra soma quantidade duas vezes
-            # (ex.: 43 ações atuais + 42 compras históricas = 85).
+        elif asset_type in ('acao', 'fii', 'etf', 'bdr', 'fundo', 'stocks', 'internacional', 'cripto', 'reit'):
+            # Snapshot autoritativo inclusive com quantidade zero para posições encerradas.
             symbol = _pluggy_ticker(investment)
-            quantity = float(investment.get('quantity') or 0)
-            if symbol and quantity > 0:
+            quantity = max(0.0, float(investment.get('quantity') or 0))
+            status = str(investment.get('status') or '').upper()
+            if status in ('RETIRADA_TOTAL', 'TOTAL_WITHDRAWAL', 'CLOSED', 'INACTIVE'):
+                quantity = 0.0
+            if symbol:
                 db().execute(
                     "INSERT OR REPLACE INTO pluggy_position_snapshots "
                     "(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) "
@@ -643,6 +722,16 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
                 market_count += 1
             continue
         else:
+            status = str(investment.get('status') or '').upper()
+            symbol = _pluggy_ticker(investment)
+            if status in ('RETIRADA_TOTAL', 'TOTAL_WITHDRAWAL', 'CLOSED', 'INACTIVE') and symbol:
+                db().execute(
+                    "INSERT OR REPLACE INTO pluggy_position_snapshots "
+                    "(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) "
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                    (item_id, investment_id, symbol, asset_type, 0.0, 0.0, 0.0, now_text)
+                )
+                market_count += 1
             continue
         db().execute(
             """INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,
@@ -650,6 +739,16 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
             (symbol, asset_type, 'compra', quantity, price, snapshot_date, 0.0, 'executada',
              snapshot_date, snapshot_date + 'T10:00:00-03:00', json.dumps(contract, ensure_ascii=False))
         )
+    # Se uma posição deixou de constar na lista atual da corretora, ela não pode
+    # reaparecer por compras antigas: grava uma posição encerrada para aquele id.
+    for old in previous_snapshots:
+        if old['investment_id'] not in current_investment_ids:
+            db().execute(
+                "INSERT OR REPLACE INTO pluggy_position_snapshots "
+                "(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (item_id, old['investment_id'], old['ticker'], old['asset_type'], 0.0, 0.0, 0.0, now_text)
+            )
     return fixed_count, market_count, skipped_fixed
 
 
@@ -705,7 +804,7 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
     movement_type = str(movement.get('type') or '').upper()
     qty = abs(float(movement.get('quantity') or 0))
     unit_value = abs(float(movement.get('value') or 0))
-    amount = abs(float(movement.get('netAmount') or movement.get('amount') or (qty * unit_value)))
+    amount = abs(float(movement.get('amount') or movement.get('netAmount') or (qty * unit_value)))
     description = str(movement.get('description') or movement_type)
     state = 'imported_only'
     imported_operation_id = None
@@ -713,7 +812,8 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
     if movement_type in ('BUY', 'SELL') and ticker and trade_date and qty > 0:
         side = 'compra' if movement_type == 'BUY' else 'venda'
         price = unit_value if unit_value > 0 else (amount / qty if qty else 0)
-        asset_type = _pluggy_asset_type(investment)
+        asset_type = _refine_pluggy_asset_type(investment)
+        costs = _pluggy_expenses_total(movement)
         # Match manual/B3 entries before inserting. A small tolerance handles
         # rounding differences between the broker and the spreadsheet export.
         # A B3 e a Pluggy podem registrar a mesma execução com pequena diferença
@@ -738,41 +838,32 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
             imported_operation_id = int(existing['id'])
             state = 'matched_existing'
         else:
-            base_date = snapshot_date_for(trade_date)
-            if base_date and trade_date <= base_date:
-                state = 'historico_anterior_ao_saldo_base'
-            elif side == 'venda':
-                available, _ = posicao(ticker, trade_date)
-                if qty > available + max(0.00001, qty * 0.001):
-                    state = 'revisar_venda'
-                else:
-                    cursor = db().execute(
-                        """INSERT INTO operacoes
-                           (ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes)
-                           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                        (ticker, asset_type, side, qty, price, trade_date, 0, 'executada',
-                         trade_date, trade_date + 'T10:00:00-03:00',
-                         json.dumps({'origem':'Pluggy','pluggy_transaction_id':external_id,'item_id':item_id,'descricao':description}, ensure_ascii=False))
-                    )
-                    imported_operation_id = int(cursor.lastrowid)
-                    state = 'imported_operation'
-            else:
-                cursor = db().execute(
-                    """INSERT INTO operacoes
-                       (ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                    (ticker, asset_type, side, qty, price, trade_date, 0, 'executada',
-                     trade_date, trade_date + 'T10:00:00-03:00',
-                     json.dumps({'origem':'Pluggy','pluggy_transaction_id':external_id,'item_id':item_id,'descricao':description}, ensure_ascii=False))
-                )
-                imported_operation_id = int(cursor.lastrowid)
-                state = 'imported_operation'
+            # Importa o histórico completo, inclusive anterior ao saldo-base.
+            # A posição atual permanece autoritativa no snapshot da Pluggy.
+            cursor = db().execute(
+                """INSERT INTO operacoes
+                   (ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (ticker, asset_type, side, qty, price, trade_date, costs, 'executada',
+                 trade_date, trade_date + 'T10:00:00-03:00',
+                 json.dumps({'origem':'Pluggy','pluggy_transaction_id':external_id,'item_id':item_id,
+                             'descricao':description,'valor_bruto':amount,
+                             'valor_liquido':float(movement.get('netAmount') or amount),
+                             'corretagem_despesas':costs,'numero_nota':movement.get('brokerageNumber')}, ensure_ascii=False))
+            )
+            imported_operation_id = int(cursor.lastrowid)
+            state = 'imported_operation'
 
     # Income is only imported as a provento when the investment transaction
     # explicitly identifies a dividend/JCP/rendimento event.
-    income_markers = ('DIVIDEND', 'INTEREST_ON_EQUITY', 'JCP', 'RENDIMENTO', 'DISTRIBUTION', 'INCOME')
-    text_for_income = (movement_type + ' ' + description).upper()
-    if any(marker in text_for_income for marker in income_markers) and ticker and trade_date and amount > 0:
+    income_markers = ('DIVIDEND', 'INTEREST', 'INTEREST_ON_EQUITY', 'JCP', 'RENDIMENTO', 'DISTRIBUTION', 'INCOME')
+    text_for_income = (movement_type + ' ' + str(movement.get('movementType') or '') + ' ' + description).upper()
+    is_income_movement = movement_type in ('INTEREST', 'DIVIDEND', 'INTEREST_ON_EQUITY', 'JCP', 'DISTRIBUTION', 'INCOME')
+    is_income_description = movement_type not in ('BUY', 'SELL') and any(marker in text_for_income for marker in income_markers)
+    if (is_income_movement or is_income_description) and ticker and trade_date and amount > 0:
+        already_imported = db().execute(
+            'SELECT external_id FROM pluggy_imported_events WHERE external_id=?', (external_id,)
+        ).fetchone()
         duplicate = db().execute(
             """SELECT id FROM proventos WHERE UPPER(ticker)=?
                AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
@@ -785,7 +876,7 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
                AND ABS(valor_total-?)<=MAX(0.05,?*0.01) LIMIT 1""",
             (ticker, trade_date, trade_date, amount, amount)
         ).fetchone()
-        if duplicate or api_duplicate:
+        if already_imported or duplicate or api_duplicate:
             state = 'provento_duplicado_ignorado'
         else:
             cursor = db().execute(
@@ -1045,7 +1136,7 @@ def pluggy_sync():
                      str(investment.get('status') or ''),json.dumps(investment,ensure_ascii=False),now_text)
                 )
                 summary['investments'] += 1
-                if _pluggy_asset_type(investment) == 'outros':
+                if _refine_pluggy_asset_type(investment) == 'outros':
                     summary['warnings'].append(
                         'Tipo de investimento não reconhecido pela classificação automática: ' +
                         str(investment.get('name') or investment.get('type') or investment_id)[:90]
@@ -1055,10 +1146,24 @@ def pluggy_sync():
                     summary['investment_transactions'] += 1
                     external_id = str(movement.get('id') or '').strip()
                     prior = db().execute(
-                        'SELECT import_state FROM pluggy_investment_transactions WHERE transaction_id=?',
+                        'SELECT import_state,imported_operation_id,raw_json FROM pluggy_investment_transactions WHERE transaction_id=?',
                         (external_id,)
                     ).fetchone() if external_id else None
-                    if prior and prior['import_state'] in ('imported_operation','imported_provento','matched_existing','provento_duplicado_ignorado','historico_anterior_ao_saldo_base'):
+                    if prior and prior['import_state'] in ('imported_operation','imported_provento','matched_existing','provento_duplicado_ignorado'):
+                        if prior['imported_operation_id']:
+                            if prior['import_state'] == 'imported_operation':
+                                try: old_movement = json.loads(prior['raw_json'] or '{}')
+                                except (TypeError, ValueError): old_movement = {}
+                                old_qty = abs(float(old_movement.get('quantity') or 0))
+                                old_price = abs(float(old_movement.get('value') or 0))
+                                if old_price <= 0 and old_qty > 0:
+                                    old_price = abs(float(old_movement.get('amount') or 0)) / old_qty
+                                db().execute('UPDATE operacoes SET tipo=?,preco=?,custos=? WHERE id=?',
+                                    (_refine_pluggy_asset_type(investment), old_price,
+                                     _pluggy_expenses_total(old_movement), int(prior['imported_operation_id'])))
+                            else:
+                                db().execute('UPDATE operacoes SET tipo=? WHERE id=?',
+                                    (_refine_pluggy_asset_type(investment), int(prior['imported_operation_id'])))
                         summary['duplicates_ignored'] += 1
                         continue
                     state = _pluggy_import_investment_transaction(item_id, investment, movement, now_text)
@@ -2243,12 +2348,12 @@ def carteira():
             "WHERE i.active=1 AND UPPER(s.ticker)=? GROUP BY UPPER(s.ticker)",
             (ticker,)
         ).fetchone()
-        if pluggy_position and float(pluggy_position['quantity'] or 0) > 0:
-            # A posição atual da corretora é a fotografia autoritativa. As compras e
-            # vendas permanecem no histórico, mas não são somadas novamente ao saldo.
-            qty = float(pluggy_position['quantity'])
+        if pluggy_position:
+            # A fotografia é autoritativa inclusive quando a quantidade é zero.
+            qty = max(0.0, float(pluggy_position['quantity'] or 0))
             original = float(pluggy_position['amount_original'] or 0)
-            avg = original / qty if original > 0 else avg
+            history_average = _pluggy_average_purchase_price(ticker)
+            avg = history_average if history_average and history_average > 0 else (original / qty if original > 0 and qty > 0 else avg)
         if qty <= 1e-8: continue
         imported = imported_balance(ticker)
         op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()

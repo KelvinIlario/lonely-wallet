@@ -115,7 +115,7 @@
 .insight-main{font-size:21px;font-weight:750;color:var(--text);margin:10px 0 5px}
 .insight-sub{font-size:11px;color:var(--muted);line-height:1.5}
 .insight-split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-.insight-split b{display:block;font-size:14px;margin-top:5px}
+.insight-split b{display:block;font-size:14px;margin-top:5px}.insight-highlight-detail{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:7px;color:var(--muted);font-size:10px;line-height:1.35}.insight-highlight-detail strong{color:var(--text);font-weight:650}.insight-highlight-column{min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}.insight-highlight-pill{margin-top:5px}
 .insight-bar{height:8px;border-radius:99px;background:#303541;overflow:hidden;display:flex;margin:10px 0}
 .insight-bar .positive{background:#20bd82}.insight-bar .negative{background:#f17898}
 .insight-action{width:100%;margin-top:9px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--text);padding:7px;cursor:pointer;font-size:11px}
@@ -2284,8 +2284,8 @@ function renderPositionInsights(rows){
   <article class="insight-card">
    <div class="insight-title">Destaques da carteira<span class="info-tip" tabindex="0" aria-label="Sobre os destaques da carteira" data-tip="Consideramos como destaque da carteira os ativos dos seguintes tipos: Ações, FIIs, Stocks, BDRs, REITs, ETFs e Criptomoedas.">i</span></div>
    <div class="insight-split">
-    <div><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill positive">${best?pct(best.lucro_pct):'Sem posições'} <span aria-hidden="true">↗</span></span></div>
-    <div><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill negative">${worst?pct(worst.lucro_pct):'Sem posições'} <span aria-hidden="true">↘</span></span></div>
+    <div class="insight-highlight-column"><span class="insight-sub">🏆 Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill positive">${best?pct(best.lucro_pct):'Sem posições'} <span aria-hidden="true">↗</span></span><div class="insight-highlight-detail"><span>Saldo <strong>${best?brl(best.valor_atual):'—'}</strong></span><span>Resultado <strong>${best?brl(best.lucro):'—'}</strong></span></div></div>
+    <div class="insight-highlight-column"><span class="insight-sub">📉 Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill negative">${worst?pct(worst.lucro_pct):'Sem posições'} <span aria-hidden="true">↘</span></span><div class="insight-highlight-detail"><span>Saldo <strong>${worst?brl(worst.valor_atual):'—'}</strong></span><span>Resultado <strong>${worst?brl(worst.lucro):'—'}</strong></span></div></div>
    </div>
   </article>
   <article class="insight-card">
