@@ -114,3 +114,13 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Clique fora e tecla Esc fecham os menus abertos.
 - Padronizada a paleta dos menus expandidos, incluindo o seletor de período da Evolução de Proventos.
 - Mantidos os controles específicos de período, incluindo opções rápidas e seleção anual.
+
+
+## v2.0.66
+
+### Correção definitiva da abertura simultânea de filtros em Proventos
+- Centralizado o fechamento de todos os menus da página em um único coordenador.
+- Antes de abrir qualquer filtro, todos os outros menus são fechados, incluindo período do gráfico, filtros do histórico mensal, filtros de Meus Proventos e seletores personalizados.
+- Reaberto somente o menu solicitado pelo usuário.
+- Estado `aria-expanded` sincronizado nos botões.
+- Mantidos os estilos, opções, filtros e regras de seleção existentes.

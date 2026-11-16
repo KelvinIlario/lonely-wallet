@@ -2947,18 +2947,24 @@ function openProvDistributionForBar(key,mode,status='Pago'){
  const back=document.getElementById('provDistributionBack');
  if(back){back.style.display='flex';setProvDistributionMode(provDistributionMode||'ativo');}
 }
-window.closeAllProventosMenus=function(except){
- if(except!=='total' && typeof closeProvTotalMenu==='function')closeProvTotalMenu();
- if(except!=='chartPeriod' && typeof closeProvChartPeriodMenu==='function')closeProvChartPeriodMenu();
- if(except!=='history' && typeof closeProvHistoryMenus==='function')closeProvHistoryMenus();
- if(except!=='myProv' && typeof closeMyProvMenus==='function')closeMyProvMenus();
- if(except!=='select' && typeof window.__lwCloseSelectMenu==='function')window.__lwCloseSelectMenu();
+window.closeAllProventosMenus=function(){
+ // Um único coordenador para todos os menus da página Proventos.
+ // Sempre fecha todos os grupos antes que o menu solicitado seja aberto.
+ ['provTotalMenu','provChartPeriodMenu',
+  'provHistoryStatusMenu','provHistoryTypeMenu','provHistoryAssetMenu',
+  'myProvPeriodMenu','myProvTypeMenu','myProvAssetMenu'
+ ].forEach(id=>document.getElementById(id)?.classList.add('hidden'));
+ ['provTotalTrigger','provChartPeriodTrigger'].forEach(id=>document.getElementById(id)?.setAttribute('aria-expanded','false'));
+ ['provHistoryStatusWrap','provHistoryTypeWrap','provHistoryAssetWrap',
+  'myProvPeriodWrap','myProvTypeWrap','myProvAssetWrap'
+ ].forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
+ if(typeof window.__lwCloseSelectMenu==='function')window.__lwCloseSelectMenu();
 };
 function toggleProvTotalMenu(){
  const menu=document.getElementById('provTotalMenu'),trigger=document.getElementById('provTotalTrigger');
  if(!menu||!trigger)return;
  const opening=menu.classList.contains('hidden');
- window.closeAllProventosMenus('total');
+ window.closeAllProventosMenus();
  menu.classList.toggle('hidden',!opening);trigger.setAttribute('aria-expanded',String(opening));
 }
 function closeProvTotalMenu(){
@@ -2974,7 +2980,7 @@ function toggleProvChartPeriodMenu(){
  const menu=document.getElementById('provChartPeriodMenu'),trigger=document.getElementById('provChartPeriodTrigger');
  if(!menu||!trigger)return;
  const opening=menu.classList.contains('hidden');
- window.closeAllProventosMenus('chartPeriod');
+ window.closeAllProventosMenus();
  menu.classList.toggle('hidden',!opening);trigger.setAttribute('aria-expanded',String(opening));
 }
 function closeProvChartPeriodMenu(){
@@ -3010,7 +3016,7 @@ function toggleProvHistoryMenu(kind){
  const wraps={status:'provHistoryStatusWrap',type:'provHistoryTypeWrap',asset:'provHistoryAssetWrap'};
  const menu=document.getElementById(ids[kind]);if(!menu)return;
  const opening=menu.classList.contains('hidden');
- window.closeAllProventosMenus('history');
+ window.closeAllProventosMenus();
  Object.values(ids).forEach(id=>document.getElementById(id)?.classList.add('hidden'));
  Object.values(wraps).forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
  if(opening){menu.classList.remove('hidden');document.querySelector(`#${wraps[kind]} .prov-history-trigger`)?.setAttribute('aria-expanded','true');}
@@ -3223,7 +3229,7 @@ function toggleMyProvMenu(kind){
  const ids={period:'myProvPeriodMenu',type:'myProvTypeMenu',asset:'myProvAssetMenu'};
  const wraps={period:'myProvPeriodWrap',type:'myProvTypeWrap',asset:'myProvAssetWrap'};
  const target=document.getElementById(ids[kind]),opening=target?.classList.contains('hidden');
- window.closeAllProventosMenus('myProv');
+ window.closeAllProventosMenus();
  Object.values(ids).forEach(id=>document.getElementById(id)?.classList.add('hidden'));
  Object.values(wraps).forEach(id=>document.querySelector(`#${id} .prov-history-trigger`)?.setAttribute('aria-expanded','false'));
  if(target&&opening){target.classList.remove('hidden');document.querySelector(`#${wraps[kind]} .prov-history-trigger`)?.setAttribute('aria-expanded','true');}
@@ -4608,7 +4614,7 @@ async function confirmB3Import(){
   }
   button.addEventListener('click',()=>{
    if(openMenu?.button===button){closeMenu();return;}
-   if(typeof window.closeAllProventosMenus==='function')window.closeAllProventosMenus('select');
+   if(typeof window.closeAllProventosMenus==='function')window.closeAllProventosMenus();
    renderMenu();
   });
   button.addEventListener('keydown',event=>{
@@ -4632,6 +4638,33 @@ async function confirmB3Import(){
   if(event.key==='Escape' && typeof window.closeAllProventosMenus==='function')window.closeAllProventosMenus();
  });
 })();
+
+/* v2.0.66 — exclusividade real entre todos os menus de Proventos */
+document.addEventListener('click',function(event){
+ const trigger=event.target.closest(
+  '#provTotalTrigger,#provChartPeriodTrigger,.prov-history-trigger,.lw-select-button'
+ );
+ if(!trigger)return;
+ // Os handlers inline executam no target antes deste listener de bubbling.
+ // A exclusividade já é aplicada pelos handlers; aqui só garante estado coerente.
+ const opened=document.querySelectorAll(
+  '#provTotalMenu:not(.hidden),#provChartPeriodMenu:not(.hidden),'+
+  '#provHistoryStatusMenu:not(.hidden),#provHistoryTypeMenu:not(.hidden),#provHistoryAssetMenu:not(.hidden),'+
+  '#myProvPeriodMenu:not(.hidden),#myProvTypeMenu:not(.hidden),#myProvAssetMenu:not(.hidden)'
+ );
+ if(opened.length>1){
+  const keep=trigger.closest('#provTotalTrigger')?'provTotalMenu':
+   trigger.closest('#provChartPeriodTrigger')?'provChartPeriodMenu':
+   trigger.closest('#provHistoryStatusWrap')?'provHistory'+(trigger.closest('#provHistoryStatusWrap')?'Status':'')+'Menu':
+   trigger.closest('#provHistoryTypeWrap')?'provHistoryTypeMenu':
+   trigger.closest('#provHistoryAssetWrap')?'provHistoryAssetMenu':
+   trigger.closest('#myProvPeriodWrap')?'myProvPeriodMenu':
+   trigger.closest('#myProvTypeWrap')?'myProvTypeMenu':
+   trigger.closest('#myProvAssetWrap')?'myProvAssetMenu':null;
+  opened.forEach(menu=>{if(menu.id!==keep)menu.classList.add('hidden');});
+ }
+},true);
+
 </script>
 </body></html>
 <style>
