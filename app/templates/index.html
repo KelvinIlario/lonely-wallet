@@ -5298,3 +5298,53 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 .proportional-assets-table .variation-pill.positive{background:rgba(0,190,145,.17)!important;color:#00d4a0!important}
 .proportional-assets-table .variation-pill.negative{background:rgba(232,91,121,.18)!important;color:#ff7894!important}
 </style>
+
+<style>
+/* v3.3.16: a célula de variação não ganha destaque; somente o tooltip aparece. */
+.asset-category .data.proportional-assets-table tr:hover td[data-col="variacao_dia"],
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"]:hover{
+  background:var(--panel)!important;
+  box-shadow:none!important;
+}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint{
+  cursor:default!important;
+  border:0!important;
+  outline:0!important;
+  text-decoration:none!important;
+  position:relative;
+  z-index:5;
+}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint::after{
+  content:attr(data-hint);
+  display:block;
+  position:absolute;
+  left:50%;
+  bottom:calc(100% + 10px);
+  transform:translate(-50%,5px);
+  width:max-content;
+  max-width:min(340px,78vw);
+  padding:10px 12px;
+  white-space:pre-line;
+  text-align:left;
+  line-height:1.45;
+  font-size:12px;
+  font-weight:550;
+  color:var(--text)!important;
+  background:var(--panel2)!important;
+  border:1px solid var(--line)!important;
+  border-radius:9px;
+  box-shadow:0 12px 30px #0009;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  z-index:100;
+  transition:opacity .12s ease,transform .12s ease;
+}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint:hover::after{
+  opacity:1;
+  visibility:visible;
+  transform:translate(-50%,0);
+}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint.positive::after{border-color:var(--green)!important}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint.negative::after{border-color:var(--red)!important}
+</style>
