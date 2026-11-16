@@ -1861,6 +1861,7 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 .api-provider-category{font-size:11px;color:var(--muted);margin-top:4px}
 .api-provider-desc{font-size:12px;color:var(--muted);line-height:1.5;min-height:38px}
 .api-provider-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.api-provider-actions select{max-width:210px;min-width:150px;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 10px}.api-provider-actions button.danger{color:var(--red);border-color:rgba(239,83,103,.38)}
 .api-provider-card input[type=password],.api-provider-card input[type=text]{width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);padding:9px 12px;outline:none}
 .api-provider-card input:focus{border-color:var(--blue)}
 .api-provider-card .mini{line-height:1.45}
@@ -2076,7 +2077,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
   <option value="acao">Ações</option><option value="fii">FIIs</option><option value="stocks">Stocks</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="renda_fixa">Renda Fixa</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option>
  </select></div>
  <div class="field asset-field" id="assetField"><label id="assetFieldLabel">Ativo</label><input name="ticker" id="assetTicker" placeholder="Selecione ou digite o ativo" autocomplete="off" required><div id="assetSuggestions" class="suggestions hidden"></div><small id="assetHint" class="mini">Busque pelo nome ou ticker. Classes sem cotação automática permitem preenchimento manual.</small></div>
- <div class="field" id="dateField"><label>Data e horário pretendidos</label><input name="data_hora" id="opDateTime" type="datetime-local" required><input name="data" id="opDate" type="hidden"><small class="mini" id="operationDateHint">Datas anteriores são registradas imediatamente. Ativos negociados em bolsa seguem o calendário da B3; renda fixa (como CDB, LCI e LCA) é registrada imediatamente, sem agendamento.</small></div>
+ <div class="field" id="dateField"><label>Data do lançamento</label><input name="data_hora" id="opDateTime" type="date" required><input name="data" id="opDate" type="hidden"><small class="mini" id="operationDateHint">Informe somente a data. O sistema considera os horários e regras de processamento automaticamente.</small></div>
  <div class="field" id="quantityField"><label id="quantityLabel">Quantidade</label><input name="quantidade" id="opQuantity" type="number" step="1" min="1" value="1" required></div>
  <div class="field" id="priceField"><label id="priceLabel">Preço unitário (R$)</label><input name="preco" id="opUnitPrice" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" required></div>
  <div class="field" id="costsField"><label>Outros custos (opcional)</label><input name="custos" id="opCosts" type="text" inputmode="decimal" placeholder="0,00" value="0,00"></div>
@@ -2542,12 +2543,13 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   const expanded=summaryMode
    ? summaryExpandedAssetGroups[cat.key]===true
    : (expandedAssetGroups[cat.key]!==undefined?expandedAssetGroups[cat.key]:items.length>0);
-  const shown=defs.filter(([key])=>prefs[key] && !(cat.key==='renda_fixa' && key==='proventos'));
+  const fixedIncomeSummaryColumns=['ticker','variacao_dia','lucro_pct','valor_atual','nota','portfolioPct','idealPct','comprar'];
+  const shown=summaryMode&&cat.key==='renda_fixa'?defs.filter(([key])=>fixedIncomeSummaryColumns.includes(key)):defs.filter(([key])=>prefs[key] && !(cat.key==='renda_fixa' && key==='proventos'));
   const columnWeights={ticker:2.25,quantidade:.72,preco_medio:1.05,preco_atual:1.05,preco_alvo:1.05,preco_graham:1.1,preco_teto_bazin:1.05,variacao_dia:.85,lucro_pct:1.0,valor_atual:1.05,buyhold:1.0,media_avaliacoes:1.0,proventos:1.0,dy:.75,yoc:.9,dy_medio:.95,payout:.8,pl:.7,pvp:.7,roe:.8,margem_liquida:1.0,margem_bruta:1.0,cagr_receitas:1.1,cagr_lucros:1.05,nota:.62,portfolioPct:.72,idealPct:.72,comprar:.82,opcoes:.52};
   const widthKeys=[...shown.map(([key])=>key),'opcoes'];
   const widthTotal=widthKeys.reduce((sum,key)=>sum+(columnWeights[key]||.9),0);
   const proportionalCols=`<colgroup>${widthKeys.map(key=>`<col style="width:${((columnWeights[key]||.9)/widthTotal*100).toFixed(3)}%">`).join('')}</colgroup>`;
-  const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">${summaryMode&&allCategoryItems.length?"Os ativos desta classe estão em outra página.":"Nenhum ativo cadastrado nesta categoria."}</div>`;
+  const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table ${summaryMode&&cat.key==='renda_fixa'?'data-fixed-income-summary="true"':''}>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">${summaryMode&&allCategoryItems.length?"Os ativos desta classe estão em outra página.":"Nenhum ativo cadastrado nesta categoria."}</div>`;
   const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${allCategoryItems.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${allCategoryItems.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${allCategoryItems.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${allCategoryItems.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
   const moveControls=`<div class="position-category-move">${categoryIndex>0?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para cima" aria-label="Mover ${cat.name} para cima" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',-1)">↑</button>`:''}${categoryIndex<visibleCategories.length-1?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para baixo" aria-label="Mover ${cat.name} para baixo" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',1)">↓</button>`:''}</div>`;
   const header=summaryMode
@@ -2780,7 +2782,8 @@ function applyPositionColumnPrefs(){
   table.querySelectorAll('[data-col]').forEach(cell=>{
    // A coluna Opções é fixa: não faz parte das preferências de colunas e nunca deve sumir.
    const alwaysVisible=cell.dataset.col==='opcoes';
-   cell.style.display=(alwaysVisible||!!prefs[cell.dataset.col])?'':'none';
+   const fixedIncomeSummary=table.dataset.fixedIncomeSummary==='true';
+   cell.style.display=(alwaysVisible||fixedIncomeSummary||!!prefs[cell.dataset.col])?'':'none';
   });
  });
 }
@@ -3996,7 +3999,7 @@ function renderAPIProviders(){
   p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar; cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
   `<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.':'Não é necessário cadastrar token.'}</span></div>`}
   <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
-  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
+  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
   <div class="api-provider-links"><a href="${p.url}" target="_blank" rel="noopener noreferrer">Obter acesso</a><a href="${p.docs}" target="_blank" rel="noopener noreferrer">Documentação</a></div>
  </article>`;
  host.innerHTML=credentialed.map(card).join('');if(pluggyHost)pluggyHost.innerHTML=pluggy.map(card).join('')||'<div class="panel empty">Pluggy indisponível.</div>'; 
@@ -4007,6 +4010,7 @@ async function loadPluggyState(){
  try{
   const data=await api('/api/pluggy/state',{skipAutoRefresh:true});
   if(!data.items||!data.items.length){host.innerHTML='Nenhuma conexão cadastrada. Adicione o itemId do MeuPluggy.';return;}
+  const clearSelect=document.getElementById('pluggyClearItemSelect');if(clearSelect){const previous=clearSelect.value;clearSelect.innerHTML='<option value="">Selecione a conexão</option>'+data.items.map(item=>`<option value="${escapeHTML(item.item_id)}">${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</option>`).join('');if(data.items.some(item=>item.item_id===previous))clearSelect.value=previous;}
   host.innerHTML=data.items.map(item=>{const accounts=Number(item.accounts_count||0),investments=Number(item.investments_count||0),transactions=Number(item.transactions_count||0),investmentTransactions=Number(item.investment_transactions_count||0),hasData=accounts+investments+transactions+investmentTransactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização executada · nenhum dado retornado':'Item cadastrado · ainda não sincronizado',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${accounts} contas · ${investments} investimentos · ${transactions} transações bancárias · ${investmentTransactions} movimentações de investimento${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
   const invHost=document.getElementById('pluggyInvestments');
   if(invHost){
@@ -4030,7 +4034,7 @@ async function syncPluggy(){
  if(!await appConfirm('Sincronizar Pluggy','A sincronização consultará as conexões cadastradas e poderá importar novas movimentações para a carteira.','Sincronizar agora'))return;
  const host=document.getElementById('pluggyState');if(host)host.textContent='Sincronizando contas, investimentos e movimentações…';
  try{
-  const result=await api('/api/pluggy/sync',{method:'POST',body:'{}',skipAutoRefresh:true});
+  const result=await api('/api/pluggy/sync',{method:'POST',body:JSON.stringify({force:true}),skipAutoRefresh:true});
   const s=result.summary||{};
   await loadPluggyState();
   const msg=`Sincronização concluída: ${s.accounts||0} contas, ${s.investments||0} investimentos, ${s.transactions||0} transações bancárias, ${s.investment_transactions||0} movimentações de investimento. ${s.operations_imported||0} operações novas, ${s.operations_matched||0} conciliadas, ${s.dividends_imported||0} proventos importados e ${s.duplicates_ignored||0} duplicidades ignoradas. ${s.fixed_income_positions||0} posições de renda fixa e ${s.market_positions||0} posições variáveis lançadas na carteira. ${s.fixed_income_skipped_missing_data||0} renda(s) fixa(s) ignorada(s) por falta de indexador ou taxa.`;
@@ -4039,6 +4043,19 @@ async function syncPluggy(){
   if(host)host.textContent=outcome+' '+msg;toast(hasAnyData?'Sincronização concluída com dados.':'Sincronização sem dados retornados.');
   if(typeof refresh==='function')refresh();
  }catch(error){if(host)host.textContent=error.message||'Falha na sincronização.';toast(error.message||'Falha na sincronização.');}
+}
+async function clearPluggyImportedData(){
+ const select=document.getElementById('pluggyClearItemSelect'),itemId=select?.value||'';
+ if(!itemId){toast('Selecione a conexão MeuPluggy que deseja limpar.');return;}
+ const label=select.options[select.selectedIndex]?.text||'conexão selecionada';
+ if(!await appConfirm('Limpar dados importados da Pluggy','Os dados sincronizados de '+label+' serão apagados: contas, investimentos, transações, movimentações e lançamentos/proventos criados por essa conexão. A conexão e suas credenciais serão mantidas. Lançamentos manuais ou conciliados com a B3 não serão apagados. Esta ação não pode ser desfeita.','Limpar dados'))return;
+ try{
+  const result=await api('/api/pluggy/items/'+encodeURIComponent(itemId)+'/clear',{method:'POST',body:'{}',skipAutoRefresh:true});
+  await loadPluggyState();
+  const d=result.deleted||{};
+  toast('Dados removidos: '+Number(d.operacoes||0)+' lançamentos, '+Number(d.proventos||0)+' proventos e dados sincronizados da conexão.');
+  refresh();loadDistribution();
+ }catch(error){toast(error.message||'Não foi possível limpar os dados desta conexão.');}
 }
 async function removePluggyItem(itemId){
  if(!await appConfirm('Desativar conexão MeuPluggy','A conexão será desativada localmente. Os dados já importados serão preservados no SQLite.','Desativar conexão'))return;
@@ -4216,7 +4233,7 @@ function chooseGoalType(type){goalWizardType=type;renderGoalWizard();}
 function updateGoalAssetOptions(){const type=document.getElementById('goalAssetType')?.value,select=document.getElementById('goalAssetTicker');if(!select)return;const assets=(state.itens||[]).filter(x=>x.tipo===type);select.innerHTML='<option value="">Selecione</option>'+assets.map(x=>`<option value="${escapeHTML(x.ticker)}">${escapeHTML(x.ticker)}${x.nome&&x.nome!==x.ticker?' — '+escapeHTML(x.nome):''}</option>`).join('');}
 async function saveGoalWizard(event){event.preventDefault();const form=event.currentTarget,data=new FormData(form),type=goalWizardType;const objective=Number(data.get('objetivo')||0);if(!(objective>0)){toast('Informe um valor objetivo válido.');return;}let category=String(data.get('categoria')||''),ticker=String(data.get('ticker')||''),classes=data.getAll('classes');if(type==='ativos'&&!ticker){toast('Selecione um ativo para a meta.');return;}if(type==='proventos'&&!classes.length){toast('Selecione pelo menos um tipo de ativo.');return;}let name='';if(type==='patrimonio')name='Meta de Patrimônio · '+(goalCategories.find(x=>x[0]===category)?.[1]||category);if(type==='ativos')name='Meta de Ativo · '+ticker;if(type==='proventos')name='Meta de Proventos Mensais';const payload={nome:name,objetivo,aporte:Number(data.get('aporte')||0),tipo:type==='ativos'?'ativos':type,categoria:category,ticker,variacao_anual:Number(data.get('variacao_anual')||0),classes:JSON.stringify(classes)};if(!await appConfirm('Criar meta','A nova meta será salva e passará a aparecer no acompanhamento da carteira.','Criar meta'))return;try{await api('/api/metas',{method:'POST',body:JSON.stringify(payload)});closeModal();await refresh();toast('Meta criada com sucesso.');}catch(error){toast(error.message||'Não foi possível criar a meta.')}}
 
-function openModal(type){if(type==='meta'){openGoalWizard();return;}document.querySelector('#modalback .modal').classList.remove('goal-wizard-modal');document.querySelector('#modalback .modal > .modalhead').classList.remove('hidden');editingOperationId=null;const opSubmit=document.querySelector('#opForm .modalactions button.primary');if(opSubmit)opSubmit.textContent='＋ Adicionar lançamento';document.getElementById('modalback').style.display='flex';document.getElementById('goalWizard')?.classList.add('hidden');if(type==='op'){syncAssetTypeOptions();setOperationSide('compra');quantityInput.value='1';unitPriceInput.value='';costsInput.value='0,00';updateOperationTotal();}document.getElementById('opForm').classList.toggle('hidden',type!=='op');document.getElementById('provForm').classList.toggle('hidden',type!=='prov');document.getElementById('metaForm').classList.toggle('hidden',type!=='meta');document.getElementById('modalTitle').textContent=type==='op'?'Adicionar lançamento':type==='prov'?'Registrar provento':'Criar meta';const now=new Date();const local=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);document.getElementById('opDateTime').value=local;document.getElementById('opDate').value=local.slice(0,10);renderSpecificFields(assetType.value)}function closeModal(){
+function openModal(type){if(type==='meta'){openGoalWizard();return;}document.querySelector('#modalback .modal').classList.remove('goal-wizard-modal');document.querySelector('#modalback .modal > .modalhead').classList.remove('hidden');editingOperationId=null;const opSubmit=document.querySelector('#opForm .modalactions button.primary');if(opSubmit)opSubmit.textContent='＋ Adicionar lançamento';document.getElementById('modalback').style.display='flex';document.getElementById('goalWizard')?.classList.add('hidden');if(type==='op'){syncAssetTypeOptions();setOperationSide('compra');quantityInput.value='1';unitPriceInput.value='';costsInput.value='0,00';updateOperationTotal();}document.getElementById('opForm').classList.toggle('hidden',type!=='op');document.getElementById('provForm').classList.toggle('hidden',type!=='prov');document.getElementById('metaForm').classList.toggle('hidden',type!=='meta');document.getElementById('modalTitle').textContent=type==='op'?'Adicionar lançamento':type==='prov'?'Registrar provento':'Criar meta';const now=new Date();const local=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);document.getElementById('opDateTime').value=local.slice(0,10);document.getElementById('opDate').value=local.slice(0,10);renderSpecificFields(assetType.value)}function closeModal(){
  editingOperationId=null;const opSubmit=document.querySelector('#opForm .modalactions button.primary');if(opSubmit)opSubmit.textContent='＋ Adicionar lançamento';
  document.getElementById('modalback').style.display='none';document.getElementById('goalWizard')?.classList.add('hidden');document.querySelector('#modalback .modal').classList.remove('goal-wizard-modal');document.querySelector('#modalback .modal > .modalhead').classList.remove('hidden');
  ['opForm','provForm','metaForm'].forEach(id=>document.getElementById(id).reset());
@@ -4233,9 +4250,32 @@ function parseLocalizedNumber(value){
  if(typeof value==='number')return Number.isFinite(value)?value:0;
  let raw=String(value??'').trim().replace(/R\$/gi,'').replace(/\s/g,'');
  if(!raw)return 0;
+ // Aceita tanto 10.000,50 (pt-BR) quanto 10000.50 (decimal internacional).
  if(raw.includes(','))raw=raw.replace(/\./g,'').replace(',','.');
+ else if((raw.match(/\./g)||[]).length>1)raw=raw.replace(/\./g,'');
+ else if(/\.\d{1,2}$/.test(raw)){}
+ else raw=raw.replace(/\./g,'');
  const parsed=Number(raw);
  return Number.isFinite(parsed)?parsed:0;
+}
+function formatMoneyInput(input,final=false){
+ if(!input)return;
+ const raw=String(input.value??'').trim();
+ if(!raw)return;
+ let normalized=raw.replace(/R\$/gi,'').replace(/\s/g,'');
+ let decimal='';
+ if(normalized.includes(',')){
+  const parts=normalized.split(',');
+  decimal=parts.pop().replace(/\D/g,'').slice(0,2);
+  normalized=parts.join('').replace(/\D/g,'');
+ }else if(/\.\d{1,2}$/.test(normalized)){
+  const parts=normalized.split('.');
+  decimal=parts.pop().replace(/\D/g,'').slice(0,2);
+  normalized=parts.join('').replace(/\D/g,'');
+ }else normalized=normalized.replace(/\D/g,'');
+ const integer=(normalized||'0').replace(/^0+(?=\d)/,'');
+ const grouped=integer.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+ input.value=final?`${grouped},${decimal.padEnd(2,'0')}`:(decimal!==''?`${grouped},${decimal}`:grouped);
 }
 function updateOperationTotal(){
  const quantity=Math.max(0,parseLocalizedNumber(quantityInput.value));
@@ -4244,8 +4284,18 @@ function updateOperationTotal(){
  operationTotal.textContent=(quantity*unitPrice+costs).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 }
 quantityInput.addEventListener('input',updateOperationTotal);
-unitPriceInput.addEventListener('input',updateOperationTotal);
-costsInput.addEventListener('input',updateOperationTotal);
+[unitPriceInput,costsInput].forEach(input=>{
+ input.addEventListener('input',()=>{
+  const start=input.selectionStart;
+  formatMoneyInput(input,false);
+  try{input.setSelectionRange(input.value.length,input.value.length);}catch(_){}
+  updateOperationTotal();
+ });
+ input.addEventListener('blur',()=>{
+  formatMoneyInput(input,true);
+  updateOperationTotal();
+ });
+});
 quantityInput.addEventListener('change',()=>{
  if(!quantityInput.value||Number(quantityInput.value)<1)quantityInput.value='1';
  updateOperationTotal();
@@ -4385,7 +4435,7 @@ assetInput.addEventListener('blur',()=>{
 });
 
 async function submitForm(id,url){document.getElementById(id).addEventListener('submit',async e=>{e.preventDefault();const isEdit=id==='opForm'&&!!editingOperationId;const labelsConfirm={opForm:isEdit?'Salvar alterações do lançamento':'Adicionar lançamento',provForm:'Registrar provento',metaForm:'Salvar meta'};const messagesConfirm={opForm:isEdit?'As alterações deste lançamento serão gravadas e os cálculos da carteira serão atualizados.':'O novo lançamento será adicionado à carteira e afetará os cálculos e gráficos.',provForm:'O registro de provento será salvo e poderá atualizar os totais e gráficos.',metaForm:'As informações da meta serão salvas.'};if(!await appConfirm(labelsConfirm[id]||'Confirmar alteração',messagesConfirm[id]||'Deseja salvar estas alterações?','Confirmar'))return;let data=Object.fromEntries(new FormData(e.target));if(id==='opForm'&&data.lado==='venda'&&!editingOperationId){await loadSellableAssets();const ticker=String(data.ticker||'').trim().toUpperCase();if(!sellableAssets.some(item=>item.ticker.toUpperCase()===ticker)){toast('Só é permitido vender ativos que já estão na sua carteira.');return;}const holding=sellableAssets.find(item=>item.ticker.toUpperCase()===ticker);if(Number(data.quantidade)>Number(holding.quantidade)+1e-8){toast('A quantidade informada é maior que a quantidade disponível na carteira.');return;}}if(id==='opForm'){data.preco=String(parseLocalizedNumber(data.preco));data.custos=String(parseLocalizedNumber(data.custos));data.data=data.data_hora.slice(0,10);data.detalhes=Object.fromEntries(Object.entries(data).filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));Object.keys(data).filter(k=>k.startsWith('detail_')).forEach(k=>delete data[k]);}try{const saved=await api(id==='opForm'&&editingOperationId?`/api/operacoes/${editingOperationId}`:url,{method:id==='opForm'&&editingOperationId?'PUT':'POST',body:JSON.stringify(data)});if(id==='opForm')editingOperationId=null;e.target.reset();if(id==='opForm'){quantityInput.value='1';updateOperationTotal();}closeModal();await refresh();if(id==='opForm'&&saved.status==='agendada'){toast('Operação agendada para '+new Date(saved.data_execucao).toLocaleString('pt-BR')+'.')}else if(id==='opForm'){toast('Lançamento salvo. Carteira, posições e gráficos atualizados.')}else toast('Registro salvo com sucesso.')}catch(err){toast(err.message)}})}submitForm('opForm','/api/operacoes');submitForm('provForm','/api/proventos');submitForm('metaForm','/api/metas');
-async function editOperation(id){const op=(state.operacoes||[]).find(x=>Number(x.id)===Number(id));if(!op){toast('Lançamento não encontrado.');return;}editingOperationId=Number(id);document.getElementById('modalback').style.display='flex';document.getElementById('opForm').classList.remove('hidden');document.getElementById('provForm').classList.add('hidden');document.getElementById('metaForm').classList.add('hidden');document.getElementById('modalTitle').textContent='Editar lançamento';syncAssetTypeOptions();const typeSelect=document.getElementById('assetType');if(![...typeSelect.options].some(option=>option.value===(op.tipo||'acao'))){const option=document.createElement('option');option.value=op.tipo||'acao';option.textContent=labels[op.tipo]||op.tipo;typeSelect.appendChild(option);}typeSelect.value=op.tipo||'acao';document.getElementById('operationSide').value=op.lado||'compra';document.querySelectorAll('.operation-side').forEach(button=>button.classList.toggle('active',button.dataset.side===(op.lado||'compra')));selectedAsset=null;closeSuggestions();document.getElementById('assetTicker').value=op.ticker||'';const stamp=op.data_execucao||op.data||new Date().toISOString().slice(0,10);document.getElementById('opDateTime').value=String(stamp).slice(0,16);document.getElementById('opDate').value=String(stamp).slice(0,10);try{const details=typeof op.detalhes==='string'?JSON.parse(op.detalhes||'{}'):(op.detalhes||{});renderSpecificFields(op.tipo||'acao');Object.entries(details).forEach(([key,value])=>{const field=document.querySelector(`#opForm [name="detail_${CSS.escape(key)}"]`);if(field)field.value=value;});}catch(e){renderSpecificFields(op.tipo||'acao')}document.getElementById('opQuantity').value=op.quantidade??1;document.getElementById('opUnitPrice').value=String(op.preco??0).replace('.',',');document.getElementById('opCosts').value=String(op.custos??0).replace('.',',');updateOperationTotal();const submit=document.querySelector('#opForm .modalactions button.primary');if(submit)submit.textContent='Salvar alterações';}
+async function editOperation(id){const op=(state.operacoes||[]).find(x=>Number(x.id)===Number(id));if(!op){toast('Lançamento não encontrado.');return;}editingOperationId=Number(id);document.getElementById('modalback').style.display='flex';document.getElementById('opForm').classList.remove('hidden');document.getElementById('provForm').classList.add('hidden');document.getElementById('metaForm').classList.add('hidden');document.getElementById('modalTitle').textContent='Editar lançamento';syncAssetTypeOptions();const typeSelect=document.getElementById('assetType');if(![...typeSelect.options].some(option=>option.value===(op.tipo||'acao'))){const option=document.createElement('option');option.value=op.tipo||'acao';option.textContent=labels[op.tipo]||op.tipo;typeSelect.appendChild(option);}typeSelect.value=op.tipo||'acao';document.getElementById('operationSide').value=op.lado||'compra';document.querySelectorAll('.operation-side').forEach(button=>button.classList.toggle('active',button.dataset.side===(op.lado||'compra')));selectedAsset=null;closeSuggestions();document.getElementById('assetTicker').value=op.ticker||'';const stamp=op.data_execucao||op.data||new Date().toISOString().slice(0,10);document.getElementById('opDateTime').value=String(stamp).slice(0,10);document.getElementById('opDate').value=String(stamp).slice(0,10);try{const details=typeof op.detalhes==='string'?JSON.parse(op.detalhes||'{}'):(op.detalhes||{});renderSpecificFields(op.tipo||'acao');Object.entries(details).forEach(([key,value])=>{const field=document.querySelector(`#opForm [name="detail_${CSS.escape(key)}"]`);if(field)field.value=value;});}catch(e){renderSpecificFields(op.tipo||'acao')}document.getElementById('opQuantity').value=op.quantidade??1;document.getElementById('opUnitPrice').value=String(op.preco??0).replace('.',',');document.getElementById('opCosts').value=String(op.custos??0).replace('.',',');updateOperationTotal();const submit=document.querySelector('#opForm .modalactions button.primary');if(submit)submit.textContent='Salvar alterações';}
 async function removeOperation(id){if(!await appConfirm('Excluir lançamento','Tem certeza de que deseja excluir este lançamento? Esta ação não pode ser desfeita.','Excluir lançamento'))return;try{await api('/api/operacoes/'+id,{method:'DELETE'});await refresh();toast('Lançamento excluído.')}catch(e){toast(e.message)}}async function removeGoal(id){if(!await appConfirm('Excluir meta','Esta meta será removida permanentemente.','Excluir meta'))return;try{await api('/api/metas/'+id,{method:'DELETE'});await refresh();toast('Meta excluída.')}catch(e){toast(e.message)}}
 
 // IRPF e DARFs: registros auxiliares separados das operações da carteira.
@@ -4592,14 +4642,29 @@ async function exportOperations(){
  }catch(error){toast(error.message||'Falha ao exportar lançamentos.')}
 }
 async function autoSyncPluggyOnPageLoad(){
+ // Evita consultar a Pluggy em todo F5. Cada conexão é atualizada no máximo
+ // uma vez a cada 30 minutos; o servidor também aplica o mesmo bloqueio.
+ const intervalMs=30*60*1000;
  try{
   const stateData=await api('/api/pluggy/state',{skipAutoRefresh:true});
-  if(!(stateData.items||[]).length)return;
+  const items=stateData.items||[];
+  if(!items.length)return;
+  const now=Date.now();
+  const hasDueItem=items.some(item=>{
+   if(!item.last_synced_at)return true;
+   const last=Date.parse(item.last_synced_at);
+   return !Number.isFinite(last)||(now-last)>=intervalMs;
+  });
+  if(!hasDueItem)return;
   const configured=await api('/api/integracoes',{skipAutoRefresh:true});
   const pluggy=(configured.providers||[]).find(p=>p.id==='pluggy'||p.provider==='pluggy');
   if(pluggy&&(!pluggy.configured||pluggy.enabled===false))return;
   const result=await api('/api/pluggy/sync',{method:'POST',body:'{}',skipAutoRefresh:true});
-  if(result&&result.ok!==false){await refresh();if(document.getElementById('pluggyState'))await loadPluggyState();toast('Pluggy atualizada. Novas movimentações foram conciliadas sem duplicar lançamentos.');}
+  if(result&&result.ok!==false&&Number(result.items||0)>0){
+   await refresh();
+   if(document.getElementById('pluggyState'))await loadPluggyState();
+   toast('Pluggy atualizada. Novos ativos e movimentações foram verificados sem duplicar lançamentos.');
+  }
  }catch(error){console.warn('Sincronização automática Pluggy:',error.message||error)}
 }
 

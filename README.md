@@ -94,3 +94,33 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Pluggy: sincronização automática ao carregar/recarregar a aplicação; movimentações já processadas são ignoradas pelo identificador externo para evitar duplicidades.
 - Importação B3: conciliação semântica por ativo, tipo, lado, data, quantidade e preço, além do fingerprint da planilha.
 - Lançamentos: exportação XLSX no layout compatível com a importação de movimentações da B3.
+
+
+## v3.3.2
+
+- Sincronização automática da Pluggy limitada a uma vez a cada 30 minutos por conexão.
+- Atualizar a página (F5) não dispara nova consulta enquanto a conexão estiver dentro do intervalo.
+- O servidor aplica a mesma proteção para evitar sincronizações simultâneas/repetidas.
+- O botão **Sincronizar tudo** continua permitindo sincronização manual imediata.
+
+
+## v3.3.3
+
+- Adicionado o botão **Limpar dados importados** na área de conexões MeuPluggy.
+- Permite selecionar individualmente a conexão que terá os dados removidos.
+- Remove contas, investimentos, transações, movimentações, snapshots e lançamentos/proventos criados pela conexão selecionada.
+- Preserva a conexão MeuPluggy, credenciais e lançamentos manuais ou apenas conciliados com operações existentes.
+- Reinicia o marcador de última sincronização da conexão para permitir uma nova sincronização imediata.
+
+
+## v3.3.4
+- Formatação automática de valores monetários em operações de compra, venda e edição.
+- Separador de milhar e decimal no padrão brasileiro (ex.: `10.000,00`).
+- Aceita valores digitados no padrão brasileiro e decimal internacional.
+
+
+## v3.3.5
+
+- Os formulários de compra, venda e edição de lançamentos solicitam somente a data, sem campo de horário.
+- Na seção Resumo > Meus ativos > Renda Fixa, a tabela passa a exibir somente: Ativo, Variação, Rentabilidade, Saldo, Nota, % Carteira, % Ideal, Comprar? e Opções.
+- As demais classes e as tabelas fora do Resumo mantêm suas colunas configuráveis.

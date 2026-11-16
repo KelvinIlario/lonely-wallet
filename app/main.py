@@ -854,6 +854,75 @@ def pluggy_add_item():
         return json_error('Falha ao validar conexão Pluggy: ' + str(exc)[:180], 400)
 
 
+@app.route('/api/pluggy/items/<item_id>/clear', methods=['POST'])
+def pluggy_clear_item_data(item_id):
+    """Apaga os dados importados de uma conexão, preservando a conexão e credenciais."""
+    con = db()
+    item = con.execute('SELECT item_id,label FROM pluggy_items WHERE item_id=? AND active=1', (item_id,)).fetchone()
+    if not item:
+        return json_error('Conexão Pluggy não encontrada ou inativa.', 404)
+    try:
+        # IDs das movimentações pertencentes exclusivamente a esta conexão.
+        external_ids = [r[0] for r in con.execute(
+            'SELECT transaction_id FROM pluggy_investment_transactions WHERE item_id=?', (item_id,)
+        ).fetchall()]
+        event_ids = set(external_ids)
+        event_rows = []
+        if external_ids:
+            for start in range(0, len(external_ids), 400):
+                chunk = external_ids[start:start+400]
+                marks = ','.join('?' for _ in chunk)
+                event_rows.extend(con.execute(
+                    f"SELECT external_id,event_type,target_id FROM pluggy_imported_events WHERE external_id IN ({marks})", chunk
+                ).fetchall())
+        provento_ids = [int(r['target_id']) for r in event_rows
+                        if r['event_type'] == 'provento' and r['target_id'] is not None]
+
+        # Remove operações efetivamente criadas pela conexão e snapshots dela.
+        # Operações apenas conciliadas com lançamentos B3/manuais são preservadas.
+        operation_ids = []
+        rows = con.execute('SELECT id,detalhes FROM operacoes').fetchall()
+        for row in rows:
+            try:
+                meta = json.loads(row['detalhes'] or '{}')
+            except (TypeError, ValueError):
+                meta = {}
+            if meta.get('origem') == 'Pluggy' and meta.get('item_id') == item_id:
+                operation_ids.append(int(row['id']))
+            elif meta.get('pluggy_snapshot') == 'PluggySnapshot:' + item_id:
+                operation_ids.append(int(row['id']))
+        for start in range(0, len(operation_ids), 500):
+            chunk = operation_ids[start:start+500]
+            marks = ','.join('?' for _ in chunk)
+            con.execute(f'DELETE FROM operacoes WHERE id IN ({marks})', chunk)
+
+        deleted_proventos = 0
+        for start in range(0, len(provento_ids), 500):
+            chunk = provento_ids[start:start+500]
+            marks = ','.join('?' for _ in chunk)
+            deleted_proventos += con.execute(f'DELETE FROM proventos WHERE id IN ({marks})', chunk).rowcount
+        for start in range(0, len(external_ids), 400):
+            chunk = external_ids[start:start+400]
+            marks = ','.join('?' for _ in chunk)
+            con.execute(f'DELETE FROM pluggy_imported_events WHERE external_id IN ({marks})', chunk)
+
+        deleted = {}
+        for table in ('pluggy_investment_transactions','pluggy_investments',
+                      'pluggy_transactions','pluggy_accounts'):
+            deleted[table] = con.execute(f'DELETE FROM {table} WHERE item_id=?', (item_id,)).rowcount
+        con.execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
+                    ('', datetime.now(TZ).isoformat(timespec='seconds'), item_id))
+        con.commit()
+        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear()
+        PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
+        return jsonify(ok=True, connection=item['label'], deleted={**deleted,
+                       'operacoes':len(operation_ids),'proventos':deleted_proventos,
+                       'eventos':len(event_rows)})
+    except Exception:
+        con.rollback()
+        raise
+
+
 @app.route('/api/pluggy/items/<item_id>', methods=['DELETE'])
 def pluggy_remove_item(item_id):
     db().execute('UPDATE pluggy_items SET active=0,updated_at=? WHERE item_id=?',
@@ -864,12 +933,34 @@ def pluggy_remove_item(item_id):
 
 @app.route('/api/pluggy/sync', methods=['POST'])
 def pluggy_sync():
-    items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
-    if not items:
+    all_items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
+    if not all_items:
         return json_error('Adicione ao menos um itemId do MeuPluggy antes de sincronizar.')
+    payload = request.get_json(silent=True) or {}
+    force_sync = bool(payload.get('force'))
+    sync_interval_minutes = 30
+    now = datetime.now(TZ)
+    items = []
+    skipped_recent = 0
+    for local_item in all_items:
+        last_text = str(local_item['last_synced_at'] or '').strip()
+        try:
+            last_sync = datetime.fromisoformat(last_text) if last_text else None
+            if last_sync and last_sync.tzinfo is None:
+                last_sync = last_sync.replace(tzinfo=TZ)
+        except (TypeError, ValueError):
+            last_sync = None
+        if not force_sync and last_sync and (now - last_sync).total_seconds() < sync_interval_minutes * 60:
+            skipped_recent += 1
+            continue
+        items.append(local_item)
+    if not items:
+        return jsonify(ok=True, skipped_recent=skipped_recent, interval_minutes=sync_interval_minutes,
+                       message='Sincronização recente. Nenhuma consulta à Pluggy foi necessária.')
     summary = {'items':0,'accounts':0,'investments':0,'transactions':0,
                'investment_transactions':0,'operations_imported':0,'operations_matched':0,
-               'dividends_imported':0,'duplicates_ignored':0,'b3_duplicates_reconciled':0,'warnings':[]}
+               'dividends_imported':0,'duplicates_ignored':0,'b3_duplicates_reconciled':0,
+               'skipped_recent':skipped_recent,'interval_minutes':sync_interval_minutes,'warnings':[]}
     now_text = datetime.now(TZ).isoformat(timespec='seconds')
     try:
         _pluggy_api_key()
