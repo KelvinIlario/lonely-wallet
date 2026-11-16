@@ -3410,12 +3410,11 @@ function setReturnCardBenchmark(cardKey,value){
 function toggleReturnSeries(code){
  if(code==='portfolio'||!RETURN_BENCHMARKS.includes(code))return;
  if(returnVisibleSeries.has(code))returnVisibleSeries.delete(code);else returnVisibleSeries.add(code);
- const legend=document.getElementById('returnChartLegend');
- if(legend)legend.querySelectorAll('button[data-series]').forEach(button=>{
-  const active=returnVisibleSeries.has(button.dataset.series);
-  button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
- });
  renderRentabilidadePage();
+ if(!returnIndexSeries(code).length){
+  const note=document.getElementById('returnChartNote');
+  if(note)note.textContent=`${code} foi selecionado, mas a fonte não retornou dados históricos para o período. A seleção está ativa e será exibida assim que houver dados disponíveis.`;
+ }
 }
 function returnIndexSeries(code){
  return returnBenchmarkData?.series?.[code]||[];
@@ -3501,8 +3500,8 @@ function renderRentabilidadePage(){
  const portfolioBase=priorPortfolioRow?1+priorPortfolioRow.cumulative/100:1;
  const values=visible.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4)));
  const note=document.getElementById('returnChartNote');
- if(note)note.textContent='Clique nos nomes dos índices para exibir ou ocultar cada série. As comparações usam dados históricos consultados nas fontes; séries sem dados no período permanecem indisponíveis.';
- RETURN_BENCHMARKS.forEach(code=>{if(!returnIndexSeries(code).length)returnVisibleSeries.delete(code);});
+ if(note)note.textContent='Clique nos nomes dos índices para exibir ou ocultar cada série. Se uma linha não aparecer, a fonte ainda não disponibilizou dados históricos para o período selecionado.';
+ // A ausência temporária de dados não deve bloquear a interação da legenda.
  const datasets=[];
  if(returnVisibleSeries.has('portfolio'))datasets.push({label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
  RETURN_BENCHMARKS.forEach(code=>{
@@ -3511,7 +3510,7 @@ function renderRentabilidadePage(){
   const priorIndex=series.filter(x=>x.mes<visibleFirstKey).slice(-1)[0];
   const indexBase=priorIndex?1+Number(priorIndex.valor)/100:1;
   const data=visible.map(x=>{const key=x.year+'-'+String(x.month).padStart(2,'0');return map.has(key)?Number((((1+map.get(key)/100)/indexBase-1)*100).toFixed(4)):null;});
-  if(data.some(x=>x!==null))datasets.push({label:code,data,borderColor:RETURN_BENCHMARK_COLORS[code],backgroundColor:'transparent',fill:false,tension:.18,pointRadius:0,pointHoverRadius:4,borderWidth:2,spanGaps:true});
+  if(data.some(x=>x!==null))datasets.push({label:code,data,borderColor:RETURN_BENCHMARK_COLORS[code],backgroundColor:'transparent',fill:false,tension:.18,pointRadius:2,pointHoverRadius:4,borderWidth:2,spanGaps:true});
  });
  chart('returnPerformanceChart','line',{labels:labelsX,datasets},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${pct(ctx.raw)}`}}},interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#aab3c2',maxRotation:0,autoSkip:true},grid:{display:false}},y:{ticks:{color:'#aab3c2',callback:v=>`${Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})}%`},grid:{color:'#383e49'}}}});
  const legend=document.getElementById('returnChartLegend');
@@ -3519,8 +3518,8 @@ function renderRentabilidadePage(){
   const active=returnVisibleSeries.has(button.dataset.series);
   button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
   const availableSeries=button.dataset.series==='portfolio'||returnIndexSeries(button.dataset.series).length>0;
-  button.title=availableSeries?'Clique para exibir ou ocultar esta série':'Série sem dados disponíveis no período selecionado';
-  button.disabled=!availableSeries;button.setAttribute('aria-disabled',String(!availableSeries));
+  button.title=availableSeries?'Clique para exibir ou ocultar esta série':'Sem dados históricos disponíveis no momento; clique para tentar exibir quando a fonte responder';
+  button.disabled=false;button.setAttribute('aria-disabled','false');
  });
  const yearGroups=new Map();
  monthly.forEach(row=>{if(!yearGroups.has(row.year))yearGroups.set(row.year,[]);yearGroups.get(row.year).push(row);});

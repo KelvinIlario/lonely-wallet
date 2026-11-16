@@ -1768,12 +1768,14 @@ def api_benchmarks():
         return jsonify(cached['data'])
 
     end = today
+    # Alguns índices da B3 possuem símbolos alternativos no Yahoo Finance.
+    # Tentamos cada alternativa em sequência, sem fabricar séries quando nenhuma responde.
     index_symbols = {
-        'IBOV': '^BVSP',
-        'IFIX': '^IFIX',
-        'SMLL': '^SMLL',
-        'IDIV': '^IDIV',
-        'IVVB11': 'IVVB11.SA'
+        'IBOV': ['^BVSP', 'IBOV.SA'],
+        'IFIX': ['IFIX.SA', '^IFIX'],
+        'SMLL': ['SMLL.SA', '^SMLL'],
+        'IDIV': ['IDIV.SA', '^IDIV'],
+        'IVVB11': ['IVVB11.SA']
     }
     series = {}
     unavailable = []
@@ -1788,20 +1790,23 @@ def api_benchmarks():
         except (requests.RequestException, ValueError, TypeError):
             unavailable.append(code)
 
-    for code, symbol in index_symbols.items():
-        try:
-            data = _benchmark_monthly_from_yahoo(symbol, start, end)
-            if data:
-                series[code] = data
-            else:
-                unavailable.append(code)
-        except (requests.RequestException, ValueError, TypeError, KeyError):
+    for code, symbols in index_symbols.items():
+        data = None
+        for symbol in symbols:
+            try:
+                data = _benchmark_monthly_from_yahoo(symbol, start, end)
+                if data:
+                    series[code] = data
+                    break
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                continue
+        if not data:
             unavailable.append(code)
 
     result = {
         'series': series,
         'unavailable': unavailable,
-        'source': {'CDI': 'Banco Central do Brasil (SGS 12)', 'IPCA': 'Banco Central do Brasil (SGS 433)', **{k: f'Yahoo Finance ({v})' for k, v in index_symbols.items() if k in series}},
+        'source': {'CDI': 'Banco Central do Brasil (SGS 12)', 'IPCA': 'Banco Central do Brasil (SGS 433)', **{k: f"Yahoo Finance ({', '.join(v)})" for k, v in index_symbols.items() if k in series}},
         'start': start.isoformat(),
         'end': end.isoformat()
     }

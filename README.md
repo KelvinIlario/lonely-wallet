@@ -1,6 +1,7 @@
-# Lonely Wallet v2.0.53
+# Lonely Wallet v2.0.54
 
-Seletores independentes de benchmark nos cards de rentabilidade e legenda interativa para exibir ou ocultar índices no gráfico. Séries oficiais do CDI/IPCA e cotações históricas de índices quando disponíveis.\n\n# Lonely Wallet — atualização de interface v2.0.43
+Correção da legenda interativa de índices na página Rentabilidade, com botões sempre clicáveis mesmo quando a fonte histórica está temporariamente indisponível. Melhorada a consulta de índices da B3 com símbolos alternativos no Yahoo Finance. Valores não são simulados.
+\n# Lonely Wallet — atualização de interface v2.0.43
 
 # Lonely Wallet v2.0.44
 
