@@ -502,21 +502,27 @@ def _pluggy_results(path, params=None):
 
 
 def _pluggy_account_transactions(account_id):
+    """Lê todas as páginas de transações bancárias pelo cursor oficial da Pluggy."""
     output = []
     next_query = ''
-    for _ in range(100):
+    seen_cursors = set()
+    for page_number in range(1, 501):
         path = '/v2/transactions' + next_query
         data = _pluggy_request('GET', path, params=None if next_query else {'accountId': account_id})
-        output.extend(data.get('results') or [])
+        if not isinstance(data, dict) or not isinstance(data.get('results'), list):
+            raise ValueError('Resposta inesperada da Pluggy ao consultar transações da conta ' + str(account_id))
+        output.extend(data['results'])
         next_value = data.get('next')
         if not next_value:
-            break
-        # Pluggy returns a ready-to-append query string. Keep it on the same
-        # documented endpoint and do not accept arbitrary external URLs.
-        if not str(next_value).startswith('?'):
-            break
-        next_query = str(next_value)
-    return output
+            return output
+        # A Pluggy entrega uma query pronta, que já contém accountId e after.
+        if not isinstance(next_value, str) or not next_value.startswith('?'):
+            raise ValueError('Cursor de paginação inválido retornado pela Pluggy.')
+        if next_value in seen_cursors:
+            raise ValueError('A Pluggy repetiu o cursor de transações; sincronização interrompida para evitar duplicação.')
+        seen_cursors.add(next_value)
+        next_query = next_value
+    raise ValueError('A sincronização excedeu 500 páginas de transações bancárias.')
 
 
 def _pluggy_date(value):
@@ -931,6 +937,22 @@ def pluggy_state():
     return jsonify(items=[dict(row) for row in items], investments=[dict(row) for row in investments])
 
 
+@app.route('/api/pluggy/transactions', methods=['GET'])
+def pluggy_transactions_list():
+    limit = min(250, max(1, int(request.args.get('limit', 100) or 100)))
+    rows = db().execute(
+        """SELECT t.transaction_id,t.item_id,t.account_id,t.transaction_date,t.description,
+                  t.amount,t.direction,t.status,t.updated_at,COALESCE(a.name,'Conta') AS account_name,
+                  COALESCE(i.label,i.connector_name,'MeuPluggy') AS connection_name
+           FROM pluggy_transactions t
+           LEFT JOIN pluggy_accounts a ON a.account_id=t.account_id
+           LEFT JOIN pluggy_items i ON i.item_id=t.item_id
+           ORDER BY t.transaction_date DESC,t.updated_at DESC LIMIT ?""", (limit,)
+    ).fetchall()
+    total = db().execute('SELECT COUNT(*) FROM pluggy_transactions').fetchone()[0]
+    return jsonify(items=[dict(row) for row in rows], total=int(total))
+
+
 @app.route('/api/pluggy/items', methods=['POST'])
 def pluggy_add_item():
     payload = request.get_json(silent=True) or {}
@@ -1071,7 +1093,7 @@ def pluggy_sync():
     summary = {'items':0,'accounts':0,'investments':0,'transactions':0,
                'investment_transactions':0,'operations_imported':0,'operations_matched':0,
                'dividends_imported':0,'duplicates_ignored':0,'b3_duplicates_reconciled':0,
-               'skipped_recent':skipped_recent,'interval_minutes':sync_interval_minutes,'warnings':[]}
+               'skipped_recent':skipped_recent,'accounts_without_transaction_product':0,'transaction_sync_errors':0,'interval_minutes':sync_interval_minutes,'warnings':[]}
     now_text = datetime.now(TZ).isoformat(timespec='seconds')
     try:
         _pluggy_api_key()
@@ -1103,7 +1125,20 @@ def pluggy_sync():
                      str(account.get('number') or ''),float(account.get('balance') or 0),
                      str(account.get('currencyCode') or 'BRL'),json.dumps(account,ensure_ascii=False),now_text)
                 )
-                transactions = _pluggy_account_transactions(account_id)
+                # O produto Transações da Pluggy cobre contas BANK e CREDIT.
+                # Contas do tipo INVESTMENT não possuem esse endpoint/produto.
+                account_kind = str(account.get('type') or '').upper()
+                if account_kind not in ('BANK', 'CREDIT'):
+                    summary['accounts_without_transaction_product'] += 1
+                    transactions = []
+                else:
+                    try:
+                        transactions = _pluggy_account_transactions(account_id)
+                    except requests.RequestException as tx_error:
+                        summary['transaction_sync_errors'] += 1
+                        status_code = tx_error.response.status_code if getattr(tx_error, 'response', None) is not None else 'conexão'
+                        summary['warnings'].append('Não foi possível sincronizar transações da conta %s (HTTP %s): %s' % (account_id[:8], status_code, str(tx_error)[:120]))
+                        transactions = []
                 for transaction in transactions:
                     tx_id = str(transaction.get('id') or '')
                     if not tx_id: continue
@@ -1119,6 +1154,8 @@ def pluggy_sync():
                          str(transaction.get('status') or ''),json.dumps(transaction,ensure_ascii=False),now_text)
                     )
                     summary['transactions'] += 1
+            if summary['accounts_without_transaction_product']:
+                summary['warnings'].append(str(summary['accounts_without_transaction_product']) + ' conta(s) não consultada(s) para transações bancárias porque não são do tipo BANK/CREDIT.')
             for investment in investments:
                 investment_id = str(investment.get('id') or '')
                 if not investment_id: continue

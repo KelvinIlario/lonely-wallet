@@ -1954,6 +1954,29 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 .operation-manager-filters{margin:8px 0 14px}.operation-manager-filters .field select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:11px}.operationManagerBack .modal{overflow:hidden}#operationManagerBack .utility-modal{max-height:calc(100vh - 36px);display:flex;flex-direction:column}#operationManagerBack #operationManagerRows{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:9px}.utility-modal#operationManagerBack .modalactions{flex:none}.modalactions button.danger{background:rgba(239,83,103,.12);border:1px solid rgba(239,83,103,.38);color:var(--red);border-radius:8px;padding:9px 12px;font-weight:600}.modalactions button.danger:hover{background:rgba(239,83,103,.2)}#appConfirmBack{z-index:120}#appConfirmBack .modal{border-color:var(--line);background:var(--panel)}#appConfirmMessage{white-space:pre-line}
 
  .summary-assets-pagination{display:flex;justify-content:center;align-items:center;gap:6px;margin:16px 0 4px;flex-wrap:wrap}.summary-assets-pagination button{border:1px solid var(--line);background:transparent;color:var(--text);padding:7px 12px;border-radius:6px;cursor:pointer}.summary-assets-pagination button.active{border-color:var(--blue);background:var(--panel)}.summary-assets-pagination button:disabled{opacity:.4;cursor:default}.summary-assets-pagination span{font-size:12px;color:var(--muted);margin-left:6px}
+
+/* v3.3.12 — distribuição do cabeçalho de renda fixa e destaques */
+@media(min-width:1101px){
+ .asset-category[data-category-key="renda_fixa"] .asset-category-head{
+  grid-template-columns:minmax(240px,2fr) repeat(4,minmax(125px,1fr)) 28px!important;
+  column-gap:clamp(14px,1.35vw,24px)!important;
+  padding-left:clamp(18px,1.6vw,30px)!important;
+  padding-right:clamp(18px,1.6vw,30px)!important;
+ }
+}
+.insight-split{grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(20px,4vw,56px);padding:12px 10px;min-height:104px;align-items:center}
+.insight-highlight-column{width:100%;padding:8px 10px;gap:2px}
+.insight-highlight-pill.positive{background:color-mix(in srgb,var(--green) 17%,transparent);color:var(--green);border:1px solid color-mix(in srgb,var(--green) 35%,var(--line))}
+.insight-highlight-pill.negative{background:color-mix(in srgb,var(--red) 17%,transparent);color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,var(--line))}
+.pluggy-transactions{margin-top:14px}
+.pluggy-transactions h4{margin:12px 0 8px;font-size:13px}
+.pluggy-transactions .tablewrap{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.pluggy-transactions table{width:100%;border-collapse:collapse;font-size:11px;min-width:650px}
+.pluggy-transactions th,.pluggy-transactions td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left}
+.pluggy-transactions th{position:sticky;top:0;background:var(--panel2);color:var(--muted);z-index:1}
+.pluggy-transactions td.amount{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pluggy-transactions .empty{padding:12px;color:var(--muted)}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -2296,8 +2319,8 @@ function renderPositionInsights(rows){
   <article class="insight-card">
    <div class="insight-title">Destaques da carteira<span class="info-tip" tabindex="0" aria-label="Sobre os destaques da carteira" data-tip="Consideramos como destaque da carteira os ativos dos seguintes tipos: Ações, FIIs, Stocks, BDRs, REITs, ETFs e Criptomoedas.">i</span></div>
    <div class="insight-split">
-    <div class="insight-highlight-column"><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill ${best&&returnPct(best)<0?'negative':'positive'}" title="${best?`Rentabilidade desde a primeira compra (${best.pluggy_primeira_compra||'histórico disponível'}): ${brl(returnValue(best))}`:'Sem histórico suficiente'}">${best?pct(returnPct(best)):'—'} <span aria-hidden="true">${best&&returnPct(best)<0?'↘':'↗'}</span></span></div>
-    <div class="insight-highlight-column"><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill ${worst&&returnPct(worst)>=0?'positive':'negative'}" title="${worst?`Rentabilidade desde a primeira compra (${worst.pluggy_primeira_compra||'histórico disponível'}): ${brl(returnValue(worst))}`:'Sem histórico suficiente'}">${worst?pct(returnPct(worst)):'—'} <span aria-hidden="true">${worst&&returnPct(worst)>=0?'↗':'↘'}</span></span></div>
+    <div class="insight-highlight-column"><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill positive" title="${best?`Rentabilidade desde a primeira compra (${best.pluggy_primeira_compra||'histórico disponível'}): ${brl(returnValue(best))}`:'Sem histórico suficiente'}">${best?pct(returnPct(best)):'—'} <span aria-hidden="true">${best&&returnPct(best)<0?'↘':'↗'}</span></span></div>
+    <div class="insight-highlight-column"><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill negative" title="${worst?`Rentabilidade desde a primeira compra (${worst.pluggy_primeira_compra||'histórico disponível'}): ${brl(returnValue(worst))}`:'Sem histórico suficiente'}">${worst?pct(returnPct(worst)):'—'} <span aria-hidden="true">${worst&&returnPct(worst)>=0?'↗':'↘'}</span></span></div>
    </div>
   </article>
   <article class="insight-card">
@@ -4012,7 +4035,7 @@ function renderAPIProviders(){
   p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar; cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
   `<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.':'Não é necessário cadastrar token.'}</span></div>`}
   <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
-  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
+  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div><div id="pluggyTransactions" class="pluggy-transactions"></div>`:''}
   <div class="api-provider-links"><a href="${p.url}" target="_blank" rel="noopener noreferrer">Obter acesso</a><a href="${p.docs}" target="_blank" rel="noopener noreferrer">Documentação</a></div>
  </article>`;
  host.innerHTML=credentialed.map(card).join('');if(pluggyHost)pluggyHost.innerHTML=pluggy.map(card).join('')||'<div class="panel empty">Pluggy indisponível.</div>'; 
@@ -4031,7 +4054,16 @@ async function loadPluggyState(){
    const inv=data.investments||[];
    invHost.innerHTML='';
   }
+  await loadPluggyTransactions();
  }catch(error){host.textContent=error.message||'Não foi possível carregar as conexões Pluggy.';}
+}
+async function loadPluggyTransactions(){
+ const host=document.getElementById('pluggyTransactions');if(!host)return;
+ try{
+  const data=await api('/api/pluggy/transactions?limit=100',{skipAutoRefresh:true});
+  const items=data.items||[];
+  host.innerHTML=`<h4>Transações bancárias recebidas <span class="muted">(${Number(data.total||0)})</span></h4>${items.length?`<div class="tablewrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th>Conexão</th><th>Status</th><th style="text-align:right">Valor</th></tr></thead><tbody>${items.map(t=>{const amount=Number(t.amount||0),direction=String(t.direction||'').toUpperCase(),positive=['CREDIT','INCOME','CREDIT_CARD_PAYMENT'].includes(direction)||(!['DEBIT','EXPENSE','TRANSFER'].includes(direction)&&amount>=0);return `<tr><td>${escapeHTML(t.transaction_date||'—')}</td><td>${escapeHTML(t.description||'Transação sem descrição')}</td><td>${escapeHTML(t.account_name||'Conta')}</td><td>${escapeHTML(t.connection_name||'MeuPluggy')}</td><td>${escapeHTML(t.status||'—')}</td><td class="amount ${positive?'green':'red'}">${brl(Math.abs(amount))} ${positive?'↑':'↓'}</td></tr>`;}).join('')}</tbody></table></div>`:'<div class="empty">Nenhuma transação bancária foi recebida. Verifique se a conexão oferece o produto Transações para contas BANK/CREDIT e se a sincronização foi concluída.</div>'}`;
+ }catch(error){host.innerHTML=`<div class="empty">Não foi possível consultar as transações bancárias: ${escapeHTML(error.message||'erro desconhecido')}</div>`;}
 }
 async function addPluggyItem(){
  const itemId=document.getElementById('pluggyItemId')?.value.trim()||'';
@@ -4054,7 +4086,7 @@ async function syncPluggy(){
   const msg=`Sincronização concluída: ${s.accounts||0} contas, ${s.investments||0} investimentos, ${s.transactions||0} transações bancárias, ${s.investment_transactions||0} movimentações de investimento. ${s.operations_imported||0} operações novas, ${s.operations_matched||0} conciliadas, ${s.dividends_imported||0} proventos importados e ${s.duplicates_ignored||0} duplicidades ignoradas. ${s.fixed_income_positions||0} posições de renda fixa e ${s.market_positions||0} posições variáveis lançadas na carteira. ${s.fixed_income_skipped_missing_data||0} renda(s) fixa(s) ignorada(s) por falta de indexador ou taxa.`;
   const hasAnyData=Number(s.accounts||0)+Number(s.investments||0)+Number(s.transactions||0)+Number(s.investment_transactions||0)>0;
   const outcome=hasAnyData?'A Pluggy retornou dados.':'A API respondeu, mas não retornou contas, investimentos ou movimentações. Confira o itemId, o status da conexão e as permissões no MeuPluggy.';
-  if(host)host.textContent=outcome+' '+msg;toast(hasAnyData?'Sincronização concluída com dados.':'Sincronização sem dados retornados.');
+  if(host)host.textContent=outcome+' '+msg+(s.warnings?.length?' Avisos: '+s.warnings.join(' | '):'');await loadPluggyTransactions();toast(hasAnyData?'Sincronização concluída com dados.':'Sincronização sem dados retornados.');
   if(typeof refresh==='function')refresh();
  }catch(error){if(host)host.textContent=error.message||'Falha na sincronização.';toast(error.message||'Falha na sincronização.');}
 }
