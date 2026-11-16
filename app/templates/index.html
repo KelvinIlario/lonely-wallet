@@ -2031,7 +2031,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
   <div class="panelhead return-investor-head"><h2>Rentabilidade comparada com índices</h2><div class="toolbar return-investor-filters"><select id="returnPeriodFilter" aria-label="Período da rentabilidade" onchange="renderRentabilidadePage()"><option value="all">Desde o início</option><option value="12">Últimos 12 meses</option></select><select id="returnTypeFilter" aria-label="Tipo de ativo" onchange="renderRentabilidadePage()"><option value="todos">Todos os tipos</option></select></div></div>
   <div class="return-chart-legend" id="returnChartLegend" aria-label="Selecionar índices exibidos no gráfico">
    <button type="button" class="active" data-series="portfolio" aria-pressed="true" onclick="toggleReturnSeries('portfolio')"><i style="--series-color:#8da8ed"></i>Rentabilidade</button>
-   <button type="button" class="active" data-series="CDI" aria-pressed="true" onclick="toggleReturnSeries('CDI')"><i style="--series-color:#f5bd45"></i>CDI</button>
+   <button type="button" data-series="CDI" aria-pressed="false" onclick="toggleReturnSeries('CDI')"><i style="--series-color:#f5bd45"></i>CDI</button>
    <button type="button" data-series="IPCA" aria-pressed="false" onclick="toggleReturnSeries('IPCA')"><i style="--series-color:#78c56b"></i>IPCA</button>
    <button type="button" data-series="IFIX" aria-pressed="false" onclick="toggleReturnSeries('IFIX')"><i style="--series-color:#b0a0e8"></i>IFIX</button>
    <button type="button" data-series="IBOV" aria-pressed="false" onclick="toggleReturnSeries('IBOV')"><i style="--series-color:#ed6b75"></i>IBOV</button>
@@ -3575,16 +3575,16 @@ const RETURN_BENCHMARKS = ['CDI','IPCA','IFIX','IBOV','SMLL','IDIV','IVVB11'];
 const RETURN_BENCHMARK_COLORS = {CDI:'#f5bd45',IPCA:'#78c56b',IFIX:'#b0a0e8',IBOV:'#ed6b75',SMLL:'#e2a16b',IDIV:'#48b9ae',IVVB11:'#5bb8d8'};
 let returnBenchmarkData = null;
 let returnBenchmarkPromise = null;
-let returnVisibleSeries = new Set(['portfolio','CDI']);
+let returnVisibleSeries = new Set(['portfolio']);
 let returnBenchmarkRequestKey = '';
 
 function returnBenchmarkSelectHTML(cardKey){
- const saved=(()=>{try{return localStorage.getItem('lonelyWalletReturnBenchmark_'+cardKey)||'CDI'}catch(e){return 'CDI'}})();
- return `<div class="return-benchmark-row"><label for="returnBenchmark_${cardKey}">Comparar com</label><select id="returnBenchmark_${cardKey}" class="return-benchmark-select" onchange="setReturnCardBenchmark('${cardKey}',this.value)">${RETURN_BENCHMARKS.map(code=>`<option value="${code}" ${saved===code?'selected':''}>${code}</option>`).join('')}</select><small class="return-card-comparison" id="returnBenchmarkStatus_${cardKey}">Carregando comparação...</small></div>`;
+ const saved=(()=>{try{const v=localStorage.getItem('lonelyWalletReturnBenchmark_'+cardKey)||'';return v==='CDI'?'':v}catch(e){return ''}})();
+ return `<div class="return-benchmark-row"><label for="returnBenchmark_${cardKey}">Comparar com</label><select id="returnBenchmark_${cardKey}" class="return-benchmark-select" onchange="setReturnCardBenchmark('${cardKey}',this.value)"><option value="">Não comparar</option>${RETURN_BENCHMARKS.map(code=>`<option value="${code}" ${saved===code?'selected':''}>${code}</option>`).join('')}</select><small class="return-card-comparison" id="returnBenchmarkStatus_${cardKey}">Selecione um índice para comparar.</small></div>`;
 }
 function setReturnCardBenchmark(cardKey,value){
- if(!['total','12m','month'].includes(cardKey)||!RETURN_BENCHMARKS.includes(value))return;
- try{localStorage.setItem('lonelyWalletReturnBenchmark_'+cardKey,value)}catch(e){}
+ if(!['total','12m','month'].includes(cardKey)||!(value===''||RETURN_BENCHMARKS.includes(value)))return;
+ try{if(value)localStorage.setItem('lonelyWalletReturnBenchmark_'+cardKey,value);else localStorage.removeItem('lonelyWalletReturnBenchmark_'+cardKey)}catch(e){}
  updateReturnCardComparisons();
 }
 function toggleReturnSeries(code){
@@ -3638,7 +3638,8 @@ function updateReturnCardComparisons(){
  for(const key of ['total','12m','month']){
   const select=document.getElementById('returnBenchmark_'+key),status=document.getElementById('returnBenchmarkStatus_'+key);
   if(!select||!status)continue;
-  const code=select.value||'CDI',range=values[key];
+  const code=select.value||'',range=values[key];
+  if(!code){status.textContent='Comparação desativada.';continue;}
   const benchmark=range.portfolio===null||!range.start||!range.end?null:benchmarkReturnFor(code,range.start,range.end);
   if(benchmark===null||!Number.isFinite(benchmark)){
    const detail=returnBenchmarkData?.meta?.[code]?.last_available;
@@ -3687,30 +3688,34 @@ function renderRentabilidadePage(){
  const twelveContinuous=twelveRows.length===12&&twelveRows.every((row,index)=>index===0||(row.year*12+row.month)===(twelveRows[index-1].year*12+twelveRows[index-1].month+1));
  const twelve=twelveContinuous?(twelveRows.reduce((factor,row)=>factor*(1+Number(row.monthly)/100),1)-1)*100:null;
  const summary=state.resumo||{};
- const total=performance.rentabilidade_total!==undefined&&performance.rentabilidade_total!==null?Number(performance.rentabilidade_total):null;
+ const investedTotal=Number(summary.investido||0);
+ const consolidatedGain=Number(summary.lucro||0)+Number(summary.proventos||0);
+ const total=investedTotal>0?(consolidatedGain/investedTotal)*100:null;
  const cards=document.getElementById('returnSummaryCards');
  if(cards)cards.innerHTML=`
   <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${twelve===null?'':twelve>=0?'green':'red'}">${twelve===null?'—':pct(twelve)+' '+(twelve>=0?'↗':'↘')}</strong><small>${twelve===null?'Exige 12 meses fechados de histórico':'Retorno composto dos 12 últimos meses fechados'}</small>${returnBenchmarkSelectHTML('12m')}</div>
   <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':pct(last)+' '+(last>=0?'↗':'↘')}</strong><small>${lastComplete?'Último mês fechado: '+String(lastComplete.month).padStart(2,'0')+'/'+lastComplete.year:'Histórico mensal indisponível'}</small>${returnBenchmarkSelectHTML('month')}</div>
-  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>${performance.resultado_por_saldo_base?'Retorno atual sobre o saldo-base importado':'Resultado financeiro: '+brl(summary.lucro||0)}</small>${returnBenchmarkSelectHTML('total')}</div>
+  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>Resultado consolidado sobre todo o valor investido: ${brl(consolidatedGain)}</small>${returnBenchmarkSelectHTML('total')}</div>
  `;
- const labelsX=visible.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`);
- const visibleFirstKey=visible.length?visible[0].year+'-'+String(visible[0].month).padStart(2,'0'):'';
- const priorPortfolioRow=period==='12'&&visible.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
+ const allTypesSelected=(typeSelect.value||'todos')==='todos';
+ const chartRows=allTypesSelected?[]:visible;
+ const labelsX=allTypesSelected?['Atual']:chartRows.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`);
+ const visibleFirstKey=chartRows.length?chartRows[0].year+'-'+String(chartRows[0].month).padStart(2,'0'):'';
+ const priorPortfolioRow=period==='12'&&chartRows.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
  const portfolioBase=priorPortfolioRow?1+priorPortfolioRow.cumulative/100:1;
- const values=visible.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4)));
+ const values=allTypesSelected?(total===null?[]:[Number(total.toFixed(4))]):chartRows.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4)));
  const note=document.getElementById('returnChartNote');
  if(note){
   const activeSources=RETURN_BENCHMARKS.filter(code=>returnVisibleSeries.has(code)&&returnBenchmarkData?.meta?.[code]).map(code=>code+': '+returnBenchmarkData.meta[code].source+(returnBenchmarkData.meta[code].last_available?' · até '+returnBenchmarkData.meta[code].last_available:'')+(returnBenchmarkData.meta[code].sample?' · amostra de 30 pregões':''));
   const ipcaLast=returnBenchmarkData?.meta?.IPCA?.last_available;
   const ipcaInfo=ipcaLast?' IPCA disponível até '+ipcaLast+'; a competência atual só aparece após divulgação oficial.':'';
-  note.textContent='Clique nos nomes, inclusive Rentabilidade, para exibir ou ocultar cada série. Dados ausentes não são interpolados.'+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
+  note.textContent=allTypesSelected?'Rentabilidade atual consolidada: (ganho de capital + proventos recebidos) ÷ valor total investido. O histórico mensal integral ainda depende da cobertura de preços de todos os ativos.':'Série histórica da classe selecionada, calculada somente com os ativos que possuem histórico disponível. Dados ausentes não são interpolados.'+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
  }
  // A ausência temporária de dados não deve bloquear a interação da legenda.
  const datasets=[];
  if(returnVisibleSeries.has('portfolio'))datasets.push({label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
  RETURN_BENCHMARKS.forEach(code=>{
-  if(!returnVisibleSeries.has(code))return;
+  if(allTypesSelected||!returnVisibleSeries.has(code))return;
   const series=returnIndexSeries(code),map=new Map(series.map(x=>[x.mes,Number(x.valor)]));
   const priorIndex=series.filter(x=>x.mes<visibleFirstKey).slice(-1)[0];
   const indexBase=priorIndex?1+Number(priorIndex.valor)/100:1;
@@ -3742,7 +3747,7 @@ function renderRentabilidadePage(){
   }).join(''):rowEmpty(15,'Ainda não há histórico mensal suficiente para montar a tabela.');
  }
  const tableNote=document.getElementById('returnTableNote');
- if(tableNote)tableNote.textContent=typeSelect.value==='todos'?'Retornos mensais calculados a partir da série histórica da carteira.':'Retornos mensais da classe selecionada.';
+ if(tableNote)tableNote.textContent=typeSelect.value==='todos'?'Retornos mensais calculados a partir dos ativos com histórico de preços disponível; o indicador total considera o resultado consolidado de toda a carteira.':'Retornos mensais da classe selecionada.';
  updateReturnCardComparisons();
  const startKey=monthly.length?monthly[0].year+'-'+String(monthly[0].month).padStart(2,'0'):'';
  if(startKey&&(!returnBenchmarkData||returnBenchmarkRequestKey!==startKey)&&!returnBenchmarkPromise){

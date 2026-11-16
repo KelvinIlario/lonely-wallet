@@ -1277,6 +1277,53 @@ def _fetch_brapi_dividend_events(asset_type, symbols, start_date):
     return events, errors
 
 
+def _fetch_alphavantage_dividend_events(symbols, start_date):
+    """Consulta o endpoint DIVIDENDS quando há chave Alpha Vantage.
+
+    O endpoint só é usado como fonte complementar. Eventos sem data de pagamento
+    ou valor válido são descartados pelo normalizador comum, e a chave canônica
+    do evento impede que o mesmo pagamento seja contado duas vezes entre fontes.
+    """
+    token = _get_api_token('alphavantage')
+    if not token or not symbols:
+        return [], []
+    events, errors = [], []
+    for ticker in symbols:
+        # Alpha Vantage identifica ativos da B3 com sufixo .SAO em endpoints
+        # que oferecem cobertura internacional; a cobertura varia por ticker/plano.
+        symbol = ticker if '.' in ticker else ticker + '.SAO'
+        try:
+            response = requests.get('https://www.alphavantage.co/query', params={
+                'function': 'DIVIDENDS', 'symbol': symbol, 'apikey': token
+            }, timeout=18)
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
+                errors.append(f'Alpha Vantage: {ticker} sem cobertura ou limite da API')
+                continue
+            rows = payload.get('data') or payload.get('dividends') or []
+            for row in rows:
+                payment = _api_date(row.get('payment_date') or row.get('paymentDate'))
+                ex_date = _api_date(row.get('ex_dividend_date') or row.get('exDate'))
+                record = _api_date(row.get('record_date') or row.get('recordDate'))
+                declared = _api_date(row.get('declaration_date') or row.get('declarationDate'))
+                try:
+                    amount = float(row.get('amount') or row.get('dividend') or 0)
+                except (TypeError, ValueError):
+                    amount = 0
+                if amount <= 0 or not payment or (start_date and payment < start_date):
+                    continue
+                events.append({
+                    'symbol': ticker, 'rawRate': amount, 'paymentDate': payment,
+                    'lastDatePrior': record, 'exDate': ex_date,
+                    'approvedOn': declared, 'label': str(row.get('type') or 'DIVIDENDO').upper(),
+                    'remarks': 'Fonte complementar: Alpha Vantage DIVIDENDS.'
+                })
+        except (requests.RequestException, ValueError, TypeError):
+            errors.append(f'Alpha Vantage: falha ao consultar {ticker}')
+    return events, errors
+
+
 def sync_brapi_proventos(force=False, quote_items=None):
     """Importa eventos pagos e anunciados, usando a quantidade na data-com. Idempotente."""
     now_ts = time.time()
@@ -1317,6 +1364,14 @@ def sync_brapi_proventos(force=False, quote_items=None):
     fetched.extend((event, 'fii') for event in fii_events)
     fetched.extend((event, 'acao') for event in stock_events)
     errors.extend(stock_errors + fii_errors)
+
+    # Alpha Vantage DIVIDENDS é consultada como fonte complementar quando há
+    # token configurado. A normalização e a chave canônica abaixo deduplicam
+    # pagamentos já retornados pela brapi ou pelo fallback de cotação.
+    alpha_symbols = sorted(symbol for symbol, kind in types.items() if kind in stock_types or kind in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'})
+    alpha_events, alpha_errors = _fetch_alphavantage_dividend_events(alpha_symbols, start_date)
+    fetched.extend((event, 'fii' if types.get(event.get('symbol')) in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'} else 'acao') for event in alpha_events)
+    errors.extend(alpha_errors)
 
     # Fallback compatível com a cotação v1 usada pela versão estável: ela ainda
     # pode trazer eventos em dividendsData.cashDividends quando o endpoint v2
@@ -1384,7 +1439,8 @@ def sync_brapi_proventos(force=False, quote_items=None):
         if total <= 0:
             ignored += 1
             continue
-        label = str(event.get('label') or ('RENDIMENTO' if source_type == 'fii' else 'PROVENTO')).strip().upper()
+        raw_label = str(event.get('label') or ('RENDIMENTO' if source_type == 'fii' else 'PROVENTO')).strip().upper()
+        label = 'JCP' if 'JCP' in raw_label or 'INTEREST' in raw_label else ('RENDIMENTO' if 'REND' in raw_label else 'DIVIDENDO')
         status = 'Pago' if payment_date and date.fromisoformat(payment_date) < today else 'A receber'
         # Data de pagamento pode ser corrigida pela fonte; não faz parte da chave.
         event_anchor = record_date or payment_date or approved_date or 'sem-data'
@@ -1436,11 +1492,13 @@ def _received_proventos_records():
         if not payment_date or date.fromisoformat(payment_date) > today:
             continue
         records.append({'ticker':str(row['ticker']).upper(),'tipo':'Provento manual','tipo_ativo':typesafe_asset_type(row['ticker']),'status':'Pago','data_com':None,'data_pagamento':payment_date,'quantidade':None,'valor_por_ativo':None,'valor_total':float(row['valor_total'] or 0),'origem':'Manual','tipo_evento':'PROVENTO'})
+    seen_api_keys = set()
     for row in api_rows:
         key=(str(row['ticker']).upper(),str(row['data_pagamento'])[:10],round(float(row['valor_total'] or 0),2))
-        if key in manual_keys:
+        if key in manual_keys or key in seen_api_keys:
             continue
-        records.append({'ticker':row['ticker'],'tipo':row['tipo_evento'],'tipo_ativo':row['tipo_ativo'],'status':'Pago','data_com':row['data_com'],'data_pagamento':row['data_pagamento'],'quantidade':float(row['quantidade'] or 0),'valor_por_ativo':float(row['valor_por_ativo'] or 0),'valor_total':float(row['valor_total'] or 0),'origem':'brapi','tipo_evento':row['tipo_evento'],'remarks':row.get('remarks','')})
+        seen_api_keys.add(key)
+        records.append({'ticker':row['ticker'],'tipo':row['tipo_evento'],'tipo_ativo':row['tipo_ativo'],'status':'Pago','data_com':row['data_com'],'data_pagamento':row['data_pagamento'],'quantidade':float(row['quantidade'] or 0),'valor_por_ativo':float(row['valor_por_ativo'] or 0),'valor_total':float(row['valor_total'] or 0),'origem':('Alpha Vantage' if 'Alpha Vantage' in str(row.get('remarks') or '') else 'brapi'),'tipo_evento':row['tipo_evento'],'remarks':row.get('remarks','')})
     return records
 
 
@@ -2572,7 +2630,7 @@ def dashboard():
             'ticker':row['ticker'],'tipo':row['tipo_evento'],'tipo_ativo':row['tipo_ativo'],
             'status':'A receber','data_com':row['data_com'],'data_pagamento':row['data_pagamento'],
             'quantidade':float(row['quantidade'] or 0),'valor_por_ativo':float(row['valor_por_ativo'] or 0),
-            'valor_total':float(row['valor_total'] or 0),'origem':'brapi','tipo_evento':row['tipo_evento'],
+            'valor_total':float(row['valor_total'] or 0),'origem':('Alpha Vantage' if 'Alpha Vantage' in str(row.get('remarks') or '') else 'brapi'),'tipo_evento':row['tipo_evento'],
             'remarks':row.get('remarks','')
         })
 
@@ -2585,6 +2643,7 @@ def dashboard():
          str(item.get('tipo_evento') or item.get('tipo') or '').upper(), round(float(item.get('valor_por_ativo') or 0), 8))
         for item in upcoming
     }
+    pending_amount_keys = {(str(item.get('ticker') or '').upper(), str(item.get('data_pagamento') or '')[:10], round(float(item.get('valor_total') or 0), 2)) for item in upcoming}
     manual_pending_keys = {
         (str(row['ticker']).upper(), str(row['data'])[:10], round(float(row['valor_total'] or 0), 2))
         for row in manual_rows if str(row.get('data') or '')[:10] > today.isoformat()
@@ -2628,7 +2687,7 @@ def dashboard():
                 continue
             event_type = str(event.get('label') or event.get('type') or ('RENDIMENTO' if kind == 'fii' else 'PROVENTO')).upper()
             dedupe = (ticker, payment_date, event_type, round(rate, 8))
-            if dedupe in pending_keys or (ticker, payment_date, round(quantity * rate, 2)) in manual_pending_keys:
+            if dedupe in pending_keys or (ticker, payment_date, round(quantity * rate, 2)) in manual_pending_keys or (ticker, payment_date, round(quantity * rate, 2)) in pending_amount_keys:
                 continue
             remarks = str(event.get('remarks') or '')
             if estimated:
@@ -2645,6 +2704,7 @@ def dashboard():
                 'remarks':remarks
             })
             pending_keys.add(dedupe)
+            pending_amount_keys.add((ticker, payment_date, round(quantity * rate, 2)))
 
     monthly_values = [{'mes':m,'recebido':round(received_by_month.get(m,0),2)} for m in month_keys]
     total_12m = round(sum(x['recebido'] for x in monthly_values), 2)
