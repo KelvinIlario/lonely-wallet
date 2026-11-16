@@ -114,8 +114,8 @@
 .insight-icon{width:30px;height:30px;border-radius:50%;background:#151a24;border:1px solid var(--line);display:grid;place-items:center;font-size:16px}
 .insight-main{font-size:21px;font-weight:750;color:var(--text);margin:10px 0 5px}
 .insight-sub{font-size:11px;color:var(--muted);line-height:1.5}
-.insight-split{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:0;flex:1;align-items:center;min-height:90px;padding:10px 4px}
-.insight-split b{display:block;font-size:17px;margin-top:8px}.insight-highlight-column{min-width:0;min-height:0;padding:4px 8px;border:0;border-radius:0;background:transparent;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}.insight-highlight-pill{margin-top:8px}
+.insight-split{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:0;flex:1;align-items:center;min-height:90px;padding:12px 0}
+.insight-split b{display:block;font-size:17px;margin-top:8px}.insight-highlight-column{min-width:0;min-height:0;padding:8px 16px;border:0;border-radius:0;background:transparent;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}.insight-highlight-pill{margin-top:8px}
 .insight-profit-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 10px}.insight-profit-summary .insight-main{margin:0}.insight-card:has(.insight-profit-summary){display:flex;flex-direction:column;justify-content:space-between;min-height:132px}.insight-card:has(.insight-profit-summary) .insight-bar{margin:8px 0 10px}.insight-card:has(.insight-profit-summary) .insight-profit-links{margin-top:auto}
 .insight-bar{height:8px;border-radius:99px;background:#303541;overflow:hidden;display:flex;margin:10px 0}
 .insight-bar .positive{background:#20bd82}.insight-bar .negative{background:#f17898}
@@ -2203,7 +2203,7 @@ async function refresh(){
    const dashboardAttempts=4;let dashboardError=null;
    for(let attempt=0;attempt<dashboardAttempts;attempt++){
     try{state=await api('/api/dashboard');dashboardError=null;break;}
-    catch(error){dashboardError=error;if(attempt<dashboardAttempts-1){const label=document.querySelector('#loadingScreen .loading-label');if(label)label.textContent=`Conectando ao servidor… tentativa ${attempt+2} de ${dashboardAttempts}`;await new Promise(resolve=>setTimeout(resolve,650*Math.pow(2,attempt)));}}
+    catch(error){dashboardError=error;if(attempt<dashboardAttempts-1){await new Promise(resolve=>setTimeout(resolve,650*Math.pow(2,attempt)));}}
    }
    if(dashboardError)throw dashboardError;
    render();
@@ -2216,7 +2216,7 @@ async function refresh(){
   }catch(e){toast(`Não foi possível carregar a carteira: ${e.message}`);return null;}
   finally{
    const loader=document.getElementById('loadingScreen');
-   if(loader){const label=loader.querySelector('.loading-label');if(label&&label.textContent.includes('tentativa'))label.textContent='Não foi possível conectar. Tente atualizar a página.';loader.classList.add('done');}
+   if(loader)loader.classList.add('done');
   }
  })();
  try{return await refreshInFlight;}
@@ -2245,13 +2245,28 @@ function categoryKeyFromName(name){
  return null;
 }
 
+function readAssetNoteData(ticker){
+ let raw={};try{raw=JSON.parse(localStorage.getItem(noteStorageKey(ticker))||'{}')}catch(e){}
+ // Compatibilidade com observações salvas nas versões anteriores.
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};
+ const entries=raw.entries&&typeof raw.entries==='object'?raw.entries:Object.fromEntries(Object.entries(raw).filter(([key,value])=>/^\d{2}\/\d{2}\/\d{4}$/.test(key)&&typeof value==='string'));
+ return {score:raw.score===undefined||raw.score===null?'':String(raw.score),entries};
+}
+function assetScore(item){
+ const data=readAssetNoteData(item?.ticker||'');
+ const score=Number(data.score);
+ return Number.isFinite(score)&&score>0?Math.min(10,Math.max(0,score)):0;
+}
 function idealPercentForAsset(item){
  const key=categoryKeyFromName(item?.tipo||item?.classe);
  if(!key)return 0;
  const target=(distributionItems||[]).find(x=>categoryKeyFromName(x.nome)===key);
  const categoryTarget=Number(target?.percentual||0);
- const count=(state.itens||[]).filter(asset=>categoryKeyFromName(asset.tipo||asset.classe)===key).length;
- return count>0?categoryTarget/count:categoryTarget;
+ const assets=(state.itens||[]).filter(asset=>categoryKeyFromName(asset.tipo||asset.classe)===key);
+ if(!assets.length)return categoryTarget;
+ const totalScore=assets.reduce((sum,asset)=>sum+assetScore(asset),0);
+ if(totalScore<=0)return categoryTarget/assets.length;
+ return categoryTarget*assetScore(item)/totalScore;
 }
 
 function syncDashboardCategoryFilters(){
@@ -2557,7 +2572,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['preco_alvo','Meu Preço-Alvo',i=>`<td data-col="preco_alvo">—</td>`],
   ['preco_graham','Preço Justo (Graham)',i=>`<td data-col="preco_graham">—</td>`],
   ['preco_teto_bazin','Preço-teto (Bazin)',i=>`<td data-col="preco_teto_bazin">${i.preco_teto_bazin?brl(i.preco_teto_bazin):'—'}</td>`],
-  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint" tabindex="0" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
+  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint" tabindex="0" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" title="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
   ['lucro_pct','Rentabilidade',i=>`<td data-col="lucro_pct"><span class="variation-pill ${Number(i.lucro_pct)>=0?'positive':'negative'}">${Number(i.lucro_pct)>=0?'↗':'↘'} ${pct(i.lucro_pct)}</span></td>`],
   ['valor_atual','Saldo',i=>`<td data-col="valor_atual">${brl(i.valor_atual)}</td>`],
   ['buyhold','Pontuação Buy and Hold',i=>`<td data-col="buyhold">—</td>`],
@@ -2568,7 +2583,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['pvp','P/VP',i=>`<td data-col="pvp">${i.pvp==null?'—':Number(i.pvp).toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>`],
   ['roe','ROE',i=>`<td data-col="roe">—</td>`],['margem_liquida','Margem Líquida',i=>`<td data-col="margem_liquida">—</td>`],
   ['margem_bruta','Margem Bruta',i=>`<td data-col="margem_bruta">—</td>`],['cagr_receitas','CAGR Receitas (5 anos)',i=>`<td data-col="cagr_receitas">—</td>`],['cagr_lucros','CAGR Lucros (5 anos)',i=>`<td data-col="cagr_lucros">—</td>`],
-  ['nota','Nota',i=>`<td data-col="nota"><button class="note-inline" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">✎</button></td>`],
+  ['nota','Nota',i=>{const score=assetScore(i);return `<td data-col="nota"><button class="note-inline" title="Editar nota e observações de ${escapeHTML(i.ticker)}" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">${score?score.toLocaleString('pt-BR',{maximumFractionDigits:1})+'/10':'—'} ✎</button></td>`;}],
   ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;return `<td data-col="portfolioPct">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</td>`;}],
   ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);const action=share>ideal+0.005?'sell':share<ideal-0.005?'buy':'neutral';return `<td data-col="idealPct"><span class="ideal-balance-hint" data-action="${action}" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const needsContribution=share<ideal-0.005;return `<td data-col="comprar">${needsContribution?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
@@ -2830,18 +2845,20 @@ function applyPositionColumnPrefs(){
 function closeUtilityModal(id){const el=document.getElementById(id);if(el)el.style.display='none';}
 function noteStorageKey(ticker){return 'lonelyWalletNotesV2:'+ticker.toUpperCase();}
 function openAssetNotes(ticker){
- let notes={};try{notes=JSON.parse(localStorage.getItem(noteStorageKey(ticker))||'{}')}catch(e){}
- const today=new Date().toLocaleDateString('pt-BR');
- document.getElementById('notesModalTitle').textContent='Minhas observações ('+ticker+')';
- document.getElementById('notesModalContent').innerHTML=`<div class="note-entry"><strong>${today}</strong><textarea id="assetNoteText" rows="5" placeholder="Escreva suas observações sobre ${escapeHTML(ticker)}...">${escapeHTML(notes[today]||'')}</textarea><div class="note-actions"><button class="primary" type="button" onclick="saveAssetNote('${escapeHTML(ticker)}')">Salvar alterações</button></div></div>`;
+ const data=readAssetNoteData(ticker),today=new Date().toLocaleDateString('pt-BR');
+ document.getElementById('notesModalTitle').textContent='Nota e observações ('+ticker+')';
+ document.getElementById('notesModalContent').innerHTML=`<div class="note-entry"><div class="field"><label for="assetNoteScore">Nota do ativo (0 a 10)</label><input id="assetNoteScore" type="number" min="0" max="10" step="0.5" value="${escapeHTML(data.score)}" placeholder="Ex.: 8"><small class="mini">A nota define o peso ideal deste ativo dentro da classe. Quanto maior a nota, maior sua participação ideal.</small></div><strong>${today}</strong><textarea id="assetNoteText" rows="5" placeholder="Escreva suas observações sobre ${escapeHTML(ticker)}...">${escapeHTML(data.entries[today]||'')}</textarea><div class="note-actions"><button class="primary" type="button" onclick="saveAssetNote('${escapeHTML(ticker)}')">Salvar alterações</button></div></div>`;
  document.getElementById('notesModalBack').style.display='flex';
 }
 function saveAssetNote(ticker){
- const key=noteStorageKey(ticker);let notes={};try{notes=JSON.parse(localStorage.getItem(key)||'{}')}catch(e){}
- const today=new Date().toLocaleDateString('pt-BR'),value=document.getElementById('assetNoteText').value.trim();
- if(value)notes[today]=value;else delete notes[today];
- try{localStorage.setItem(key,JSON.stringify(notes))}catch(e){toast('Não foi possível salvar a observação.');return;}
- closeUtilityModal('notesModalBack');toast('Observação salva.');
+ const key=noteStorageKey(ticker),data=readAssetNoteData(ticker),today=new Date().toLocaleDateString('pt-BR');
+ const rawScore=document.getElementById('assetNoteScore').value.trim();
+ if(rawScore!==''&&(!Number.isFinite(Number(rawScore))||Number(rawScore)<0||Number(rawScore)>10)){toast('Informe uma nota entre 0 e 10.');return;}
+ const value=document.getElementById('assetNoteText').value.trim();
+ if(value)data.entries[today]=value;else delete data.entries[today];
+ data.score=rawScore;
+ try{localStorage.setItem(key,JSON.stringify(data));}catch(e){toast('Não foi possível salvar a nota.');return;}
+ closeUtilityModal('notesModalBack');renderPositionGroups(state.itens||[],'summaryGroups',true);renderPositionGroups(state.itens||[],'positionGroups',false);toast('Nota e observações salvas.');
 }
 let assetTransactionsPage=1,assetTransactionsTicker='';
 async function openAssetTransactions(ticker,page=1){

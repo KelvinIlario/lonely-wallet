@@ -1,6 +1,16 @@
-# Lonely Wallet v3.3.11
+# Lonely Wallet v3.3.13
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
+
+## v3.3.13
+
+- Tela de carregamento mantém a mensagem **Carregando sua carteira…** durante todas as tentativas automáticas de conexão.
+- Tooltip da coluna **Variação** reforçado com o valor financeiro correspondente, inclusive por tooltip nativo do navegador.
+- Coluna **Nota** passa a exibir a avaliação do ativo em escala de 0 a 10, editável junto das observações.
+- O **% Ideal** de cada ativo é distribuído proporcionalmente à nota atribuída dentro da meta percentual da respectiva classe. Quando nenhum ativo da classe possui nota, a distribuição permanece igualitária.
+- Indicadores de proventos do Resumo consideram somente pagamentos com data efetiva até hoje; proventos futuros permanecem em A receber.
+- Margens internas do card Destaques da carteira equalizadas.
+
 
 ## Destaques da versão 3.0.4
 

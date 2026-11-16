@@ -2862,7 +2862,11 @@ def _received_proventos_records(active_tickers=None):
         records.append({'ticker':str(row['ticker']).upper(),'tipo':'Provento manual','tipo_ativo':typesafe_asset_type(row['ticker']),'status':'Pago','data_com':None,'data_pagamento':payment_date,'quantidade':None,'valor_por_ativo':None,'valor_total':float(row['valor_total'] or 0),'origem':'Manual','tipo_evento':'PROVENTO'})
     seen_api_keys = set()
     for row in api_rows:
-        key=(str(row['ticker']).upper(),str(row['data_pagamento'])[:10],round(float(row['valor_total'] or 0),2))
+        payment_date = _api_date(row.get('data_pagamento'))
+        # O resumo financeiro contabiliza apenas pagamentos efetivamente ocorridos.
+        if not payment_date or date.fromisoformat(payment_date) > today:
+            continue
+        key=(str(row['ticker']).upper(),payment_date[:10],round(float(row['valor_total'] or 0),2))
         if key in manual_keys or key in seen_api_keys:
             continue
         seen_api_keys.add(key)
