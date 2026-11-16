@@ -475,20 +475,32 @@ def _pluggy_date(value):
 
 
 def _pluggy_asset_type(investment):
-    kind = str(investment.get('type') or '').upper()
-    subtype = str(investment.get('subtype') or '').upper()
-    if kind == 'EQUITY':
-        return 'acao'
-    if kind == 'ETF':
-        return 'etf'
-    if kind == 'FIXED_INCOME':
+    """Normaliza os tipos/subtipos da Pluggy sem converter produtos em ações."""
+    kind = str(investment.get('type') or '').strip().upper().replace('-', '_').replace(' ', '_')
+    subtype = str(investment.get('subtype') or '').strip().upper().replace('-', '_').replace(' ', '_')
+    name = str(investment.get('name') or '').upper()
+    code = str(investment.get('code') or '').upper()
+    fixed_markers = ('FIXED_INCOME', 'CDB', 'RDB', 'LCI', 'LCA', 'LC', 'CRI', 'CRA',
+                     'DEBENTURE', 'DEBÊNTURE', 'TESOURO', 'TREASURY', 'LFT', 'LTN',
+                     'NTN', 'LF', 'POUPANCA', 'POUPANÇA')
+    if any(marker in kind or marker in subtype for marker in fixed_markers):
         return 'renda_fixa'
-    if kind == 'MUTUAL_FUND':
+    if any(marker in name or marker in code for marker in ('CDB', 'RDB', 'LCI', 'LCA', 'TESOURO', 'DEBENTURE', 'DEBÊNTURE')):
+        return 'renda_fixa'
+    if kind in ('EQUITY', 'STOCK', 'SHARE', 'SHARES'):
+        return 'acao'
+    if kind in ('ETF', 'EXCHANGE_TRADED_FUND'):
+        return 'etf'
+    if kind in ('MUTUAL_FUND', 'FUND', 'INVESTMENT_FUND', 'FUND_QUOTA'):
         return 'fundo'
-    if kind == 'SECURITY':
+    if kind in ('REAL_ESTATE_FUND', 'REIT', 'FII'):
+        return 'fii'
+    if kind in ('BDR', 'BRAZILIAN_DEPOSITARY_RECEIPT'):
+        return 'bdr'
+    if kind == 'COE' or subtype == 'COE':
         return 'outros'
-    if kind == 'COE':
-        return 'outros'
+    if kind in ('SECURITY', 'BOND'):
+        return 'renda_fixa' if any(x in subtype for x in ('BOND','TREASURY','FIXED')) else 'outros'
     return 'outros'
 
 
@@ -500,6 +512,41 @@ def _pluggy_ticker(investment):
         if re.fullmatch(r'[A-Z]{4}[0-9]{1,2}', value):
             return value
     return ''
+
+
+def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_text):
+    """Materializa posições atuais de renda fixa da Pluggy no saldo-base da carteira."""
+    if not snapshot_date:
+        return 0
+    rows = []
+    for investment in investments:
+        if _pluggy_asset_type(investment) != 'renda_fixa':
+            continue
+        investment_id = str(investment.get('id') or '').strip()
+        if not investment_id:
+            continue
+        balance = float(investment.get('balance') or investment.get('value') or 0)
+        principal = float(investment.get('amountOriginal') or investment.get('amountInvested') or balance)
+        if balance <= 0 or principal <= 0:
+            continue
+        # Identificador interno estável, separado de tickers negociados em bolsa.
+        symbol = 'RF' + re.sub(r'[^A-Z0-9]', '', investment_id.upper())[:18]
+        rows.append((symbol, 'renda_fixa', 1.0, principal, balance, snapshot_date,
+                     str(investment.get('name') or investment.get('subtype') or 'Renda fixa'),
+                     'Pluggy:' + item_id))
+    # Remove somente a fotografia anterior desta conexão, nunca posições B3/manuais.
+    db().execute("DELETE FROM saldos_importados WHERE data_base=? AND origem LIKE ?",
+                 (snapshot_date, 'Pluggy:' + item_id))
+    if rows:
+        db().executemany(
+            """INSERT INTO saldos_importados
+               (ticker,tipo,quantidade,preco_medio,preco_base,data_base,nome,origem)
+               VALUES(?,?,?,?,?,?,?,?)
+               ON CONFLICT(ticker,data_base) DO UPDATE SET
+                 tipo=excluded.tipo,quantidade=excluded.quantidade,
+                 preco_medio=excluded.preco_medio,preco_base=excluded.preco_base,
+                 nome=excluded.nome,origem=excluded.origem""", rows)
+    return len(rows)
 
 
 def _reconcile_existing_pluggy_b3_duplicates():
@@ -803,6 +850,11 @@ def pluggy_sync():
                      str(investment.get('status') or ''),json.dumps(investment,ensure_ascii=False),now_text)
                 )
                 summary['investments'] += 1
+                if _pluggy_asset_type(investment) == 'outros':
+                    summary['warnings'].append(
+                        'Tipo de investimento não reconhecido pela classificação automática: ' +
+                        str(investment.get('name') or investment.get('type') or investment_id)[:90]
+                    )
                 inv_transactions = _pluggy_results('/investments/' + investment_id + '/transactions')
                 for movement in inv_transactions:
                     summary['investment_transactions'] += 1
@@ -811,6 +863,11 @@ def pluggy_sync():
                     elif state == 'matched_existing': summary['operations_matched'] += 1
                     elif state == 'imported_provento': summary['dividends_imported'] += 1
                     elif state == 'provento_duplicado_ignorado': summary['duplicates_ignored'] += 1
+            pluggy_snapshot_date = snapshot_date_for() or datetime.now(TZ).date().isoformat()
+            summary.setdefault('fixed_income_positions', 0)
+            summary['fixed_income_positions'] += _pluggy_fixed_income_snapshot_rows(
+                item_id, investments, pluggy_snapshot_date, now_text
+            )
             db().execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
                          (now_text,now_text,item_id))
             db().commit()
