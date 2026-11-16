@@ -2252,7 +2252,7 @@ function syncAssetTypeOptions(){
 }
 
 function renderPositionInsights(rows){
- const enabled=enabledCategoryKeys();rows=rows.filter(item=>enabled.has(item.tipo));
+ const enabled=enabledCategoryKeys();const variableTypes=new Set(['acao','fii','stocks','bdr','reit','etf','internacional','cripto']);rows=rows.filter(item=>enabled.has(item.tipo)&&variableTypes.has(item.tipo));
  const invested=rows.reduce((sum,item)=>sum+Number(item.investido||0),0),actual=rows.reduce((sum,item)=>sum+Number(item.valor_atual||0),0);
  const change=invested?((actual/invested)-1)*100:0;
  const sorted=rows.filter(x=>Number.isFinite(Number(x.lucro_pct))).slice().sort((a,b)=>Number(b.lucro_pct)-Number(a.lucro_pct));
@@ -2313,7 +2313,7 @@ function toggleSummaryAssetGroup(type){
  renderPositionGroups(state.itens||[],'summaryGroups',true);
 }
 function getPositionCategoryOrder(){
- const defaults=['acao','fii','stocks','bdr','etf','internacional','reit','cripto','renda_fixa','tesouro','fundo','outros'];
+ const defaults=['acao','fii','stocks','bdr','etf','internacional','reit','cripto','renda_fixa','tesouro','outros'];
  try{
   const saved=JSON.parse(localStorage.getItem('lonelyWalletPositionCategoryOrderV1')||'[]');
   if(Array.isArray(saved))return [...saved.filter(x=>defaults.includes(x)),...defaults.filter(x=>!saved.includes(x))];
@@ -2343,7 +2343,7 @@ function moveSummaryCategory(key,direction){
  renderPositionGroups(state.itens||[],'summaryGroups',true);
 }
 function getSummaryCategoryOrder(){
- const defaults=['acao','fii','renda_fixa','etf','internacional','stocks','bdr','reit','cripto','tesouro','fundo','outros'];
+ const defaults=['acao','fii','renda_fixa','etf','internacional','stocks','bdr','reit','cripto','tesouro','outros'];
  try{
   const saved=JSON.parse(localStorage.getItem('lonelyWalletSummaryCategoryOrderV1')||'[]');
   if(Array.isArray(saved))return [...saved.filter(x=>defaults.includes(x)),...defaults.filter(x=>!saved.includes(x))];
@@ -2475,9 +2475,16 @@ function sortCategoryItems(items,category,totalPortfolio){
   return (Number(av)-Number(bv))*multiplier;
  });
 }
-let summaryAssetsPage=1;
+const summaryCategoryPages={};
 const SUMMARY_ASSETS_PAGE_SIZE=20;
-function changeSummaryAssetsPage(page){summaryAssetsPage=Math.max(1,Number(page)||1);renderPositionGroups(state.itens||[],'summaryGroups',true);}
+function changeSummaryAssetsPage(category,page){summaryCategoryPages[category]=Math.max(1,Number(page)||1);renderPositionGroups(state.itens||[],'summaryGroups',true);}
+function summaryCategoryPagination(category,totalPages,currentPage){
+ if(totalPages<=1)return '';
+ const buttons=[...new Set([1,currentPage-1,currentPage,currentPage+1,totalPages].filter(n=>n>=1&&n<=totalPages))].sort((a,b)=>a-b);
+ let previous=0;
+ const pageButtons=buttons.map(n=>{const gap=previous&&n-previous>1?'<span>…</span>':'';previous=n;return gap+`<button type="button" class="${n===currentPage?'active':''}" ${n===currentPage?'aria-current="page"':''} onclick="changeSummaryAssetsPage('${category}',${n})">${n}</button>`;}).join('');
+ return `<nav class="summary-assets-pagination" role="navigation" aria-label="Paginação de ${escapeHTML(labels[category]||category)}"><button type="button" ${currentPage===1?'disabled':''} onclick="changeSummaryAssetsPage('${category}',${currentPage-1})">Anterior</button>${pageButtons}<button type="button" ${currentPage===totalPages?'disabled':''} onclick="changeSummaryAssetsPage('${category}',${currentPage+1})">Próximo</button><span>Página ${currentPage} de ${totalPages}</span></nav>`;
+}
 function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
  const categories=[
   {key:'acao',name:'Ações',icon:'▣'},{key:'fii',name:'FIIs',icon:'▥'},{key:'stocks',name:'Stocks',icon:'◎'},
@@ -2531,12 +2538,9 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);const action=share>ideal+0.005?'sell':share<ideal-0.005?'buy':'neutral';return `<td data-col="idealPct"><span class="ideal-balance-hint" data-action="${action}" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const needsContribution=share<ideal-0.005;return `<td data-col="comprar">${needsContribution?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
  ];
- const summaryOrderedRows=summaryMode?visibleCategories.flatMap(cat=>sortCategoryItems(rows.filter(item=>item.tipo===cat.key),cat.key,totalPortfolio)):rows;
- const summaryPages=Math.max(1,Math.ceil(summaryOrderedRows.length/SUMMARY_ASSETS_PAGE_SIZE));
- if(summaryMode)summaryAssetsPage=Math.min(Math.max(1,summaryAssetsPage),summaryPages);
- const summaryVisibleSet=summaryMode?new Set(summaryOrderedRows.slice((summaryAssetsPage-1)*SUMMARY_ASSETS_PAGE_SIZE,summaryAssetsPage*SUMMARY_ASSETS_PAGE_SIZE).map(item=>String(item.tipo)+'|'+String(item.ticker))):null;
  host.innerHTML=visibleCategories.map((cat,categoryIndex)=>{
-  const categoryRows=rows.filter(item=>item.tipo===cat.key),total=categoryRows.reduce((sum,item)=>sum+Number(item.valor_atual||0),0),allCategoryItems=sortCategoryItems(categoryRows,cat.key,totalPortfolio),items=summaryMode?allCategoryItems.filter(item=>summaryVisibleSet.has(String(item.tipo)+'|'+String(item.ticker))):allCategoryItems,invested=allCategoryItems.reduce((sum,item)=>sum+Number(item.investido||0),0);
+  const categoryRows=rows.filter(item=>item.tipo===cat.key),total=categoryRows.reduce((sum,item)=>sum+Number(item.valor_atual||0),0),allCategoryItems=sortCategoryItems(categoryRows,cat.key,totalPortfolio),categoryPages=Math.max(1,Math.ceil(allCategoryItems.length/SUMMARY_ASSETS_PAGE_SIZE)),categoryPage=summaryMode?Math.min(Math.max(1,Number(summaryCategoryPages[cat.key]||1)),categoryPages):1,items=summaryMode?allCategoryItems.slice((categoryPage-1)*SUMMARY_ASSETS_PAGE_SIZE,categoryPage*SUMMARY_ASSETS_PAGE_SIZE):allCategoryItems,invested=allCategoryItems.reduce((sum,item)=>sum+Number(item.investido||0),0);
+  if(summaryMode)summaryCategoryPages[cat.key]=categoryPage;
   const variation=total?allCategoryItems.reduce((sum,item)=>sum+Number(item.variacao_dia||0)*Number(item.valor_atual||0),0)/total:0;
   const profitability=allCategoryItems.length?allCategoryItems.reduce((sum,item)=>sum+Number(item.lucro_pct||0)*Number(item.investido||0),0)/(invested||1):0;
   const target=distributionItems.find(x=>categoryKeyFromName(x.nome)===cat.key),ideal=Number(target?.percentual||0),portfolioPct=totalPortfolio?total/totalPortfolio*100:0;
@@ -2555,8 +2559,8 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   const header=summaryMode
    ? `<div class="summary-category-head">${moveControls}<button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
    : `<div class="position-category-head">${moveControls}<button type="button" class="asset-category-head position-group-toggle" onclick="toggleAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`;
-  return `<section class="asset-category ${expanded?'':'collapsed'} ${summaryMode?'summary-draggable-category':''}" ${summaryMode?`data-category-key="${cat.key}"`:!summaryMode?`data-category-key="${cat.key}"`:``}>${header}<div class="asset-category-body">${body}</div></section>`;
- }).join('')+(summaryMode&&summaryOrderedRows.length>SUMMARY_ASSETS_PAGE_SIZE?`<div class="summary-assets-pagination" role="navigation" aria-label="Paginação dos ativos"><button type="button" ${summaryAssetsPage===1?'disabled':''} onclick="changeSummaryAssetsPage(${summaryAssetsPage-1})">Anterior</button>${[...new Set([1,summaryAssetsPage-1,summaryAssetsPage,summaryAssetsPage+1,summaryPages].filter(page=>page>=1&&page<=summaryPages))].sort((a,b)=>a-b).map((page,index,arr)=>`${index&&page-arr[index-1]>1?'<span>…</span>':''}<button type="button" class="${page===summaryAssetsPage?'active':''}" ${page===summaryAssetsPage?'aria-current="page"':''} onclick="changeSummaryAssetsPage(${page})">${page}</button>`).join('')}<button type="button" ${summaryAssetsPage===summaryPages?'disabled':''} onclick="changeSummaryAssetsPage(${summaryAssetsPage+1})">Próximo</button><span>Página ${summaryAssetsPage} de ${summaryPages}</span></div>`:'');
+  return `<section class="asset-category ${expanded?'':'collapsed'} ${summaryMode?'summary-draggable-category':''}" ${summaryMode?`data-category-key="${cat.key}"`:!summaryMode?`data-category-key="${cat.key}"`:``}>${header}<div class="asset-category-body">${body}${summaryMode?summaryCategoryPagination(cat.key,categoryPages,categoryPage):''}</div></section>`;
+ }).join('');
  applyPositionColumnPrefs();
  requestAnimationFrame(()=>alignCategoryMoveControls(hostId));
 }
@@ -3832,19 +3836,15 @@ function renderReturnSparklines(series12m,seriesTotal,totalFallback){
 }
 
 function renderConsolidatedReturnSparklines(value){
- // O card do Resumo representa o resultado consolidado atual (lucro + proventos / valor investido).
- // Não desenha uma curva histórica fictícia: mostra uma linha de referência e o ponto atual.
- const draw=id=>{
-  const svg=document.getElementById(id);if(!svg)return;
-  const width=300,height=40,pad=4,baseline=height/2;
-  const finite=Number.isFinite(Number(value))?Number(value):0;
-  const color=finite>=0?'#20bd82':'#ef6680';
-  const magnitude=Math.min(Math.abs(finite),100);
-  const endY=baseline-(finite>=0?1:-1)*(magnitude/100)*(height/2-pad-2);
-  const endX=width-4;
-  svg.innerHTML=`<line x1="0" y1="${baseline}" x2="${width}" y2="${baseline}" stroke="#596273" stroke-opacity=".48" stroke-width="1" stroke-dasharray="3 4"></line><line x1="0" y1="${baseline}" x2="${endX}" y2="${endY}" stroke="${color}" stroke-width="2.4" stroke-linecap="round"></line><circle cx="${endX}" cy="${endY}" r="3.1" fill="${color}"></circle>`;
- };
- draw('return12mChart');draw('returnTotalChart');
+ // Usa somente pontos mensais efetivamente calculados pelo backend. Sem histórico,
+ // mantém o estado vazio em vez de desenhar uma curva artificial.
+ const performance=state.rentabilidade_historica||{};
+ const series=Array.isArray(performance.series_total)?performance.series_total
+  .filter(point=>point&&/^\d{4}-\d{2}$/.test(String(point.mes||''))&&Number.isFinite(Number(point.valor))) : [];
+ const current=Number(value||0);
+ const totalSeries=series;
+ const twelveMonths=totalSeries.slice(-12);
+ renderReturnSparklines(twelveMonths,totalSeries,null);
 }
 
 function operationQuantity(value){
@@ -3875,7 +3875,7 @@ function renderOperationsByType(allOps){
  const host=document.getElementById('operationGroups');
  if(!host)return;
  operationGroupsData=Array.isArray(allOps)?allOps.slice():[];
- const order=['acao','fii','etf','bdr','internacional','stocks','reit','cripto','renda_fixa','tesouro','fundo','outros'];
+ const order=['acao','fii','etf','bdr','internacional','stocks','reit','cripto','renda_fixa','tesouro','outros'];
  const groups=new Map();
  operationGroupsData.forEach(op=>{
   const key=String(op.tipo||'outros').toLowerCase();
@@ -3910,7 +3910,7 @@ function renderImportedBalances(rows,baseDate){
  if(dateLabel)dateLabel.textContent=baseDate?`Data-base: ${new Date(baseDate+'T12:00:00').toLocaleDateString('pt-BR')}`:'Sem posição importada';
  const active=(rows||[]).filter(x=>Number(x.quantidade||0)>1e-8);
  if(!active.length){host.innerHTML='<div class="empty">Nenhuma posição-base importada.</div>';return;}
- const order=['acao','fii','etf','bdr','internacional','stocks','reit','cripto','renda_fixa','tesouro','fundo','outros'];
+ const order=['acao','fii','etf','bdr','internacional','stocks','reit','cripto','renda_fixa','tesouro','outros'];
  const groups=new Map();
  active.forEach(item=>{const key=String(item.tipo||'outros').toLowerCase();if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item);});
  const keys=[...groups.keys()].sort((a,b)=>order.indexOf(a)-order.indexOf(b));
@@ -4360,7 +4360,7 @@ async function searchAssets(){
   return;
  }
  if(q.length<2){closeSuggestions();assetHint.textContent='Digite pelo menos 2 caracteres para buscar na B3.';return;}
- if(['internacional','cripto','renda_fixa','reit','tesouro','fundo','outros'].includes(tipo)){
+ if(['internacional','cripto','renda_fixa','reit','tesouro','outros'].includes(tipo)){
   closeSuggestions();assetHint.textContent='Busca automática ainda não disponível para esta classe. Você pode digitar o ticker manualmente.';return;
  }
  if(assetSearchController)assetSearchController.abort();
@@ -4428,7 +4428,7 @@ assetInput.addEventListener('blur',()=>{
    assetHint.textContent='Venda permitida somente para ativos que você já possui. Escolha um ativo da lista.';
    return;
   }
-  if(ticker&&!['renda_fixa','tesouro','fundo','outros','cripto','internacional','reit'].includes(assetType.value)&&(!selectedAsset||selectedAsset.ticker!==ticker)){
+  if(ticker&&!['renda_fixa','tesouro','outros','cripto','internacional','reit'].includes(assetType.value)&&(!selectedAsset||selectedAsset.ticker!==ticker)){
    quantityInput.value='1';quantityInput.step='1';quantityInput.min='1';updateOperationTotal();fillAssetQuote(ticker);
   }
  },180);

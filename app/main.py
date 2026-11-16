@@ -220,6 +220,18 @@ def init_db():
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_pluggy_investments_item ON pluggy_investments(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_position_snapshots (
+      item_id TEXT NOT NULL,
+      investment_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      asset_type TEXT NOT NULL DEFAULT 'outros',
+      quantity REAL NOT NULL DEFAULT 0,
+      amount_original REAL NOT NULL DEFAULT 0,
+      balance REAL NOT NULL DEFAULT 0,
+      snapshot_at TEXT NOT NULL,
+      PRIMARY KEY(item_id,investment_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_position_snapshots_ticker ON pluggy_position_snapshots(ticker);
     CREATE TABLE IF NOT EXISTS pluggy_transactions (
       transaction_id TEXT PRIMARY KEY,
       item_id TEXT NOT NULL,
@@ -583,6 +595,7 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
     origin_tag = 'PluggySnapshot:' + item_id
     # Recria somente os lançamentos-snapshot desta conexão, sem tocar nos manuais.
     db().execute("DELETE FROM operacoes WHERE detalhes LIKE ?", ('%' + origin_tag + '%',))
+    db().execute('DELETE FROM pluggy_position_snapshots WHERE item_id=?', (item_id,))
     for investment in investments:
         asset_type = _pluggy_asset_type(investment)
         investment_id = str(investment.get('id') or '').strip()
@@ -614,15 +627,21 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
                         'saldo_atual': balance, 'subtipo': investment.get('subtype') or ''}
             fixed_count += 1
         elif asset_type in ('acao', 'fii', 'etf', 'bdr', 'fundo'):
+            # Não transformar posição atual de renda variável em uma compra
+            # sintética. As compras/vendas reais já vêm de /investments/{id}/transactions.
+            # Inserir também o snapshot como compra soma quantidade duas vezes
+            # (ex.: 43 ações atuais + 42 compras históricas = 85).
             symbol = _pluggy_ticker(investment)
             quantity = float(investment.get('quantity') or 0)
-            if not symbol or quantity <= 0:
-                continue
-            price = principal / quantity
-            name = str(investment.get('name') or symbol)
-            contract = {'origem': 'Pluggy', 'pluggy_snapshot': origin_tag, 'investment_id': investment_id,
-                        'nome': name, 'saldo_atual': balance}
-            market_count += 1
+            if symbol and quantity > 0:
+                db().execute(
+                    "INSERT OR REPLACE INTO pluggy_position_snapshots "
+                    "(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) "
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                    (item_id, investment_id, symbol, asset_type, quantity, principal, balance, now_text)
+                )
+                market_count += 1
+            continue
         else:
             continue
         db().execute(
@@ -907,7 +926,7 @@ def pluggy_clear_item_data(item_id):
             con.execute(f'DELETE FROM pluggy_imported_events WHERE external_id IN ({marks})', chunk)
 
         deleted = {}
-        for table in ('pluggy_investment_transactions','pluggy_investments',
+        for table in ('pluggy_position_snapshots','pluggy_investment_transactions','pluggy_investments',
                       'pluggy_transactions','pluggy_accounts'):
             deleted[table] = con.execute(f'DELETE FROM {table} WHERE item_id=?', (item_id,)).rowcount
         con.execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
@@ -2206,6 +2225,10 @@ def carteira():
     base_date = snapshot_date_for()
     ticker_rows = db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall()
     tickers = {str(row[0]).upper() for row in ticker_rows}
+    tickers.update(str(row[0]).upper() for row in db().execute(
+        "SELECT DISTINCT s.ticker FROM pluggy_position_snapshots s "
+        "JOIN pluggy_items i ON i.item_id=s.item_id WHERE i.active=1"
+    ).fetchall())
     if base_date:
         tickers.update(str(row[0]).upper() for row in db().execute(
             'SELECT ticker FROM saldos_importados WHERE data_base=?', (base_date,)
@@ -2213,10 +2236,23 @@ def carteira():
     itens=[]; invested=actual=received=0.0
     for ticker in sorted(tickers):
         qty, avg = posicao(ticker)
+        pluggy_position = db().execute(
+            "SELECT s.asset_type, SUM(s.quantity) AS quantity, "
+            "SUM(s.amount_original) AS amount_original, SUM(s.balance) AS balance "
+            "FROM pluggy_position_snapshots s JOIN pluggy_items i ON i.item_id=s.item_id "
+            "WHERE i.active=1 AND UPPER(s.ticker)=? GROUP BY UPPER(s.ticker)",
+            (ticker,)
+        ).fetchone()
+        if pluggy_position and float(pluggy_position['quantity'] or 0) > 0:
+            # A posição atual da corretora é a fotografia autoritativa. As compras e
+            # vendas permanecem no histórico, mas não são somadas novamente ao saldo.
+            qty = float(pluggy_position['quantity'])
+            original = float(pluggy_position['amount_original'] or 0)
+            avg = original / qty if original > 0 else avg
         if qty <= 1e-8: continue
         imported = imported_balance(ticker)
         op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
-        kind = (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
+        kind = (pluggy_position['asset_type'] if pluggy_position else None) or (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
         # Renda fixa usa o indexador e a data de cada aplicação, não cotação de bolsa.
         quote = {} if kind == 'renda_fixa' else cotacao(ticker)
         raw_price=quote.get('regularMarketPrice') or quote.get('close') or quote.get('price')
