@@ -1820,6 +1820,24 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 @media(max-width:900px){.return-investor-layout{grid-template-columns:1fr}.return-investor-sidebar{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:1fr}.return-main-chart{height:300px}}
 @media(max-width:620px){.return-investor-sidebar{grid-template-columns:1fr}.return-investor-head{align-items:stretch;flex-direction:column}.return-investor-filters{width:100%}.return-investor-filters select{flex:1;min-width:0}.return-main-chart{height:260px;padding:6px 8px 12px}.return-chart-legend{gap:8px 10px}}
 
+
+/* v2.0.53 — seletores de benchmark independentes e legenda interativa */
+.return-benchmark-row{display:grid;gap:5px;margin-top:3px}
+.return-benchmark-row label{font-size:11px;color:var(--muted);font-weight:600}
+.return-benchmark-select{width:100%;min-height:35px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;outline:none}
+.return-benchmark-select:focus{border-color:var(--blue)}
+.return-card-comparison{font-size:11px;line-height:1.4;color:var(--muted);min-height:16px}
+.return-chart-legend{display:flex;justify-content:center;align-items:center;gap:7px 13px;flex-wrap:wrap;padding:12px 12px 2px;color:var(--muted);font-size:11px}
+.return-chart-legend button{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--muted);padding:3px 2px;border-radius:5px;font:inherit;cursor:pointer;opacity:.48;transition:opacity .15s ease,color .15s ease}
+.return-chart-legend button.active{opacity:1;color:var(--text)}
+.return-chart-legend button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+.return-chart-legend i{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none;background:var(--series-color)}
+.return-chart-legend button:not(.active) i{background:#8b929e}
+.return-chart-legend button[aria-disabled="true"]{cursor:not-allowed;opacity:.35}
+.return-chart-note{font-size:11px;color:var(--muted);text-align:center;padding:0 12px 10px;min-height:16px}
+.return-summary-card{gap:9px}
+@media(max-width:900px){.return-benchmark-row{grid-template-columns:1fr}.return-chart-legend{gap:6px 10px}}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -1904,7 +1922,16 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
  <aside class="return-sidebar return-investor-sidebar" id="returnSummaryCards"></aside>
  <div class="panel return-investor-chart-panel">
   <div class="panelhead return-investor-head"><h2>Rentabilidade comparada com índices</h2><div class="toolbar return-investor-filters"><select id="returnPeriodFilter" aria-label="Período da rentabilidade" onchange="renderRentabilidadePage()"><option value="all">Desde o início</option><option value="12">Últimos 12 meses</option></select><select id="returnTypeFilter" aria-label="Tipo de ativo" onchange="renderRentabilidadePage()"><option value="todos">Todos os tipos</option></select></div></div>
-  <div class="return-chart-legend"><span><i class="return-legend-portfolio"></i>Rentabilidade</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>CDI</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IPCA</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IFIX</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IBOV</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>SMLL</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IDIV</span><span class="return-legend-muted" title="Série histórica ainda não conectada"><i></i>IVVB11</span></div>
+  <div class="return-chart-legend" id="returnChartLegend" aria-label="Selecionar índices exibidos no gráfico">
+   <button type="button" class="active" data-series="portfolio" aria-pressed="true" onclick="toggleReturnSeries('portfolio')"><i style="--series-color:#8da8ed"></i>Rentabilidade</button>
+   <button type="button" class="active" data-series="CDI" aria-pressed="true" onclick="toggleReturnSeries('CDI')"><i style="--series-color:#f5bd45"></i>CDI</button>
+   <button type="button" data-series="IPCA" aria-pressed="false" onclick="toggleReturnSeries('IPCA')"><i style="--series-color:#78c56b"></i>IPCA</button>
+   <button type="button" data-series="IFIX" aria-pressed="false" onclick="toggleReturnSeries('IFIX')"><i style="--series-color:#b0a0e8"></i>IFIX</button>
+   <button type="button" data-series="IBOV" aria-pressed="false" onclick="toggleReturnSeries('IBOV')"><i style="--series-color:#ed6b75"></i>IBOV</button>
+   <button type="button" data-series="SMLL" aria-pressed="false" onclick="toggleReturnSeries('SMLL')"><i style="--series-color:#e2a16b"></i>SMLL</button>
+   <button type="button" data-series="IDIV" aria-pressed="false" onclick="toggleReturnSeries('IDIV')"><i style="--series-color:#48b9ae"></i>IDIV</button>
+   <button type="button" data-series="IVVB11" aria-pressed="false" onclick="toggleReturnSeries('IVVB11')"><i style="--series-color:#5bb8d8"></i>IVVB11</button>
+  </div>
   <div class="chartbox return-main-chart"><canvas id="returnPerformanceChart"></canvas></div>
   <div id="returnChartNote" class="return-chart-note">A linha representa o retorno acumulado calculado com o histórico disponível da carteira. Índices de referência serão exibidos quando suas séries históricas estiverem conectadas.</div>
  </div>
@@ -3363,6 +3390,91 @@ function returnMonthlyRows(performance){
  });
  return rows;
 }
+
+const RETURN_BENCHMARKS = ['CDI','IPCA','IFIX','IBOV','SMLL','IDIV','IVVB11'];
+const RETURN_BENCHMARK_COLORS = {CDI:'#f5bd45',IPCA:'#78c56b',IFIX:'#b0a0e8',IBOV:'#ed6b75',SMLL:'#e2a16b',IDIV:'#48b9ae',IVVB11:'#5bb8d8'};
+let returnBenchmarkData = null;
+let returnBenchmarkPromise = null;
+let returnVisibleSeries = new Set(['portfolio','CDI']);
+let returnBenchmarkRequestKey = '';
+
+function returnBenchmarkSelectHTML(cardKey){
+ const saved=(()=>{try{return localStorage.getItem('lonelyWalletReturnBenchmark_'+cardKey)||'CDI'}catch(e){return 'CDI'}})();
+ return `<div class="return-benchmark-row"><label for="returnBenchmark_${cardKey}">Comparar com</label><select id="returnBenchmark_${cardKey}" class="return-benchmark-select" onchange="setReturnCardBenchmark('${cardKey}',this.value)">${RETURN_BENCHMARKS.map(code=>`<option value="${code}" ${saved===code?'selected':''}>${code}</option>`).join('')}</select><small class="return-card-comparison" id="returnBenchmarkStatus_${cardKey}">Carregando comparação...</small></div>`;
+}
+function setReturnCardBenchmark(cardKey,value){
+ if(!['total','12m','month'].includes(cardKey)||!RETURN_BENCHMARKS.includes(value))return;
+ try{localStorage.setItem('lonelyWalletReturnBenchmark_'+cardKey,value)}catch(e){}
+ updateReturnCardComparisons();
+}
+function toggleReturnSeries(code){
+ if(code==='portfolio'||!RETURN_BENCHMARKS.includes(code))return;
+ if(returnVisibleSeries.has(code))returnVisibleSeries.delete(code);else returnVisibleSeries.add(code);
+ const legend=document.getElementById('returnChartLegend');
+ if(legend)legend.querySelectorAll('button[data-series]').forEach(button=>{
+  const active=returnVisibleSeries.has(button.dataset.series);
+  button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+ });
+ renderRentabilidadePage();
+}
+function returnIndexSeries(code){
+ return returnBenchmarkData?.series?.[code]||[];
+}
+function benchmarkReturnFor(code,fromKey,toKey){
+ const series=returnIndexSeries(code).slice().sort((a,b)=>a.mes.localeCompare(b.mes));
+ if(!series.length)return null;
+ const eligible=series.filter(x=>x.mes<=toKey),last=eligible[eligible.length-1];
+ const first=series.find(x=>x.mes>=fromKey&&x.mes<=toKey);
+ if(!first||!last)return null;
+ const previous=series.filter(x=>x.mes<first.mes).slice(-1)[0];
+ const baseFactor=previous?1+Number(previous.valor)/100:1;
+ const endFactor=1+Number(last.valor)/100;
+ if(!(baseFactor>0))return null;
+ return (endFactor/baseFactor-1)*100;
+}
+function updateReturnCardComparisons(){
+ const performance=getReturnPerformance(),monthly=returnMonthlyRows(performance);
+ if(!monthly.length)return;
+ const last=monthly[monthly.length-1];
+ const first=monthly[0];
+ const totalStart=first.year+'-'+String(first.month).padStart(2,'0');
+ const lastKey=last.year+'-'+String(last.month).padStart(2,'0');
+ const twelveStartRow=monthly[Math.max(0,monthly.length-12)];
+ const twelveStart=twelveStartRow.year+'-'+String(twelveStartRow.month).padStart(2,'0');
+ const portfolioTotal=Number(performance.rentabilidade_total??0);
+ const portfolio12=performance.rentabilidade_12m===null||performance.rentabilidade_12m===undefined?null:Number(performance.rentabilidade_12m);
+ const portfolioMonth=Number(last.monthly);
+ const values={total:{start:totalStart,end:lastKey,portfolio:portfolioTotal},'12m':{start:twelveStart,end:lastKey,portfolio:portfolio12},month:{start:lastKey,end:lastKey,portfolio:portfolioMonth}};
+ for(const key of ['total','12m','month']){
+  const select=document.getElementById('returnBenchmark_'+key),status=document.getElementById('returnBenchmarkStatus_'+key);
+  if(!select||!status)continue;
+  const code=select.value||'CDI',range=values[key];
+  const benchmark=range.portfolio===null?null:benchmarkReturnFor(code,range.start,range.end);
+  if(benchmark===null||!Number.isFinite(benchmark)){
+   status.textContent=`${code}: série histórica indisponível para este período.`;
+  }else{
+   const delta=range.portfolio-benchmark;
+   status.textContent=`${code}: ${pct(benchmark)} · Carteira ${Math.abs(delta).toFixed(2).replace('.',',')} p.p. ${delta>=0?'acima':'abaixo'}`;
+  }
+ }
+}
+async function loadReturnBenchmarks(startKey){
+ const key=startKey||'';
+ if(returnBenchmarkData&&returnBenchmarkRequestKey===key)return returnBenchmarkData;
+ if(returnBenchmarkPromise&&returnBenchmarkRequestKey===key)return returnBenchmarkPromise;
+ returnBenchmarkRequestKey=key;
+ returnBenchmarkPromise=(async()=>{
+  try{
+   const url='/api/benchmarks'+(key?'?start='+encodeURIComponent(key+'-01'):'');
+   const response=await fetch(url,{cache:'no-store'});
+   if(!response.ok)throw new Error('Não foi possível consultar os índices.');
+   returnBenchmarkData=await response.json();
+  }catch(error){returnBenchmarkData={series:{},unavailable:RETURN_BENCHMARKS.slice()};}
+  finally{returnBenchmarkPromise=null;}
+  return returnBenchmarkData;
+ })();
+ return returnBenchmarkPromise;
+}
 function renderRentabilidadePage(){
  const typeSelect=document.getElementById('returnTypeFilter');
  if(!typeSelect)return;
@@ -3378,18 +3490,38 @@ function renderRentabilidadePage(){
  const summary=state.resumo||{};
  const total=performance.rentabilidade_total!==undefined&&performance.rentabilidade_total!==null?Number(performance.rentabilidade_total):Number(summary.lucro_pct||0);
  const twelve=performance.rentabilidade_12m!==undefined&&performance.rentabilidade_12m!==null?Number(performance.rentabilidade_12m):null;
- const hasSeries=monthly.length>0;
- const coverage=performance.historico_parcial?'Histórico parcial, conforme dados disponíveis':performance.historico_completo?'Histórico completo disponível':'Histórico disponível limitado';
  const cards=document.getElementById('returnSummaryCards');
  if(cards)cards.innerHTML=`
-  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total>=0?'green':'red'}">${pct(total)} ${total>=0?'↗':'↘'}</strong><small>Resultado financeiro: ${brl(summary.lucro||0)}</small><small class="return-card-comparison">Comparação com CDI <span>Não disponível</span></small></div>
-  <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${twelve===null?'':twelve>=0?'green':'red'}">${twelve===null?'—':`${pct(twelve)} ${twelve>=0?'↗':'↘'}`}</strong><small>${twelve===null?'Não há 12 meses completos de histórico':'Retorno acumulado no período'}</small><small class="return-card-comparison">Comparação com CDI <span>Não disponível</span></small></div>
-  <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':`${pct(last)} ${last>=0?'↗':'↘'}`}</strong><small>${last===null?'Histórico mensal indisponível':'Retorno do último mês calculado'}</small><small class="return-card-comparison">${coverage}</small></div>`;
+  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total>=0?'green':'red'}">${pct(total)} ${total>=0?'↗':'↘'}</strong><small>Resultado financeiro: ${brl(summary.lucro||0)}</small>${returnBenchmarkSelectHTML('total')}</div>
+  <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${twelve===null?'':twelve>=0?'green':'red'}">${twelve===null?'—':`${pct(twelve)} ${twelve>=0?'↗':'↘'}`}</strong><small>${twelve===null?'Não há 12 meses completos de histórico':'Retorno acumulado no período'}</small>${returnBenchmarkSelectHTML('12m')}</div>
+  <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':`${pct(last)} ${last>=0?'↗':'↘'}`}</strong><small>${last===null?'Histórico mensal indisponível':'Retorno do último mês calculado'}</small>${returnBenchmarkSelectHTML('month')}</div>`;
  const labelsX=visible.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`);
- const values=visible.map(x=>Number(x.cumulative.toFixed(4)));
+ const visibleFirstKey=visible.length?visible[0].year+'-'+String(visible[0].month).padStart(2,'0'):'';
+ const priorPortfolioRow=period==='12'&&visible.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
+ const portfolioBase=priorPortfolioRow?1+priorPortfolioRow.cumulative/100:1;
+ const values=visible.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4)));
  const note=document.getElementById('returnChartNote');
- if(note)note.textContent=typeSelect.value==='todos'?'A linha representa o retorno acumulado da carteira com o histórico disponível. CDI, IPCA, IFIX, IBOV, SMLL, IDIV e IVVB11 ainda não possuem séries conectadas e não são simulados.':`Série histórica calculada somente para ${labels[typeSelect.value]||typeSelect.value}, com os dados disponíveis. Os índices de referência ainda não estão conectados.`;
- chart('returnPerformanceChart','line',{labels:labelsX,datasets:[{label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false}]},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>pct(ctx.raw)}}},interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#aab3c2',maxRotation:0,autoSkip:true},grid:{display:false}},y:{ticks:{color:'#aab3c2',callback:v=>`${Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})}%`},grid:{color:'#383e49'}}}});
+ if(note)note.textContent='Clique nos nomes dos índices para exibir ou ocultar cada série. As comparações usam dados históricos consultados nas fontes; séries sem dados no período permanecem indisponíveis.';
+ RETURN_BENCHMARKS.forEach(code=>{if(!returnIndexSeries(code).length)returnVisibleSeries.delete(code);});
+ const datasets=[];
+ if(returnVisibleSeries.has('portfolio'))datasets.push({label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
+ RETURN_BENCHMARKS.forEach(code=>{
+  if(!returnVisibleSeries.has(code))return;
+  const series=returnIndexSeries(code),map=new Map(series.map(x=>[x.mes,Number(x.valor)]));
+  const priorIndex=series.filter(x=>x.mes<visibleFirstKey).slice(-1)[0];
+  const indexBase=priorIndex?1+Number(priorIndex.valor)/100:1;
+  const data=visible.map(x=>{const key=x.year+'-'+String(x.month).padStart(2,'0');return map.has(key)?Number((((1+map.get(key)/100)/indexBase-1)*100).toFixed(4)):null;});
+  if(data.some(x=>x!==null))datasets.push({label:code,data,borderColor:RETURN_BENCHMARK_COLORS[code],backgroundColor:'transparent',fill:false,tension:.18,pointRadius:0,pointHoverRadius:4,borderWidth:2,spanGaps:true});
+ });
+ chart('returnPerformanceChart','line',{labels:labelsX,datasets},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${pct(ctx.raw)}`}}},interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#aab3c2',maxRotation:0,autoSkip:true},grid:{display:false}},y:{ticks:{color:'#aab3c2',callback:v=>`${Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})}%`},grid:{color:'#383e49'}}}});
+ const legend=document.getElementById('returnChartLegend');
+ if(legend)legend.querySelectorAll('button[data-series]').forEach(button=>{
+  const active=returnVisibleSeries.has(button.dataset.series);
+  button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+  const availableSeries=button.dataset.series==='portfolio'||returnIndexSeries(button.dataset.series).length>0;
+  button.title=availableSeries?'Clique para exibir ou ocultar esta série':'Série sem dados disponíveis no período selecionado';
+  button.disabled=!availableSeries;button.setAttribute('aria-disabled',String(!availableSeries));
+ });
  const yearGroups=new Map();
  monthly.forEach(row=>{if(!yearGroups.has(row.year))yearGroups.set(row.year,[]);yearGroups.get(row.year).push(row);});
  const tbody=document.getElementById('returnMonthlyRows');
@@ -3405,16 +3537,14 @@ function renderRentabilidadePage(){
  }
  const tableNote=document.getElementById('returnTableNote');
  if(tableNote)tableNote.textContent=typeSelect.value==='todos'?'Retornos mensais calculados a partir da série histórica da carteira.':'Retornos mensais da classe selecionada.';
+ updateReturnCardComparisons();
+ const startKey=monthly.length?monthly[0].year+'-'+String(monthly[0].month).padStart(2,'0'):'';
+ if(startKey&&(!returnBenchmarkData||returnBenchmarkRequestKey!==startKey)&&!returnBenchmarkPromise){
+  loadReturnBenchmarks(startKey).then(()=>{if(document.getElementById('page-rentabilidade')&&!document.getElementById('page-rentabilidade').classList.contains('hidden'))renderRentabilidadePage();});
+ }
 }
-function setReturnBenchmark(value){
- const allowed=['CDI','IPCA','IBOV','IVVB11'];
- const benchmark=allowed.includes(value)?value:'CDI';
- try{localStorage.setItem('lonelyWalletReturnBenchmark',benchmark);}catch(e){}
- const select=document.getElementById('returnBenchmark');
- if(select&&select.value!==benchmark)select.value=benchmark;
- const status=document.getElementById('returnBenchmarkStatus');
- if(status)status.textContent=`Referência selecionada: ${benchmark}. A série histórica desse índice ainda não está conectada, então não exibimos uma comparação numérica.`;
-}
+
+
 function renderReturnPerformanceChart(items){
  const sorted=(items||[]).slice().sort((a,b)=>Number(b.lucro_pct||0)-Number(a.lucro_pct||0));
  const values=sorted.map(item=>Number(item.lucro_pct||0));

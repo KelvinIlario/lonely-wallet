@@ -1,4 +1,6 @@
-# Lonely Wallet v2.0.52\n\nReconstrução completa da página Rentabilidade com indicadores laterais, evolução acumulada, filtros por período e classe e tabela mensal.\n\n# Lonely Wallet — atualização de interface v2.0.43
+# Lonely Wallet v2.0.53
+
+Seletores independentes de benchmark nos cards de rentabilidade e legenda interativa para exibir ou ocultar índices no gráfico. Séries oficiais do CDI/IPCA e cotações históricas de índices quando disponíveis.\n\n# Lonely Wallet — atualização de interface v2.0.43
 
 # Lonely Wallet v2.0.44
 

@@ -19,6 +19,8 @@ PROVENTOS_SYNC_CACHE = {'time': 0, 'result': None, 'signature': None}
 PROVENTOS_SYNC_TTL = 3600
 SGS_CACHE = {}
 SGS_CACHE_TTL = 12 * 3600
+BENCHMARK_CACHE = {'time': 0, 'data': {}}
+BENCHMARK_CACHE_TTL = 6 * 3600
 
 
 def db():
@@ -1684,6 +1686,127 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         'historico_parcial': bool(missing_symbols) or bool(snapshot_date)
     }
 
+
+
+def _benchmark_monthly_from_yahoo(symbol, start_date, end_date):
+    """Obtém fechamentos mensais do Yahoo Finance; retorna None quando o símbolo não tem cobertura."""
+    start = date.fromisoformat(str(start_date)[:10]) - timedelta(days=45)
+    end = date.fromisoformat(str(end_date)[:10]) + timedelta(days=2)
+    period1 = int(datetime.combine(start, clock_time.min, TZ).timestamp())
+    period2 = int(datetime.combine(end, clock_time.min, TZ).timestamp())
+    url = f'https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(symbol, safe="")}'
+    response = requests.get(
+        url,
+        params={'period1': period1, 'period2': period2, 'interval': '1mo', 'events': 'div,splits'},
+        headers={'User-Agent': 'Mozilla/5.0 LonelyWallet/2.0'},
+        timeout=15
+    )
+    response.raise_for_status()
+    payload = response.json()
+    result = next(iter(payload.get('chart', {}).get('result') or []), None)
+    if not result:
+        return None
+    timestamps = result.get('timestamp') or []
+    indicators = result.get('indicators') or {}
+    quote_rows = (indicators.get('quote') or [{}])[0]
+    adjusted_rows = (indicators.get('adjclose') or [{}])[0]
+    closes = adjusted_rows.get('adjclose') or quote_rows.get('close') or []
+    points = []
+    for stamp, close in zip(timestamps, closes):
+        try:
+            if close is None or float(close) <= 0:
+                continue
+            month_key = datetime.fromtimestamp(int(stamp), ZoneInfo('UTC')).strftime('%Y-%m')
+            points.append((month_key, float(close)))
+        except (TypeError, ValueError, OSError):
+            continue
+    # Yahoo retorna pontos de fechamento mensal. O primeiro ponto é a base 0%.
+    by_month = {}
+    for month_key, close in points:
+        by_month[month_key] = close
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    return [{'mes': key, 'valor': round((value / base - 1) * 100, 4)} for key, value in ordered if base > 0]
+
+
+def _benchmark_monthly_bcb(code, start_date, end_date):
+    """Calcula CDI/IPCA acumulados a partir das séries oficiais SGS do Banco Central."""
+    if code == 'CDI':
+        points = _sgs_series(12, start_date, end_date)
+        monthly_factors = {}
+        for point_date, daily_pct in points:
+            key = point_date.strftime('%Y-%m')
+            monthly_factors[key] = monthly_factors.get(key, 1.0) * (1 + float(daily_pct) / 100.0)
+        monthly_returns = {key: (factor - 1) * 100 for key, factor in monthly_factors.items()}
+    elif code == 'IPCA':
+        points = _sgs_series(433, start_date, end_date)
+        monthly_returns = {point_date.strftime('%Y-%m'): float(value) for point_date, value in points}
+    else:
+        return None
+    cumulative = 1.0
+    output = []
+    for key in sorted(monthly_returns):
+        cumulative *= 1 + monthly_returns[key] / 100.0
+        output.append({'mes': key, 'valor': round((cumulative - 1) * 100, 4)})
+    return output if len(output) >= 1 else None
+
+
+@app.route('/api/benchmarks')
+def api_benchmarks():
+    """Séries mensais de referência. Nenhuma série é simulada quando a fonte não responde."""
+    today = datetime.now(TZ).date()
+    try:
+        start = date.fromisoformat(request.args.get('start', (today - timedelta(days=365 * 5)).isoformat())[:10])
+    except (TypeError, ValueError):
+        start = today - timedelta(days=365 * 5)
+    start = max(start, date(1990, 1, 1))
+    cache_key = start.isoformat()
+    cached = BENCHMARK_CACHE.get(cache_key)
+    if cached and time.time() - cached['time'] < BENCHMARK_CACHE_TTL:
+        return jsonify(cached['data'])
+
+    end = today
+    index_symbols = {
+        'IBOV': '^BVSP',
+        'IFIX': '^IFIX',
+        'SMLL': '^SMLL',
+        'IDIV': '^IDIV',
+        'IVVB11': 'IVVB11.SA'
+    }
+    series = {}
+    unavailable = []
+    # CDI/IPCA são consultados diretamente nas séries oficiais do BCB.
+    for code in ('CDI', 'IPCA'):
+        try:
+            data = _benchmark_monthly_bcb(code, start, end)
+            if data:
+                series[code] = data
+            else:
+                unavailable.append(code)
+        except (requests.RequestException, ValueError, TypeError):
+            unavailable.append(code)
+
+    for code, symbol in index_symbols.items():
+        try:
+            data = _benchmark_monthly_from_yahoo(symbol, start, end)
+            if data:
+                series[code] = data
+            else:
+                unavailable.append(code)
+        except (requests.RequestException, ValueError, TypeError, KeyError):
+            unavailable.append(code)
+
+    result = {
+        'series': series,
+        'unavailable': unavailable,
+        'source': {'CDI': 'Banco Central do Brasil (SGS 12)', 'IPCA': 'Banco Central do Brasil (SGS 433)', **{k: f'Yahoo Finance ({v})' for k, v in index_symbols.items() if k in series}},
+        'start': start.isoformat(),
+        'end': end.isoformat()
+    }
+    BENCHMARK_CACHE[cache_key] = {'time': time.time(), 'data': result}
+    return jsonify(result)
 
 @app.route('/api/dashboard')
 def dashboard():
