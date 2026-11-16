@@ -1,4 +1,4 @@
-# Lonely Wallet v3.2.1
+# Lonely Wallet v3.3.11
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
 

@@ -114,8 +114,9 @@
 .insight-icon{width:30px;height:30px;border-radius:50%;background:#151a24;border:1px solid var(--line);display:grid;place-items:center;font-size:16px}
 .insight-main{font-size:21px;font-weight:750;color:var(--text);margin:10px 0 5px}
 .insight-sub{font-size:11px;color:var(--muted);line-height:1.5}
-.insight-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;flex:1;align-items:stretch}
-.insight-split b{display:block;font-size:16px;margin-top:9px}.insight-highlight-column{min-width:0;min-height:88px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);display:flex;flex-direction:column;justify-content:center;align-items:flex-start}.insight-highlight-pill{margin-top:8px}
+.insight-split{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:0;flex:1;align-items:center;min-height:90px;padding:10px 4px}
+.insight-split b{display:block;font-size:17px;margin-top:8px}.insight-highlight-column{min-width:0;min-height:0;padding:4px 8px;border:0;border-radius:0;background:transparent;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}.insight-highlight-pill{margin-top:8px}
+.insight-profit-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 10px}.insight-profit-summary .insight-main{margin:0}.insight-card:has(.insight-profit-summary){display:flex;flex-direction:column;justify-content:space-between;min-height:132px}.insight-card:has(.insight-profit-summary) .insight-bar{margin:8px 0 10px}.insight-card:has(.insight-profit-summary) .insight-profit-links{margin-top:auto}
 .insight-bar{height:8px;border-radius:99px;background:#303541;overflow:hidden;display:flex;margin:10px 0}
 .insight-bar .positive{background:#20bd82}.insight-bar .negative{background:#f17898}
 .insight-action{width:100%;margin-top:9px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--text);padding:7px;cursor:pointer;font-size:11px}
@@ -2158,7 +2159,10 @@ function scheduleMutationRefresh(){
 }
 async function api(url,opts={}){
  const method=String(opts.method||'GET').toUpperCase();
- const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});
+ const controller=opts.signal?null:new AbortController();
+ const requestOptions={headers:{'Content-Type':'application/json'},...opts,...(controller?{signal:controller.signal}:{})};
+ const timeout=controller?setTimeout(()=>controller.abort(),25000):null;
+ let r;try{r=await fetch(url,requestOptions);}finally{if(timeout)clearTimeout(timeout);}
  let d={};
  try{d=await r.json();}catch(error){if(r.ok)throw new Error('O servidor não retornou uma resposta válida.');}
  if(!r.ok)throw new Error(d.erro||d.error||d.message||'Não foi possível concluir a operação.');
@@ -2173,7 +2177,12 @@ async function refresh(){
  if(refreshInFlight){refreshAgain=true;return refreshInFlight;}
  refreshInFlight=(async()=>{
   try{
-   state=await api('/api/dashboard');
+   const dashboardAttempts=4;let dashboardError=null;
+   for(let attempt=0;attempt<dashboardAttempts;attempt++){
+    try{state=await api('/api/dashboard');dashboardError=null;break;}
+    catch(error){dashboardError=error;if(attempt<dashboardAttempts-1){const label=document.querySelector('#loadingScreen .loading-label');if(label)label.textContent=`Conectando ao servidor… tentativa ${attempt+2} de ${dashboardAttempts}`;await new Promise(resolve=>setTimeout(resolve,650*Math.pow(2,attempt)));}}
+   }
+   if(dashboardError)throw dashboardError;
    render();
    applyPositionColumnPrefs();
    const updated=document.getElementById('updated');
@@ -2181,10 +2190,10 @@ async function refresh(){
    if(!document.getElementById('page-irpf').classList.contains('hidden'))await loadIRPF();
    if(!document.getElementById('page-darfs').classList.contains('hidden'))await loadDARFs();
    return state;
-  }catch(e){toast(e.message);return null;}
+  }catch(e){toast(`Não foi possível carregar a carteira: ${e.message}`);return null;}
   finally{
    const loader=document.getElementById('loadingScreen');
-   if(loader)loader.classList.add('done');
+   if(loader){const label=loader.querySelector('.loading-label');if(label&&label.textContent.includes('tentativa'))label.textContent='Não foi possível conectar. Tente atualizar a página.';loader.classList.add('done');}
   }
  })();
  try{return await refreshInFlight;}
@@ -2287,8 +2296,8 @@ function renderPositionInsights(rows){
   <article class="insight-card">
    <div class="insight-title">Destaques da carteira<span class="info-tip" tabindex="0" aria-label="Sobre os destaques da carteira" data-tip="Consideramos como destaque da carteira os ativos dos seguintes tipos: Ações, FIIs, Stocks, BDRs, REITs, ETFs e Criptomoedas.">i</span></div>
    <div class="insight-split">
-    <div class="insight-highlight-column"><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill positive" title="${best?`Rentabilidade desde a primeira compra (${best.pluggy_primeira_compra||'histórico Pluggy'}): ${brl(returnValue(best))}`:'Sem histórico suficiente'}">${best?pct(returnPct(best)):'—'} <span aria-hidden="true">↗</span></span></div>
-    <div class="insight-highlight-column"><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill negative" title="${worst?`Rentabilidade desde a primeira compra (${worst.pluggy_primeira_compra||'histórico Pluggy'}): ${brl(returnValue(worst))}`:'Sem histórico suficiente'}">${worst?pct(returnPct(worst)):'—'} <span aria-hidden="true">↘</span></span></div>
+    <div class="insight-highlight-column"><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill ${best&&returnPct(best)<0?'negative':'positive'}" title="${best?`Rentabilidade desde a primeira compra (${best.pluggy_primeira_compra||'histórico disponível'}): ${brl(returnValue(best))}`:'Sem histórico suficiente'}">${best?pct(returnPct(best)):'—'} <span aria-hidden="true">${best&&returnPct(best)<0?'↘':'↗'}</span></span></div>
+    <div class="insight-highlight-column"><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill ${worst&&returnPct(worst)>=0?'positive':'negative'}" title="${worst?`Rentabilidade desde a primeira compra (${worst.pluggy_primeira_compra||'histórico disponível'}): ${brl(returnValue(worst))}`:'Sem histórico suficiente'}">${worst?pct(returnPct(worst)):'—'} <span aria-hidden="true">${worst&&returnPct(worst)>=0?'↗':'↘'}</span></span></div>
    </div>
   </article>
   <article class="insight-card">
@@ -2544,20 +2553,20 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
  host.innerHTML=visibleCategories.map((cat,categoryIndex)=>{
   const categoryRows=rows.filter(item=>item.tipo===cat.key),total=categoryRows.reduce((sum,item)=>sum+Number(item.valor_atual||0),0),allCategoryItems=sortCategoryItems(categoryRows,cat.key,totalPortfolio),categoryPages=Math.max(1,Math.ceil(allCategoryItems.length/SUMMARY_ASSETS_PAGE_SIZE)),categoryPage=summaryMode?Math.min(Math.max(1,Number(summaryCategoryPages[cat.key]||1)),categoryPages):1,items=summaryMode?allCategoryItems.slice((categoryPage-1)*SUMMARY_ASSETS_PAGE_SIZE,categoryPage*SUMMARY_ASSETS_PAGE_SIZE):allCategoryItems,invested=allCategoryItems.reduce((sum,item)=>sum+Number(item.investido||0),0);
   if(summaryMode)summaryCategoryPages[cat.key]=categoryPage;
-  const variation=total?allCategoryItems.reduce((sum,item)=>sum+Number(item.variacao_dia||0)*Number(item.valor_atual||0),0)/total:0;
-  const profitability=allCategoryItems.length?allCategoryItems.reduce((sum,item)=>sum+Number(item.lucro_pct||0)*Number(item.investido||0),0)/(invested||1):0;
+  const variation=allCategoryItems.length?allCategoryItems.reduce((sum,item)=>sum+Number(item.pluggy_variacao_pct??item.variacao_dia??0),0)/allCategoryItems.length:0;
+  const profitability=allCategoryItems.length?allCategoryItems.reduce((sum,item)=>sum+Number(item.pluggy_retorno_pct??item.lucro_pct??0),0)/allCategoryItems.length:0;
   const target=distributionItems.find(x=>categoryKeyFromName(x.nome)===cat.key),ideal=Number(target?.percentual||0),portfolioPct=totalPortfolio?total/totalPortfolio*100:0;
   const expanded=summaryMode
    ? summaryExpandedAssetGroups[cat.key]===true
    : (expandedAssetGroups[cat.key]!==undefined?expandedAssetGroups[cat.key]:items.length>0);
-  const fixedIncomeSummaryColumns=['ticker','variacao_dia','lucro_pct','valor_atual','nota','portfolioPct','idealPct','comprar'];
-  const shown=summaryMode&&cat.key==='renda_fixa'?defs.filter(([key])=>fixedIncomeSummaryColumns.includes(key)):defs.filter(([key])=>prefs[key] && !(cat.key==='renda_fixa' && key==='proventos'));
+  const fixedIncomeSummaryColumns=['ticker','lucro_pct','valor_atual','nota','portfolioPct','idealPct','comprar'];
+  const shown=summaryMode&&cat.key==='renda_fixa'?defs.filter(([key])=>fixedIncomeSummaryColumns.includes(key)):defs.filter(([key])=>prefs[key] && !(cat.key==='renda_fixa' && ['proventos','variacao_dia'].includes(key)));
   const columnWeights={ticker:2.25,quantidade:.72,preco_medio:1.05,preco_atual:1.05,preco_alvo:1.05,preco_graham:1.1,preco_teto_bazin:1.05,variacao_dia:.85,lucro_pct:1.0,valor_atual:1.05,buyhold:1.0,media_avaliacoes:1.0,proventos:1.0,dy:.75,yoc:.9,dy_medio:.95,payout:.8,pl:.7,pvp:.7,roe:.8,margem_liquida:1.0,margem_bruta:1.0,cagr_receitas:1.1,cagr_lucros:1.05,nota:.62,portfolioPct:.72,idealPct:.72,comprar:.82,opcoes:.52};
   const widthKeys=[...shown.map(([key])=>key),'opcoes'];
   const widthTotal=widthKeys.reduce((sum,key)=>sum+(columnWeights[key]||.9),0);
   const proportionalCols=`<colgroup>${widthKeys.map(key=>`<col style="width:${((columnWeights[key]||.9)/widthTotal*100).toFixed(3)}%">`).join('')}</colgroup>`;
   const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table ${summaryMode&&cat.key==='renda_fixa'?'data-fixed-income-summary="true"':''}>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">${summaryMode&&allCategoryItems.length?"Os ativos desta classe estão em outra página.":"Nenhum ativo cadastrado nesta categoria."}</div>`;
-  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${allCategoryItems.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${allCategoryItems.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${allCategoryItems.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${allCategoryItems.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
+  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${allCategoryItems.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span>${cat.key==='renda_fixa'?'':`<span class="asset-category-metric">Variação<b class="${allCategoryItems.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${allCategoryItems.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span>`}<span class="asset-category-metric">Rentabilidade<b>${allCategoryItems.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
   const moveControls=`<div class="position-category-move">${categoryIndex>0?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para cima" aria-label="Mover ${cat.name} para cima" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',-1)">↑</button>`:''}${categoryIndex<visibleCategories.length-1?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para baixo" aria-label="Mover ${cat.name} para baixo" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',1)">↓</button>`:''}</div>`;
   const header=summaryMode
    ? `<div class="summary-category-head">${moveControls}<button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
@@ -2632,7 +2641,7 @@ function moveIdealBalanceTooltip(event,el){
 }
 
 function variationMoneyHint(item,change){
- const amount=item&&item.pluggy_variacao_valor!==null&&item.pluggy_variacao_valor!==undefined?Number(item.pluggy_variacao_valor):Number(item.quantidade||0)*Number(item.preco_atual||0)*Number(change||0)/100;
+ const amount=item&&item.pluggy_variacao_valor!==null&&item.pluggy_variacao_valor!==undefined?Number(item.pluggy_variacao_valor):Number(item.variacao_valor??item.lucro??(Number(item.quantidade||0)*Number(item.preco_atual||0)*Number(change||0)/100));
  const basis=item&&item.pluggy_primeira_compra?` desde a primeira compra em ${item.pluggy_primeira_compra}`:'';
  return `Resultado de ${pct(change)}${basis} (sem proventos):\n${brl(amount)}`;
 }
