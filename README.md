@@ -70,3 +70,15 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Os menus de **Histórico Mensal** e **Meus Proventos** agora usam listas retangulares de texto, sem checkboxes.
 - Os filtros de tipo de ativo e ativo passaram a permitir uma seleção por vez, com opção para mostrar todos.
 - Mantido o seletor de período com seu layout próprio de opções rápidas e filtro mensal.
+
+
+
+## v2.0.62
+
+### Padronização dos filtros expandidos em todo o projeto
+- Substituídos os menus nativos quadrados dos filtros por dropdowns customizados seguindo as referências visuais.
+- Aplicado em Evolução de Proventos, Evolução do Patrimônio, Rentabilidade, Lançamentos, Resumo e filtros de comparação de benchmarks.
+- Listas escuras retangulares, sem checkboxes, com opção selecionada destacada em azul.
+- Chevron fino, centralizado verticalmente e alinhado à direita nos filtros fechados.
+- Mantida a integração com os eventos de alteração existentes e com opções carregadas dinamicamente.
+- Suporte aos temas escuro e claro.

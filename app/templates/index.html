@@ -1916,6 +1916,37 @@ body.light-theme .prov-history-menu{background:#fff!important;border-color:#c7cf
 body.light-theme .prov-history-menu .native-dropdown-option{color:#202633!important}
 body.light-theme .prov-history-menu .native-dropdown-option:hover,body.light-theme .prov-history-menu .native-dropdown-option.active,body.light-theme .prov-history-menu .native-dropdown-option[aria-selected="true"]{background:#9ecbff!important;color:#172033!important}
 
+
+/* v2.0.62 — aparência uniforme dos dropdowns expandidos */
+.lw-select-wrap{position:relative;display:inline-flex;vertical-align:middle;flex:0 0 auto;max-width:100%}
+.lw-select-native-source{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:0!important;pointer-events:none!important;margin:0!important}
+.lw-select-button{
+ box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;
+ width:100%!important;height:100%!important;min-height:0!important;padding:0 12px!important;margin:0!important;
+ border:1px solid #3a4352!important;border-radius:9px!important;background:var(--panel2,#171a22)!important;
+ color:var(--text,#f3f5f8)!important;font:inherit!important;font-size:13px!important;line-height:1.2!important;
+ text-align:left!important;white-space:nowrap!important;cursor:pointer!important;box-shadow:none!important;
+}
+.lw-select-button:focus-visible{outline:1px solid #9ecbff!important;outline-offset:1px!important}
+.lw-select-label{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.lw-select-chevron{display:inline-flex;flex:0 0 12px;width:12px;height:12px;align-items:center;justify-content:center;color:#929baa}
+.lw-select-chevron::before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin-top:-3px}
+.lw-select-menu{
+ position:fixed;z-index:100000;box-sizing:border-box;min-width:120px;max-width:min(300px,calc(100vw - 8px));
+ overflow-y:auto;overflow-x:hidden;padding:1px;border:1px solid #465164;border-radius:0;background:#171a22;
+ box-shadow:0 8px 20px #0007;color:#f3f5f8;
+}
+.lw-select-option{
+ display:block;box-sizing:border-box;width:100%;min-height:27px;padding:5px 12px;border:0;border-radius:0;
+ background:transparent;color:#f3f5f8;font:inherit;font-size:13px;line-height:1.25;text-align:left;white-space:nowrap;cursor:pointer;
+}
+.lw-select-option:hover,.lw-select-option.active,.lw-select-option[aria-selected="true"]{background:#9ecbff;color:#172033}
+.lw-select-option:disabled{opacity:.45;cursor:not-allowed}
+body.light-theme .lw-select-button{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .lw-select-menu{background:#fff;color:#202633;border-color:#c7cfda}
+body.light-theme .lw-select-option{color:#202633}
+body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.active,body.light-theme .lw-select-option[aria-selected="true"]{background:#9ecbff;color:#172033}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -4451,8 +4482,137 @@ async function confirmB3Import(){
  finally{button.disabled=false;button.textContent='Confirmar importação';}
 }
 
-</script></body></html>
 
+/* v2.0.62 — dropdowns customizados para todos os filtros do projeto */
+(function(){
+ const selector='#aportePeriod,#aporteType,#allocationType,#provTypeFilter,#provAssetFilter,#patrimonyPeriod,#patrimonyType,#returnPeriodFilter,#returnTypeFilter,#launchGranularity,#launchPeriod,#launchType,select[id^="returnBenchmark_"]';
+ let openMenu=null;
+ const proto=HTMLSelectElement.prototype;
+ const valueDescriptor=Object.getOwnPropertyDescriptor(proto,'value');
+ if(valueDescriptor && valueDescriptor.configurable && !proto.__lwValuePatched){
+  Object.defineProperty(proto,'value',{
+   configurable:true,enumerable:valueDescriptor.enumerable,
+   get(){return valueDescriptor.get.call(this)},
+   set(v){valueDescriptor.set.call(this,v);this.__lwSyncCustom?.();}
+  });
+  proto.__lwValuePatched=true;
+ }
+ const indexDescriptor=Object.getOwnPropertyDescriptor(proto,'selectedIndex');
+ if(indexDescriptor && indexDescriptor.configurable && !proto.__lwIndexPatched){
+  Object.defineProperty(proto,'selectedIndex',{
+   configurable:true,enumerable:indexDescriptor.enumerable,
+   get(){return indexDescriptor.get.call(this)},
+   set(v){indexDescriptor.set.call(this,v);this.__lwSyncCustom?.();}
+  });
+  proto.__lwIndexPatched=true;
+ }
+ function closeMenu(){
+  if(!openMenu)return;
+  openMenu.menu.remove();
+  openMenu.button.setAttribute('aria-expanded','false');
+  openMenu=null;
+ }
+ function enhance(select){
+  if(!select || select.dataset.lwCustomSelect==='1' || select.classList.contains('hidden') || select.disabled)return;
+  const rect=select.getBoundingClientRect();
+  if(!rect.width || !rect.height)return;
+  const style=getComputedStyle(select);
+  const wrap=document.createElement('span');
+  wrap.className='lw-select-wrap';
+  wrap.style.width=rect.width+'px';
+  wrap.style.height=rect.height+'px';
+  wrap.style.minWidth=style.minWidth!=='0px'?style.minWidth:'0';
+  select.parentNode.insertBefore(wrap,select);
+  wrap.appendChild(select);
+  select.dataset.lwCustomSelect='1';
+  select.classList.add('lw-select-native-source');
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='lw-select-button';
+  button.setAttribute('aria-haspopup','listbox');
+  button.setAttribute('aria-expanded','false');
+  const label=document.createElement('span');
+  label.className='lw-select-label';
+  const arrow=document.createElement('span');
+  arrow.className='lw-select-chevron';
+  arrow.setAttribute('aria-hidden','true');
+  button.append(label,arrow);
+  wrap.appendChild(button);
+  function selectedOption(){
+   return select.options[select.selectedIndex] || select.options[0];
+  }
+  function sync(){
+   const option=selectedOption();
+   label.textContent=option?option.textContent.trim():'Selecionar';
+   button.disabled=select.disabled;
+   button.title=label.textContent;
+   wrap.style.height=(select.getBoundingClientRect().height||rect.height)+'px';
+  }
+  select.__lwSyncCustom=sync;
+  select.addEventListener('change',sync);
+  const observer=new MutationObserver(sync);
+  observer.observe(select,{childList:true,subtree:true,attributes:true,attributeFilter:['label','value','disabled','selected']});
+  function renderMenu(){
+   closeMenu();
+   sync();
+   const menu=document.createElement('div');
+   menu.className='lw-select-menu';
+   menu.setAttribute('role','listbox');
+   menu.setAttribute('aria-label',select.getAttribute('aria-label')||label.textContent||'Opções');
+   Array.from(select.options).forEach((option,index)=>{
+    if(option.disabled && !option.value)return;
+    const item=document.createElement('button');
+    item.type='button';
+    item.className='lw-select-option'+(option.value===select.value?' active':'');
+    item.setAttribute('role','option');
+    item.setAttribute('aria-selected',option.value===select.value?'true':'false');
+    item.textContent=option.textContent.trim();
+    item.disabled=option.disabled;
+    item.addEventListener('click',()=>{
+     select.value=option.value;
+     select.dispatchEvent(new Event('change',{bubbles:true}));
+     closeMenu();
+     button.focus();
+    });
+    menu.appendChild(item);
+   });
+   document.body.appendChild(menu);
+   const r=button.getBoundingClientRect();
+   const maxHeight=Math.min(360,window.innerHeight-16);
+   menu.style.left=Math.max(4,Math.min(r.left,window.innerWidth-menu.offsetWidth-4))+'px';
+   menu.style.top=(r.bottom+1)+'px';
+   menu.style.minWidth=r.width+'px';
+   menu.style.maxHeight=maxHeight+'px';
+   if(r.bottom+menu.offsetHeight>window.innerHeight-8 && r.top>menu.offsetHeight){
+    menu.style.top=Math.max(4,r.top-menu.offsetHeight-1)+'px';
+   }
+   button.setAttribute('aria-expanded','true');
+   openMenu={menu,button,select};
+  }
+  button.addEventListener('click',()=>{
+   if(openMenu?.button===button){closeMenu();return;}
+   renderMenu();
+  });
+  button.addEventListener('keydown',event=>{
+   if(event.key==='Escape'){closeMenu();button.focus();}
+   if(event.key==='ArrowDown'&&!openMenu){event.preventDefault();renderMenu();openMenu?.menu.querySelector('.active')?.focus();}
+  });
+  sync();
+ }
+ function scan(){
+  document.querySelectorAll(selector).forEach(enhance);
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scan,{once:true});else scan();
+ const pageObserver=new MutationObserver(()=>scan());
+ pageObserver.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
+ document.addEventListener('click',event=>{
+  if(openMenu && !openMenu.menu.contains(event.target) && !openMenu.button.contains(event.target))closeMenu();
+ });
+ window.addEventListener('scroll',closeMenu,true);
+ window.addEventListener('resize',closeMenu);
+})();
+</script>
+</body></html>
 <style>
 
 /* v2.0.58 — filtros compactos, menus arredondados e cabeçalhos alinhados */
@@ -4587,5 +4747,36 @@ body.light-theme select:not([multiple]) option{background:#fff!important;color:#
 body.light-theme .prov-history-menu{background:#fff!important;border-color:#c7cfda!important}
 body.light-theme .prov-history-menu .native-dropdown-option{color:#202633!important}
 body.light-theme .prov-history-menu .native-dropdown-option:hover,body.light-theme .prov-history-menu .native-dropdown-option.active,body.light-theme .prov-history-menu .native-dropdown-option[aria-selected="true"]{background:#9ecbff!important;color:#172033!important}
+
+
+/* v2.0.62 — aparência uniforme dos dropdowns expandidos */
+.lw-select-wrap{position:relative;display:inline-flex;vertical-align:middle;flex:0 0 auto;max-width:100%}
+.lw-select-native-source{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:0!important;pointer-events:none!important;margin:0!important}
+.lw-select-button{
+ box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;
+ width:100%!important;height:100%!important;min-height:0!important;padding:0 12px!important;margin:0!important;
+ border:1px solid #3a4352!important;border-radius:9px!important;background:var(--panel2,#171a22)!important;
+ color:var(--text,#f3f5f8)!important;font:inherit!important;font-size:13px!important;line-height:1.2!important;
+ text-align:left!important;white-space:nowrap!important;cursor:pointer!important;box-shadow:none!important;
+}
+.lw-select-button:focus-visible{outline:1px solid #9ecbff!important;outline-offset:1px!important}
+.lw-select-label{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.lw-select-chevron{display:inline-flex;flex:0 0 12px;width:12px;height:12px;align-items:center;justify-content:center;color:#929baa}
+.lw-select-chevron::before{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin-top:-3px}
+.lw-select-menu{
+ position:fixed;z-index:100000;box-sizing:border-box;min-width:120px;max-width:min(300px,calc(100vw - 8px));
+ overflow-y:auto;overflow-x:hidden;padding:1px;border:1px solid #465164;border-radius:0;background:#171a22;
+ box-shadow:0 8px 20px #0007;color:#f3f5f8;
+}
+.lw-select-option{
+ display:block;box-sizing:border-box;width:100%;min-height:27px;padding:5px 12px;border:0;border-radius:0;
+ background:transparent;color:#f3f5f8;font:inherit;font-size:13px;line-height:1.25;text-align:left;white-space:nowrap;cursor:pointer;
+}
+.lw-select-option:hover,.lw-select-option.active,.lw-select-option[aria-selected="true"]{background:#9ecbff;color:#172033}
+.lw-select-option:disabled{opacity:.45;cursor:not-allowed}
+body.light-theme .lw-select-button{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .lw-select-menu{background:#fff;color:#202633;border-color:#c7cfda}
+body.light-theme .lw-select-option{color:#202633}
+body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.active,body.light-theme .lw-select-option[aria-selected="true"]{background:#9ecbff;color:#172033}
 
 </style>
