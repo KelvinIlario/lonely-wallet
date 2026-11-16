@@ -1954,7 +1954,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="rentabilidade">⌁ Rentabilidade</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="metas">◎ Metas</button><button data-page="apis">⌘ APIs</button></nav>
 <main>
 <section id="page-resumo" class="page"><div class="pagehead summary-pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
-<div class="grid stats summary-investor10" id="stats"></div><div class="grid charts"><div class="panel"><div class="panelhead"><h2>Evolução do patrimônio</h2><div class="toolbar"><select id="aportePeriod" aria-label="Período da evolução" onchange="renderEvolutionChart()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="all">Todo o período</option></select><select id="aporteType" aria-label="Tipo de ativo da evolução" onchange="renderEvolutionChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div></div><div class="chartbox"><canvas id="aporteChart"></canvas></div><div class="chart-footnote">O ganho de capital atual aparece no mês mais recente; os meses anteriores mostram os aportes registrados, pois o sistema não mantém cotações históricas próprias.</div></div><div class="panel allocation-panel"><div class="panelhead"><h2>Ativos na carteira</h2><select id="allocationType" aria-label="Filtrar ativos na carteira" onchange="renderAllocationChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div><div class="allocation-content"><div class="chartbox small"><canvas id="allocationChart"></canvas></div><div id="allocationLegend" class="allocation-legend"></div></div></div></div>
+<div class="grid stats summary-investor10" id="stats"></div><div class="grid charts"><div class="panel"><div class="panelhead"><h2>Evolução do patrimônio</h2><div class="toolbar"><select id="aportePeriod" aria-label="Período da evolução" onchange="renderEvolutionChart()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="all">Todo o período</option></select><select id="aporteType" aria-label="Tipo de ativo da evolução" onchange="renderEvolutionChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div></div><div class="chartbox"><canvas id="aporteChart"></canvas></div><div class="chart-footnote">Patrimônio mensal calculado com histórico de preços dos ativos, incluindo ganhos e prejuízos.</div></div><div class="panel allocation-panel"><div class="panelhead"><h2>Ativos na carteira</h2><select id="allocationType" aria-label="Filtrar ativos na carteira" onchange="renderAllocationChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div><div class="allocation-content"><div class="chartbox small"><canvas id="allocationChart"></canvas></div><div id="allocationLegend" class="allocation-legend"></div></div></div></div>
 <div id="positionInsights" class="position-insights"></div><div class="sectionhead summary-assets-head"><h2>Meus ativos <span class="mini" id="summaryAssetCount">(0)</span></h2></div><div id="summaryGroups" class="position-groups summary-position-groups"></div></section>
 <section id="page-proventos" class="page hidden">
 <div class="pagehead"><div><h1>Proventos</h1><div class="sub">Acompanhe dividendos, JCP, rendimentos recebidos e pagamentos anunciados.<span id="proventosSyncStatus" class="mini" style="display:block;margin-top:5px"></span></div></div><div class="toolbar"><button class="ghost" id="syncProventosButton" type="button" onclick="syncProventosHistory()">↻ Atualizar histórico</button><button class="primary" onclick="openModal('prov')">＋ Registrar provento</button></div></div>
@@ -3390,14 +3390,44 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
   if(cumulative[targetIndex]<=0)cumulative[targetIndex]=Number(snapshotApplied.toFixed(2));
  }
  const isSummary=canvasId==='aporteChart';
+ const performance=selectedType==='todos'
+  ?(state.rentabilidade_historica||{})
+  :((state.rentabilidade_por_tipo||{})[selectedType]||{});
+ const historical=(performance.series_patrimonio||[]).filter(row=>row&&/^\d{4}-\d{2}$/.test(String(row.mes||'')));
+ const visibleHistory=count?historical.slice(-count):historical;
+ if(visibleHistory.length){
+  const labels=visibleHistory.map(row=>row.mes.slice(5,7)+'/'+row.mes.slice(0,4));
+  const applied=visibleHistory.map(row=>Number(row.aplicado||0));
+  const gains=visibleHistory.map(row=>Number(row.ganho||0));
+  const note=document.querySelector(`#${canvasId}`)?.closest('.panel')?.querySelector('.chart-footnote');
+  if(note){
+   const missing=Number(performance.ativos_sem_historico?.length||0);
+   note.textContent=missing
+    ? `Patrimônio histórico calculado pelas cotações mensais disponíveis. ${missing} ativo(s) sem histórico foram excluídos do cálculo.`
+    : 'Patrimônio histórico calculado com fechamentos mensais dos ativos, considerando compras, vendas e ganhos ou prejuízos. A cobertura depende das APIs configuradas.';
+  }
+  chart(canvasId,'bar',{labels,datasets:[
+   {type:'bar',label:'Patrimônio',data:visibleHistory.map(row=>Number(row.patrimonio||0)),backgroundColor:ctx=>Number(visibleHistory[ctx.dataIndex]?.ganho||0)<0?'#e76583':'#28b579',borderRadius:3,order:2},
+   {type:'line',label:'Capital líquido aplicado',data:applied,borderColor:'#9be8c3',backgroundColor:'#9be8c3',borderWidth:2,pointRadius:2,pointHoverRadius:4,tension:.22,fill:false,order:1}
+  ]},{plugins:{legend:{display:true,labels:{color:'#b8c1ce'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw||0)}`,footer:items=>{
+    const row=visibleHistory[items?.[0]?.dataIndex||0];
+    if(!row)return '';
+    const gain=Number(row.ganho||0);
+    return `${gain>=0?'Ganho acumulado':'Prejuízo acumulado'}: ${brl(Math.abs(gain))}`;
+   }}}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
+  return;
+ }
+ // Fallback for classes without historical market-price coverage, such as manually registered fixed income.
  if(isSummary){
   const itemGain=(state.itens||[]).filter(item=>selectedType==='todos'||item.tipo===selectedType)
    .reduce((sum,item)=>sum+Number(item.lucro||0),0);
   const gain=itemGain!==0?itemGain:(selectedType==='todos'?Number(state.resumo?.lucro||0):0);
   const gains=monthKeys.map((_,index)=>index===monthKeys.length-1?Number(gain.toFixed(2)):0);
+  const note=document.querySelector(`#${canvasId}`)?.closest('.panel')?.querySelector('.chart-footnote');
+  if(note)note.textContent='Sem histórico mensal disponível para os ativos selecionados. Exibindo aportes registrados e o resultado atual.';
   chart(canvasId,'bar',{labels:monthKeys.map(m=>m.slice(5,7)+'/'+m.slice(0,4)),datasets:[
    {label:'Valor aplicado',data:cumulative,backgroundColor:'#28b579',borderRadius:3,stack:'patrimonio'},
-   {label:'Ganho de capital',data:gains,backgroundColor:'#9be8c3',borderRadius:3,stack:'patrimonio'}
+   {label:'Resultado atual',data:gains,backgroundColor:'#9be8c3',borderRadius:3,stack:'patrimonio'}
   ]},{plugins:{legend:{labels:{color:'#b8c1ce'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw||0)}`}}},scales:{x:{stacked:true,ticks:{color:'#8f99a8'},grid:{display:false}},y:{stacked:true,beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
   return;
  }

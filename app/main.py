@@ -413,7 +413,7 @@ def cotacao(ticker):
 
 def _fallback_market_quote(ticker):
     """Busca cotação/variação em provedores alternativos configurados, sem combinar séries."""
-    headers = {'User-Agent': 'Mozilla/5.0 LonelyWallet/2.0.58'}
+    headers = {'User-Agent': 'Mozilla/5.0 LonelyWallet/2.0.69'}
     # HG Brasil: cobertura de ativos B3 conforme o plano.
     token = _get_api_token('hgbrasil')
     if token:
@@ -1640,7 +1640,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
             try:
                 response = requests.get('https://api.twelvedata.com/time_series',
                     params={'symbol':symbol,'exchange':'BVMF','interval':'1day','outputsize':5000,'apikey':twelve_token},
-                    headers={'User-Agent':'LonelyWallet/2.0.58'},timeout=18)
+                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
                 response.raise_for_status()
                 payload = response.json()
                 if payload.get('status') != 'error' and isinstance(payload.get('values'),list):
@@ -1658,7 +1658,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
             try:
                 response = requests.get('https://www.alphavantage.co/query',
                     params={'function':'TIME_SERIES_DAILY_ADJUSTED','symbol':symbol,'outputsize':'full','apikey':alpha_token},
-                    headers={'User-Agent':'LonelyWallet/2.0.58'},timeout=18)
+                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
                 response.raise_for_status()
                 payload=response.json()
                 rows=payload.get('Time Series (Daily)') or {}
@@ -1708,12 +1708,15 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         str(row.get('ticker') or '').upper(): str(row.get('tipo') or '').strip().lower()
         for row in imported_positions if row.get('ticker')
     })
-    non_market_types = {'renda_fixa', 'tesouro', 'tesouro_direto', 'fundos', 'fundos_de_investimento'}
+    non_market_types = set()
+    fixed_income_symbols = {symbol for symbol, kind in all_types.items() if kind in {'renda_fixa', 'tesouro', 'tesouro_direto'}}
     all_tickers = sorted(symbol for symbol, kind in all_types.items() if kind not in non_market_types)
     history = history if history is not None else fetch_portfolio_price_history(operations, imported_positions)
     normalized = {}
     adjusted_tickers = set()
     for ticker, points in (history or {}).items():
+        if str(ticker).upper() not in all_types:
+            continue
         valid = [
             point for point in points
             if isinstance(point.get('data'), date) and float(point.get('preco') or 0) > 0
@@ -1723,7 +1726,7 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
             if all(bool(point.get('ajustado')) for point in valid):
                 adjusted_tickers.add(str(ticker).upper())
 
-    available_tickers = set(normalized)
+    available_tickers = set(normalized) | fixed_income_symbols
     missing_symbols = sorted(set(all_tickers) - available_tickers)
     empty = {
         'series_12m': [], 'series_total': [], 'rentabilidade_12m': None,
@@ -1748,7 +1751,7 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
             'historico_parcial': True, 'ativos_com_historico': 0, 'total_ativos': len(all_tickers)
         }
 
-    if not normalized:
+    if not normalized and not fixed_income_symbols:
         return snapshot_only_result()
     if not operations and not snapshot_map:
         return empty
@@ -1780,18 +1783,20 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         except (TypeError, ValueError):
             continue
     executed.sort(key=lambda item: (item['_date'], int(item.get('id') or 0)))
-    if not executed:
+    if not executed and not snapshot_map:
         return snapshot_only_result()
-    first_operation = min(item['_date'] for item in executed)
+    base_day = date.fromisoformat(snapshot_date) if snapshot_date else None
+    if not executed and not base_day:
+        return snapshot_only_result()
+    first_operation = min((item['_date'] for item in executed), default=base_day)
     today = datetime.now(TZ).date()
-    month_cursor = date(first_operation.year, first_operation.month, 1)
+    history_start = min(first_operation, base_day) if base_day else first_operation
+    month_cursor = date(history_start.year, history_start.month, 1)
     month_end = date(today.year, today.month, 1)
     month_keys = []
     while month_cursor <= month_end:
         month_keys.append(month_cursor.strftime('%Y-%m'))
         month_cursor = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
-
-    base_day = date.fromisoformat(snapshot_date) if snapshot_date else None
 
     def held_quantities(cutoff):
         """Reconstrói posições em torno da fotografia, sem somar o histórico duas vezes."""
@@ -1830,11 +1835,59 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
                 holdings[op['_ticker']] = current
         return {ticker: max(0.0, qty) for ticker, qty in holdings.items() if qty > 1e-8}
 
+    def fixed_income_value(ticker, cutoff):
+        """Reconstrói os lotes de renda fixa e aplica o indexador até o fechamento mensal."""
+        lots = []
+        if base_day and snapshot_map and cutoff >= base_day:
+            base = snapshot_map.get(ticker)
+            if base:
+                principal = float(base.get('quantidade') or 0) * float(base.get('preco_medio') or 0)
+                if principal > 0:
+                    lots.append({'principal': principal, 'date': base_day.isoformat(), 'details': {}, 'legacy_value': float(base.get('quantidade') or 0) * float(base.get('preco_base') or 0)})
+            relevant = [op for op in executed if base_day < op['_date'] <= cutoff and op['_ticker'] == ticker]
+        else:
+            relevant = [op for op in executed if op['_date'] <= cutoff and op['_ticker'] == ticker]
+        for op in relevant:
+            amount = op['_quantity'] * op['_price']
+            if op.get('lado') == 'compra':
+                try:
+                    details = json.loads(op.get('detalhes') or '{}') if isinstance(op.get('detalhes'), str) else (op.get('detalhes') or {})
+                except (TypeError, ValueError):
+                    details = {}
+                lots.append({'principal': amount + op['_costs'], 'date': op['_date'].isoformat(), 'details': details})
+            else:
+                remaining = amount
+                for lot in lots:
+                    if remaining <= 0:
+                        break
+                    reduction = min(lot['principal'], remaining)
+                    lot['principal'] -= reduction
+                    remaining -= reduction
+        total = 0.0
+        for lot in lots:
+            principal = max(0.0, float(lot['principal']))
+            if principal <= 0:
+                continue
+            factor, _warning = _fixed_income_factor(lot['details'], lot['date'], cutoff.isoformat())
+            total += principal * factor if factor is not None else float(lot.get('legacy_value') or principal)
+        return total if lots else 0.0
+
+    portfolio_value_cache = {}
+
     def portfolio_value(cutoff):
+        cache_key = cutoff.isoformat()
+        if cache_key in portfolio_value_cache:
+            return portfolio_value_cache[cache_key]
         holdings = held_quantities(cutoff)
         total = 0.0
         priced_positions = 0
         for ticker, qty in holdings.items():
+            if ticker in fixed_income_symbols:
+                fixed_value = fixed_income_value(ticker, cutoff)
+                if fixed_value > 0:
+                    total += fixed_value
+                    priced_positions += 1
+                continue
             points = normalized.get(ticker) or []
             previous = next((point for point in reversed(points) if point['data'] <= cutoff), None)
             # Cotação ausente/antiga para um ativo não elimina o histórico dos outros.
@@ -1845,7 +1898,9 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
             total += qty * price
             priced_positions += 1
         if holdings and not priced_positions:
+            portfolio_value_cache[cache_key] = None
             return None
+        portfolio_value_cache[cache_key] = total
         return total
 
     dividend_by_ticker_month = {}
@@ -1862,6 +1917,27 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
             continue
 
     monthly_returns = []
+    portfolio_series = []
+    snapshot_invested = sum(
+        float(row.get('quantidade') or 0) * float(row.get('preco_medio') or 0)
+        for row in imported_positions
+        if str(row.get('ticker') or '').upper() in available_tickers
+    )
+
+    def net_applied_through(cutoff, after=None):
+        """Capital líquido aplicado até a data, considerando compras e retiradas por venda."""
+        total = snapshot_invested if base_day and after is not None and cutoff >= base_day else 0.0
+        for op in executed:
+            if op['_date'] > cutoff:
+                break
+            if after is not None and op['_date'] <= after:
+                continue
+            trade_notional, adjusted_costs = adjusted_operation_values(
+                op['_ticker'], op['_date'], op['_quantity'], op['_price'], op['_costs']
+            )
+            total += (trade_notional + adjusted_costs) if op.get('lado') == 'compra' else -(trade_notional - adjusted_costs)
+        return total
+
     first_year, first_month = int(month_keys[0][:4]), int(month_keys[0][5:7])
     previous_end = date(first_year, first_month, 1) - timedelta(days=1)
     for key in month_keys:
@@ -1872,6 +1948,17 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         start_date = previous_end
         start_value = portfolio_value(start_date)
         end_value = portfolio_value(end_date)
+        if end_value is not None:
+            applied_value = net_applied_through(
+                end_date,
+                after=base_day if base_day and end_date >= base_day else None
+            )
+            portfolio_series.append({
+                'mes': key,
+                'aplicado': round(applied_value, 2),
+                'patrimonio': round(end_value, 2),
+                'ganho': round(end_value - applied_value, 2)
+            })
         if end_value is None:
             previous_end = end_date
             continue
@@ -1908,9 +1995,9 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         previous_end = end_date
 
     if not monthly_returns:
-        # Exibe apenas o retorno atual da fotografia quando a fonte não fornece
-        # candles suficientes. Não cria pontos mensais intermediários artificiais.
-        return snapshot_only_result()
+        # Mantém os fechamentos mensais disponíveis para o gráfico patrimonial,
+        # mesmo quando ainda não há base suficiente para calcular rentabilidade.
+        return {**snapshot_only_result(), 'series_patrimonio': portfolio_series}
 
     total_factor = 1.0
     series_total = []
@@ -1932,6 +2019,7 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         **empty,
         'series_12m': series_12m,
         'series_total': series_total,
+        'series_patrimonio': portfolio_series,
         'rentabilidade_12m': round((rolling_factor - 1.0) * 100, 2) if len(monthly_returns) >= 12 else None,
         'rentabilidade_total': round((total_factor - 1.0) * 100, 2),
         'meses_disponiveis': len(monthly_returns),

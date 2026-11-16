@@ -148,3 +148,15 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Cada linha apresenta ticker, classe do ativo e data do lançamento mais recente daquele ativo.
 - O card é atualizado junto com os demais indicadores da carteira.
 - Quando ainda não há lançamentos, é exibida uma mensagem informativa.
+
+
+## v2.0.69
+
+### Evolução histórica do patrimônio
+- O gráfico passa a utilizar séries históricas diárias das APIs configuradas e consolida os fechamentos por mês.
+- Reconstrói as quantidades mantidas em cada mês a partir das compras, vendas e, quando existente, do saldo-base importado.
+- Exibe capital líquido aplicado e ganho/prejuízo acumulado em cada mês, em vez de concentrar todo o resultado no mês atual.
+- A série é disponibilizada também por tipo de ativo para respeitar os filtros do gráfico.
+- Quando houver ativos sem histórico, o gráfico informa a cobertura parcial em vez de inventar cotações.
+- Fontes históricas: brapi (v2 e endpoint legado), Twelve Data e Alpha Vantage conforme credenciais, cobertura e limites disponíveis.
+- Renda fixa e Tesouro com dados contratuais informados usam o histórico do indexador consultado no Banco Central; posições importadas sem dados do indexador mantêm o valor-base informado, sem estimar rendimento.
