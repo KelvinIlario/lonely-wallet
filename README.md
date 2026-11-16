@@ -1,4 +1,4 @@
-# Lonely Wallet v2.0.77
+# Lonely Wallet v3.0.1
 
 Aplicação Flask + SQLite para controle pessoal de investimentos, posições, rentabilidade e proventos.
 
@@ -28,3 +28,10 @@ Aplicação Flask + SQLite para controle pessoal de investimentos, posições, r
 - Integração pessoal MeuPluggy com cadastro local de itemIds, sincronização de contas, investimentos e transações.
 - Conciliação de compras/vendas de investimentos com lançamentos manuais e B3.
 - Proteção contra duplicidade de proventos por origem, ticker, data e valor.
+
+
+## v3.0.1
+- Separa visualmente a Pluggy em uma área própria de Open Finance, fora das APIs de mercado e indicadores.
+- Exibe diagnóstico resumido das conexões Pluggy: dados recebidos, sincronização sem dados ou aguardando primeira sincronização.
+- A curva de rentabilidade histórica passa a ser exibida quando houver meses calculáveis, mesmo com cobertura parcial, com aviso explícito e identificação dos ativos sem histórico.
+- Mantém o retorno consolidado atual separado da curva histórica parcial.

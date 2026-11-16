@@ -2053,7 +2053,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <div class="panel section"><div class="panelhead"><h2>Posições importadas</h2><span id="importedBalancesDate" class="mini"></span></div><p class="mini imported-balance-note">Saldo-base da posição final em 31/10/2026. As operações anteriores continuam no histórico, mas não são somadas novamente ao saldo atual. Ações e FIIs usam preço médio e preço de referência da captura; em renda fixa, o custo foi reconstituído a partir do saldo e da rentabilidade exibidos.</p><div id="importedBalanceGroups" class="operation-groups"></div></div>
 </section>
 <section id="page-metas" class="page hidden"><div class="pagehead"><div><h1>Metas financeiras</h1><div class="sub">Defina objetivos e acompanhe o progresso da sua carteira.</div></div><button class="primary" onclick="openGoalWizard()">＋ Criar meta</button></div><div id="goalRows"></div></section>
-<section id="page-apis" class="page hidden"><div class="pagehead"><div><h1>Integrações e APIs</h1><div class="sub">Gerencie fontes de cotações, séries históricas, proventos e indicadores econômicos.</div></div><button class="ghost" type="button" onclick="loadAPIProviders()">↻ Atualizar status</button></div><div class="api-security-note"><b>Segurança:</b> os tokens cadastrados são enviados somente ao servidor e armazenados criptografados no volume local do aplicativo. Eles nunca são devolvidos à interface em texto aberto. Não informe senha de corretora, código de autenticação ou credenciais bancárias nesta página. Como o app não possui login próprio, mantenha-o restrito à sua rede confiável ou atrás de uma camada de autenticação; não exponha a porta diretamente à internet.</div><h2 class="api-section-title">APIs que exigem credenciais</h2><div id="apiProvidersGrid" class="api-grid"><div class="panel">Carregando provedores…</div></div><h2 class="api-section-title native">APIs nativas e fontes sem token</h2><div id="apiNativeGrid" class="api-grid"></div></section>
+<section id="page-apis" class="page hidden"><div class="pagehead"><div><h1>Integrações e APIs</h1><div class="sub">Gerencie fontes de cotações, séries históricas, proventos e indicadores econômicos.</div></div><button class="ghost" type="button" onclick="loadAPIProviders()">↻ Atualizar status</button></div><div class="api-security-note"><b>Segurança:</b> os tokens cadastrados são enviados somente ao servidor e armazenados criptografados no volume local do aplicativo. Eles nunca são devolvidos à interface em texto aberto. Não informe senha de corretora, código de autenticação ou credenciais bancárias nesta página. Como o app não possui login próprio, mantenha-o restrito à sua rede confiável ou atrás de uma camada de autenticação; não exponha a porta diretamente à internet.</div><h2 class="api-section-title">Open Finance · Pluggy</h2><div class="mini" style="margin:-3px 0 10px">Integração bancária e de investimentos. Gerencie as credenciais e conexões independentemente das fontes de cotações.</div><div id="apiPluggyGrid" class="api-grid"><div class="panel">Carregando Pluggy…</div></div><h2 class="api-section-title">APIs de mercado e indicadores</h2><div id="apiProvidersGrid" class="api-grid"><div class="panel">Carregando provedores…</div></div><h2 class="api-section-title native">APIs nativas e fontes sem token</h2><div id="apiNativeGrid" class="api-grid"></div></section>
 
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
@@ -3706,11 +3706,10 @@ function renderRentabilidadePage(){
   <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>Resultado consolidado sobre todo o valor investido: ${brl(consolidatedGain)}</small>${returnBenchmarkSelectHTML('total')}</div>
  `;
  const allTypesSelected=(typeSelect.value||'todos')==='todos';
- // Não apresentar a rentabilidade histórica de uma parcela da carteira como
- // se fosse o resultado consolidado. Quando faltam preços de ativos ou a série
- // depende de um saldo-base, mostrar somente o retorno consolidado atual.
+ // A série histórica parcial pode ser útil, desde que identificada como parcial.
+ // Não a descartamos apenas porque há ativos sem histórico ou um saldo-base importado.
  const incompleteConsolidatedHistory=allTypesSelected&&Boolean(performance.historico_parcial);
- const chartRows=incompleteConsolidatedHistory?[]:visible;
+ const chartRows=visible;
  const labelsX=chartRows.length?chartRows.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`):['Atual'];
  const visibleFirstKey=chartRows.length?chartRows[0].year+'-'+String(chartRows[0].month).padStart(2,'0'):'';
  const priorPortfolioRow=period==='12'&&chartRows.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
@@ -3721,7 +3720,10 @@ function renderRentabilidadePage(){
   const activeSources=RETURN_BENCHMARKS.filter(code=>returnVisibleSeries.has(code)&&returnBenchmarkData?.meta?.[code]).map(code=>code+': '+returnBenchmarkData.meta[code].source+(returnBenchmarkData.meta[code].last_available?' · até '+returnBenchmarkData.meta[code].last_available:'')+(returnBenchmarkData.meta[code].sample?' · amostra de 30 pregões':''));
   const ipcaLast=returnBenchmarkData?.meta?.IPCA?.last_available;
   const ipcaInfo=ipcaLast?' IPCA disponível até '+ipcaLast+'; a competência atual só aparece após divulgação oficial.':'';
-  note.textContent=allTypesSelected?(incompleteConsolidatedHistory?'Histórico consolidado incompleto: exibindo somente a rentabilidade atual real da carteira. A curva histórica será apresentada quando houver cobertura suficiente de todos os ativos.':'Rentabilidade consolidada da carteira, calculada sobre todo o valor investido.'):'Série histórica da classe selecionada, calculada somente com os ativos que possuem histórico disponível. Dados ausentes não são interpolados.'+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
+  const missingAssets=Array.isArray(performance.ativos_sem_historico)?performance.ativos_sem_historico:[];
+  const coveredAssets=Number(performance.ativos_com_historico||0),assetTotal=Number(performance.total_ativos||0);
+  const coverageText=(assetTotal?` Cobertura de histórico: ${coveredAssets}/${assetTotal} ativos.`:'')+(missingAssets.length?' Sem histórico: '+missingAssets.join(', ')+'.':'');
+  note.textContent=allTypesSelected?(incompleteConsolidatedHistory?'Curva histórica parcial: representa somente os ativos com preços históricos disponíveis. O retorno consolidado atual permanece no indicador acima.'+coverageText:'Rentabilidade histórica da carteira.'+coverageText):'Série histórica da classe selecionada, calculada somente com os ativos que possuem histórico disponível. Dados ausentes não são interpolados.'+coverageText+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
  }
  // A ausência temporária de dados não deve bloquear a interação da legenda.
  const datasets=[];
@@ -3965,8 +3967,8 @@ async function loadAPIProviders(){
  if(apiProviders.some(p=>p.id==='pluggy'&&p.configured))loadPluggyState();
 }
 function renderAPIProviders(){
- const host=document.getElementById('apiProvidersGrid'),nativeHost=document.getElementById('apiNativeGrid');if(!host||!nativeHost)return;
- const credentialed=apiProviders.filter(p=>p.auth),native=apiProviders.filter(p=>!p.auth);
+ const host=document.getElementById('apiProvidersGrid'),pluggyHost=document.getElementById('apiPluggyGrid'),nativeHost=document.getElementById('apiNativeGrid');if(!host||!nativeHost)return;
+ const pluggy=apiProviders.filter(p=>p.id==='pluggy'),credentialed=apiProviders.filter(p=>p.auth&&p.id!=='pluggy'),native=apiProviders.filter(p=>!p.auth);
  const card=p=>`<article class="panel api-provider-card ${p.id==='pluggy'?'api-pluggy':''}" data-api-provider="${p.id}">
   <div class="api-provider-head"><div><h3>${escapeHTML(p.name)}</h3><div class="api-provider-category">${escapeHTML(p.category||'')}</div></div><span class="api-status-pill ${p.configured?'configured':''}">${p.auth?(p.configured?'Credenciais cadastradas':'Credenciais não configuradas'):'Sem token'}</span></div>
   <div class="api-provider-desc">${escapeHTML(p.description||'')}</div>
@@ -3977,7 +3979,7 @@ function renderAPIProviders(){
   ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
   <div class="api-provider-links"><a href="${p.url}" target="_blank" rel="noopener noreferrer">Obter acesso</a><a href="${p.docs}" target="_blank" rel="noopener noreferrer">Documentação</a></div>
  </article>`;
- host.innerHTML=credentialed.map(card).join('');nativeHost.innerHTML=native.map(card).join('');
+ host.innerHTML=credentialed.map(card).join('');if(pluggyHost)pluggyHost.innerHTML=pluggy.map(card).join('')||'<div class="panel empty">Pluggy indisponível.</div>';nativeHost.innerHTML=native.map(card).join('');
 }
 
 async function loadPluggyState(){
@@ -3985,7 +3987,7 @@ async function loadPluggyState(){
  try{
   const data=await api('/api/pluggy/state',{skipAutoRefresh:true});
   if(!data.items||!data.items.length){host.innerHTML='Nenhuma conexão cadastrada. Adicione o itemId do MeuPluggy.';return;}
-  host.innerHTML=data.items.map(item=>`<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div class="mini">${escapeHTML(item.status||'Status desconhecido')} · ${Number(item.accounts_count||0)} contas · ${Number(item.investments_count||0)} investimentos · ${Number(item.transactions_count||0)} transações${item.last_synced_at?' · Sincronizado '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`).join('');
+  host.innerHTML=data.items.map(item=>{const accounts=Number(item.accounts_count||0),investments=Number(item.investments_count||0),transactions=Number(item.transactions_count||0),hasData=accounts+investments+transactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização concluída · nenhum dado retornado':'Aguardando primeira sincronização',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${accounts} contas · ${investments} investimentos · ${transactions} transações${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
   const invHost=document.getElementById('pluggyInvestments');
   if(invHost){
    const inv=data.investments||[];
