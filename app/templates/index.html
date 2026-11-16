@@ -3132,7 +3132,15 @@ function renderProventosDashboard(){
  const distribution={};
  (d.recebidos||[]).filter(x=>{const dt=new Date(String(x.data_pagamento||'')+'T12:00:00');return (selectedType==='todos'||eventType(x)===selectedType)&&(selectedAsset==='todos'||x.ticker===selectedAsset)&&!String(x.tipo_evento||x.tipo||'').toUpperCase().includes('AMORTIZA')&&Number.isFinite(dt.getTime())&&dt>=firstDistribution;}).forEach(x=>distribution[x.ticker]=(distribution[x.ticker]||0)+Number(x.valor_total||0));
  const syncStatus=document.getElementById('proventosSyncStatus');
- if(syncStatus){const sync=d.sincronizacao||{};syncStatus.textContent=sync.mensagem?`${sync.mensagem}${sync.ultima_sincronizacao?' · '+new Date(sync.ultima_sincronizacao).toLocaleString('pt-BR'):''}`:'Histórico automático ainda não sincronizado.';if(sync.erros?.length)syncStatus.textContent+=' · '+sync.erros.join(' · ');}
+ if(syncStatus){
+  const sync=d.sincronizacao||{};
+  const when=sync.ultima_sincronizacao?new Date(sync.ultima_sincronizacao).toLocaleString('pt-BR'):'ainda não sincronizado';
+  const imported=Number(sync.importados||0);
+  const ignored=Number(sync.ignorados||0);
+  const errors=Array.isArray(sync.erros)?sync.erros:[];
+  const errorDetails=errors.length?`<details class="prov-sync-details"><summary>Detalhes técnicos (${errors.length})</summary><div>${errors.map(error=>`<p>${escapeHTML(String(error))}</p>`).join('')}</div></details>`:'';
+  syncStatus.innerHTML=`<span class="prov-sync-summary">${imported} evento(s) novo(s) · ${ignored} ignorado(s) · Atualizado: ${escapeHTML(when)}</span>${errorDetails}`;
+ }
  const distNames=Object.keys(distribution).sort((a,b)=>distribution[b]-distribution[a]);
  const distValues=distNames.map(k=>distribution[k]);
  const distTotal=distValues.reduce((a,b)=>a+b,0);
@@ -3698,12 +3706,15 @@ function renderRentabilidadePage(){
   <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>Resultado consolidado sobre todo o valor investido: ${brl(consolidatedGain)}</small>${returnBenchmarkSelectHTML('total')}</div>
  `;
  const allTypesSelected=(typeSelect.value||'todos')==='todos';
- const chartRows=allTypesSelected?[]:visible;
- const labelsX=allTypesSelected?['Atual']:chartRows.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`);
+ // A série histórica consolidada da carteira deve alimentar o gráfico também
+ // quando "Todos os tipos" estiver selecionado. O cartão continua usando o
+ // resultado consolidado atual, que pode incluir ativos sem histórico.
+ const chartRows=visible;
+ const labelsX=chartRows.length?chartRows.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`):['Atual'];
  const visibleFirstKey=chartRows.length?chartRows[0].year+'-'+String(chartRows[0].month).padStart(2,'0'):'';
  const priorPortfolioRow=period==='12'&&chartRows.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
  const portfolioBase=priorPortfolioRow?1+priorPortfolioRow.cumulative/100:1;
- const values=allTypesSelected?(total===null?[]:[Number(total.toFixed(4))]):chartRows.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4)));
+ const values=chartRows.length?chartRows.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4))):(total===null?[]:[Number(total.toFixed(4))]);
  const note=document.getElementById('returnChartNote');
  if(note){
   const activeSources=RETURN_BENCHMARKS.filter(code=>returnVisibleSeries.has(code)&&returnBenchmarkData?.meta?.[code]).map(code=>code+': '+returnBenchmarkData.meta[code].source+(returnBenchmarkData.meta[code].last_available?' · até '+returnBenchmarkData.meta[code].last_available:'')+(returnBenchmarkData.meta[code].sample?' · amostra de 30 pregões':''));
@@ -3715,7 +3726,7 @@ function renderRentabilidadePage(){
  const datasets=[];
  if(returnVisibleSeries.has('portfolio'))datasets.push({label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
  RETURN_BENCHMARKS.forEach(code=>{
-  if(allTypesSelected||!returnVisibleSeries.has(code))return;
+  if(!returnVisibleSeries.has(code))return;
   const series=returnIndexSeries(code),map=new Map(series.map(x=>[x.mes,Number(x.valor)]));
   const priorIndex=series.filter(x=>x.mes<visibleFirstKey).slice(-1)[0];
   const indexBase=priorIndex?1+Number(priorIndex.valor)/100:1;
@@ -4964,4 +4975,10 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 .insight-recent-row time{white-space:nowrap;font-variant-numeric:tabular-nums}
 .insight-recent-empty{font-size:11px;color:var(--muted);padding:12px 0}
 
+
+.prov-sync-summary{display:block;color:var(--muted,#8f9bad);font-size:11px;line-height:1.45;margin-top:5px}
+.prov-sync-details{margin-top:4px;font-size:11px;color:var(--muted,#8f9bad)}
+.prov-sync-details summary{cursor:pointer;display:inline-block;color:var(--muted,#8f9bad)}
+.prov-sync-details>div{max-height:180px;overflow:auto;margin-top:6px;padding:8px 10px;border:1px solid var(--border,#343b49);border-radius:8px;background:var(--panel,#20242d)}
+.prov-sync-details p{margin:3px 0;overflow-wrap:anywhere}
 </style>
