@@ -40,7 +40,7 @@ A versão foi verificada por compilação sintática Python, verificação sint�
 - A exclusão global afeta somente a tabela de operações; saldos-base importados e proventos independentes são preservados.
 
 
-## v3.0.9
+## v3.1.0
 
 - Proventos sincronizados somente para ativos com posição atual positiva. Ativos totalmente vendidos deixam de alimentar os indicadores e gráficos da carteira.
 - Quando a carteira fica sem posições, recebidos e futuros exibidos no dashboard ficam em R$ 0,00; os registros históricos permanecem armazenados no SQLite.
@@ -50,7 +50,15 @@ A versão foi verificada por compilação sintática Python, verificação sint�
 - Mantém o banco SQLite e o volume `/DATA/AppData/lonely-wallet/data:/data`; não apague `carteira.db` nem `.api-credentials.key`.
 
 
-## v3.0.9
+## v3.1.0
 - Rentabilidade do Resumo apresentada como resultado consolidado atual, com indicador visual sem curva histórica simulada.
 - Confirmações de alterações e exclusões centralizadas em modal próprio, no tema do Lonely Wallet.
 - Edição de lançamentos acessada pelo formulário padrão do aplicativo, sem prompts nativos.
+
+
+## v3.1.0
+
+- Pluggy positions with sufficient contractual data are converted into asset-class operations in the main ledger.
+- Fixed-income positions missing indexer or rate are not imported, avoiding incomplete calculations.
+- Removed the separate imported-positions panel from the Launches page.
+- Removed the secondary New Launch button from the Launches page.

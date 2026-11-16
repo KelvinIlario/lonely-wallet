@@ -527,12 +527,17 @@ def _pluggy_ticker(investment):
 
 
 def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_text):
-    """Materializa posições da Pluggy na fotografia da carteira, preservando a classe."""
+    """Converte posições sincronizadas em lançamentos por classe.
+
+    Renda fixa só entra quando a Pluggy fornece os dados contratuais mínimos.
+    Posições incompletas são ignoradas para não criar um ativo sem indexador/taxa.
+    """
     if not snapshot_date:
-        return 0
-    rows = []
-    fixed_count = 0
-    market_count = 0
+        return 0, 0, 0
+    fixed_count = market_count = skipped_fixed = 0
+    origin_tag = 'PluggySnapshot:' + item_id
+    # Recria somente os lançamentos-snapshot desta conexão, sem tocar nos manuais.
+    db().execute("DELETE FROM operacoes WHERE detalhes LIKE ?", ('%' + origin_tag + '%',))
     for investment in investments:
         asset_type = _pluggy_asset_type(investment)
         investment_id = str(investment.get('id') or '').strip()
@@ -542,46 +547,46 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
         principal = float(investment.get('amountOriginal') or investment.get('amountInvested') or balance)
         if balance <= 0 or principal <= 0:
             continue
-
+        details = investment.get('details') if isinstance(investment.get('details'), dict) else {}
         if asset_type == 'renda_fixa':
-            # Identificador interno estável: CDBs/LCA não são tickers de bolsa.
+            indexer = str(investment.get('indexer') or investment.get('indexerName') or details.get('indexer') or details.get('indexerName') or '').strip().upper()
+            rate = investment.get('rate') or investment.get('percentage') or details.get('rate') or details.get('percentage')
+            maturity = _pluggy_date(investment.get('maturityDate') or investment.get('dueDate') or details.get('maturityDate') or details.get('dueDate'))
+            # Sem indexador e taxa não há cálculo confiável de evolução do título.
+            if not indexer or rate in (None, ''):
+                skipped_fixed += 1
+                continue
+            try:
+                rate = float(str(rate).replace(',', '.'))
+            except (TypeError, ValueError):
+                skipped_fixed += 1
+                continue
             symbol = 'RF' + re.sub(r'[^A-Z0-9]', '', investment_id.upper())[:18]
-            quantity = 1.0
-            average_price = principal
-            current_price = balance
+            quantity, price = 1.0, principal
             name = str(investment.get('name') or investment.get('subtype') or 'Renda fixa')
+            contract = {'origem': 'Pluggy', 'pluggy_snapshot': origin_tag, 'investment_id': investment_id,
+                        'nome': name, 'indexador': indexer, 'taxa': rate, 'vencimento': maturity,
+                        'saldo_atual': balance, 'subtipo': investment.get('subtype') or ''}
             fixed_count += 1
         elif asset_type in ('acao', 'fii', 'etf', 'bdr', 'fundo'):
-            # Ativos negociados precisam de código reconhecível para evitar criar
-            # posições com nomes longos ou identificadores bancários como ticker.
             symbol = _pluggy_ticker(investment)
             quantity = float(investment.get('quantity') or 0)
             if not symbol or quantity <= 0:
                 continue
-            average_price = principal / quantity
-            current_price = balance / quantity
+            price = principal / quantity
             name = str(investment.get('name') or symbol)
+            contract = {'origem': 'Pluggy', 'pluggy_snapshot': origin_tag, 'investment_id': investment_id,
+                        'nome': name, 'saldo_atual': balance}
             market_count += 1
         else:
             continue
-
-        rows.append((symbol, asset_type, quantity, average_price, current_price,
-                     snapshot_date, name, 'Pluggy:' + item_id))
-
-    # Substitui apenas a fotografia anterior desta conexão.
-    db().execute("DELETE FROM saldos_importados WHERE data_base=? AND origem LIKE ?",
-                 (snapshot_date, 'Pluggy:' + item_id))
-    if rows:
-        db().executemany(
-            """INSERT INTO saldos_importados
-               (ticker,tipo,quantidade,preco_medio,preco_base,data_base,nome,origem)
-               VALUES(?,?,?,?,?,?,?,?)
-               ON CONFLICT(ticker,data_base) DO UPDATE SET
-                 tipo=excluded.tipo,quantidade=excluded.quantidade,
-                 preco_medio=excluded.preco_medio,preco_base=excluded.preco_base,
-                 nome=excluded.nome,origem=excluded.origem
-               WHERE saldos_importados.origem LIKE 'Pluggy:%'""", rows)
-    return fixed_count, market_count
+        db().execute(
+            """INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,
+               data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (symbol, asset_type, 'compra', quantity, price, snapshot_date, 0.0, 'executada',
+             snapshot_date, snapshot_date + 'T10:00:00-03:00', json.dumps(contract, ensure_ascii=False))
+        )
+    return fixed_count, market_count, skipped_fixed
 
 
 def _reconcile_existing_pluggy_b3_duplicates():
@@ -899,11 +904,14 @@ def pluggy_sync():
                     elif state == 'imported_provento': summary['dividends_imported'] += 1
                     elif state == 'provento_duplicado_ignorado': summary['duplicates_ignored'] += 1
             pluggy_snapshot_date = snapshot_date_for() or datetime.now(TZ).date().isoformat()
-            snapshot_fixed, snapshot_market = _pluggy_fixed_income_snapshot_rows(
+            snapshot_fixed, snapshot_market, skipped_fixed = _pluggy_fixed_income_snapshot_rows(
                 item_id, investments, pluggy_snapshot_date, now_text
             )
             summary['fixed_income_positions'] = summary.get('fixed_income_positions', 0) + snapshot_fixed
             summary['market_positions'] = summary.get('market_positions', 0) + snapshot_market
+            summary['fixed_income_skipped_missing_data'] = summary.get('fixed_income_skipped_missing_data', 0) + skipped_fixed
+            if skipped_fixed:
+                summary['warnings'].append(f'{skipped_fixed} posição(ões) de renda fixa não importada(s): faltam indexador ou taxa contratual.')
             db().execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
                          (now_text,now_text,item_id))
             db().commit()
