@@ -87,3 +87,10 @@ A partir desta versão, o volume persistente `/data` contém dois bancos SQLite:
 Na primeira inicialização, se `ativos.db` ainda não existir e `carteira.db` estiver presente, o sistema copia o banco legado para `ativos.db` e migra as credenciais para `tokens.db`, sem apagar o arquivo legado. Mantenha o volume `/DATA/AppData/lonely-wallet/data:/data` ao atualizar. Não remova `carteira.db`, `ativos.db`, `tokens.db` nem `.api-credentials.key` manualmente durante a migração.
 
 A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, posições e movimentações de investimento importadas pela Pluggy, proventos e referências de importação B3. Ela preserva credenciais, conexões Pluggy, contas e transações bancárias para permitir uma nova sincronização.
+
+
+## v3.3.1
+- Resumo: lista de ativos paginada em blocos de 20.
+- Pluggy: sincronização automática ao carregar/recarregar a aplicação; movimentações já processadas são ignoradas pelo identificador externo para evitar duplicidades.
+- Importação B3: conciliação semântica por ativo, tipo, lado, data, quantidade e preço, além do fingerprint da planilha.
+- Lançamentos: exportação XLSX no layout compatível com a importação de movimentações da B3.

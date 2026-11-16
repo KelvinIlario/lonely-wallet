@@ -4,8 +4,8 @@ from datetime import date, datetime, time as clock_time, timedelta
 from zoneinfo import ZoneInfo
 import requests
 from cryptography.fernet import Fernet, InvalidToken
-from openpyxl import load_workbook
-from flask import Flask, g, jsonify, render_template, request
+from openpyxl import load_workbook, Workbook
+from flask import Flask, g, jsonify, render_template, request, send_file
 
 app = Flask(__name__)
 # Dados da carteira ficam em um banco próprio; segredos de APIs ficam em tokens.db.
@@ -943,6 +943,14 @@ def pluggy_sync():
                 inv_transactions = _pluggy_results('/investments/' + investment_id + '/transactions')
                 for movement in inv_transactions:
                     summary['investment_transactions'] += 1
+                    external_id = str(movement.get('id') or '').strip()
+                    prior = db().execute(
+                        'SELECT import_state FROM pluggy_investment_transactions WHERE transaction_id=?',
+                        (external_id,)
+                    ).fetchone() if external_id else None
+                    if prior and prior['import_state'] in ('imported_operation','imported_provento','matched_existing','provento_duplicado_ignorado','historico_anterior_ao_saldo_base'):
+                        summary['duplicates_ignored'] += 1
+                        continue
                     state = _pluggy_import_investment_transaction(item_id, investment, movement, now_text)
                     if state == 'imported_operation': summary['operations_imported'] += 1
                     elif state == 'matched_existing': summary['operations_matched'] += 1
@@ -1565,6 +1573,35 @@ def valid_operation(data):
 def index(): return render_template('index.html')
 
 
+@app.route('/api/operacoes/exportar', methods=['GET'])
+def exportar_operacoes_b3():
+    con = db()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Movimentações'
+    ws.append(['Entrada/Saída','Data','Movimentação','Produto','Instituição','Código de Negociação','Quantidade','Preço unitário','Valor da Operação'])
+    operations = con.execute("SELECT * FROM operacoes ORDER BY date(data),id").fetchall()
+    for op in operations:
+        side = str(op['lado'] or '').lower()
+        product = f"{op['ticker']} - {op['tipo']}"
+        qty = float(op['quantidade'] or 0)
+        price = float(op['preco'] or 0)
+        ws.append(['Débito' if side == 'venda' else 'Crédito', date.fromisoformat(str(op['data'])[:10]),
+                   'Compra / Venda', product, 'Lonely Wallet', op['ticker'], qty, price, qty * price])
+    dividends = con.execute("SELECT ticker,valor_total,data FROM proventos ORDER BY date(data)").fetchall()
+    for item in dividends:
+        ws.append(['Crédito', date.fromisoformat(str(item['data'])[:10]), 'Rendimento',
+                   f"{item['ticker']} - provento", 'Lonely Wallet', item['ticker'], 0, 0,
+                   float(item['valor_total'] or 0)])
+    for col,width in {'A':16,'B':14,'C':22,'D':38,'E':22,'F':22,'G':16,'H':18,'I':20}.items():
+        ws.column_dimensions[col].width=width
+    ws.freeze_panes='A2'
+    output=io.BytesIO()
+    wb.save(output); output.seek(0)
+    return send_file(output, as_attachment=True, download_name='Lonely-Wallet-Lancamentos-B3.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @app.route('/api/operacoes', methods=['GET','POST'])
 def operacoes():
     if request.method == 'GET':
@@ -1844,7 +1881,17 @@ def _b3_date(value):
 
 def _b3_asset(product):
     name = str(product or '').strip()
-    ticker = name.split(' - ', 1)[0].strip().upper()
+    parts = name.rsplit(' - ', 1)
+    ticker = parts[0].strip().upper()
+    suffix = _b3_normalize(parts[1]) if len(parts) == 2 else ''
+    explicit_types = {
+        'acao':'acao','acoes':'acao','fii':'fii','etf':'etf','bdr':'bdr',
+        'internacional':'internacional','stocks':'stocks','reit':'reit',
+        'cripto':'cripto','criptomoeda':'cripto','renda_fixa':'renda_fixa',
+        'tesouro':'tesouro','fundo':'fundo','outros':'outros'
+    }
+    if suffix in explicit_types:
+        return ticker[:80], explicit_types[suffix]
     if not ticker:
         return '', 'outros'
     if _b3_normalize(name).startswith(('lca ', 'lci ', 'cdb ', 'rdb ', 'tesouro ')) or ticker.startswith(('LCA', 'LCI', 'CDB', 'RDB')):
@@ -1960,6 +2007,29 @@ def excluir_lote_b3(lote_id):
     return jsonify(ok=True, operacoes=deleted_ops, proventos=deleted_provs)
 
 
+def _b3_semantic_duplicate(item):
+    rec=item['registro']
+    if item['categoria']=='operacao':
+        row=db().execute(
+            """SELECT id FROM operacoes WHERE upper(ticker)=? AND lower(tipo)=? AND lower(lado)=?
+               AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+               AND ABS(quantidade-?)<=MAX(0.00001,?*0.001)
+               AND (ABS(preco-?)<=MAX(0.03,?*0.001)
+                    OR ABS((quantidade*preco)-?)<=MAX(1.00,?*0.01)) LIMIT 1""",
+            (str(rec['ticker']).upper(),str(rec['tipo']).lower(),str(rec['lado']).lower(),
+             rec['data'],rec['data'],float(rec['quantidade']),float(rec['quantidade']),
+             float(rec['preco']),float(rec['preco']),
+             float(rec['quantidade'])*float(rec['preco']),float(rec['quantidade'])*float(rec['preco']))
+        ).fetchone()
+        return row['id'] if row else None
+    row=db().execute(
+        """SELECT id FROM proventos WHERE upper(ticker)=? AND date(data)=date(?)
+           AND ABS(valor_total-?)<=MAX(0.05,?*0.001) LIMIT 1""",
+        (str(rec['ticker']).upper(),rec['data'],float(rec['valor_total']),float(rec['valor_total']))
+    ).fetchone()
+    return row['id'] if row else None
+
+
 @app.route('/api/importar-b3', methods=['POST'])
 def importar_b3():
     try:
@@ -1968,12 +2038,18 @@ def importar_b3():
         filename = os.path.basename(upload.filename or 'Planilha B3.xlsx')
         mode=request.form.get('modo','preview')
         existing={r['fingerprint'] for r in db().execute('SELECT fingerprint FROM b3_importados').fetchall()}
-        new_rows=[r for r in parsed if r['fingerprint'] not in existing]
+        new_rows=[]; semantic_duplicates=0
+        for item in parsed:
+            if item['fingerprint'] in existing or _b3_semantic_duplicate(item):
+                semantic_duplicates+=1
+            else:
+                new_rows.append(item)
         if mode != 'importar':
-            return jsonify(ok=True,total=len(parsed),novos=len(new_rows),duplicados=len(parsed)-len(new_rows),
+            return jsonify(ok=True,total=len(parsed),novos=len(new_rows),duplicados=semantic_duplicates,
                 operacoes=sum(1 for r in new_rows if r['categoria']=='operacao'),
                 proventos=sum(1 for r in new_rows if r['categoria']=='provento'))
-        inserted_ops=inserted_provs=duplicates=0
+        inserted_ops=inserted_provs=0
+        duplicates=semantic_duplicates
         con=db()
         if not new_rows:
             return jsonify(ok=True,importadas=0,operacoes=0,proventos=0,duplicados=len(parsed),lote_id=None)
@@ -1982,7 +2058,7 @@ def importar_b3():
         con.execute('INSERT INTO b3_import_lotes(id,arquivo,importado_em,operacoes,proventos) VALUES(?,?,?,?,?)',
                     (lote_id,filename,imported_at,0,0))
         for item in parsed:
-            if con.execute('SELECT 1 FROM b3_importados WHERE fingerprint=?',(item['fingerprint'],)).fetchone():
+            if con.execute('SELECT 1 FROM b3_importados WHERE fingerprint=?',(item['fingerprint'],)).fetchone() or _b3_semantic_duplicate(item):
                 duplicates+=1; continue
             rec=item['registro']
             if item['categoria']=='operacao':

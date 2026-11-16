@@ -1950,6 +1950,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 .operation-manager-filters{margin:8px 0 14px}.operation-manager-filters .field select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:11px}.operationManagerBack .modal{overflow:hidden}#operationManagerBack .utility-modal{max-height:calc(100vh - 36px);display:flex;flex-direction:column}#operationManagerBack #operationManagerRows{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:9px}.utility-modal#operationManagerBack .modalactions{flex:none}.modalactions button.danger{background:rgba(239,83,103,.12);border:1px solid rgba(239,83,103,.38);color:var(--red);border-radius:8px;padding:9px 12px;font-weight:600}.modalactions button.danger:hover{background:rgba(239,83,103,.2)}#appConfirmBack{z-index:120}#appConfirmBack .modal{border-color:var(--line);background:var(--panel)}#appConfirmMessage{white-space:pre-line}
 
+ .summary-assets-pagination{display:flex;justify-content:center;align-items:center;gap:6px;margin:16px 0 4px;flex-wrap:wrap}.summary-assets-pagination button{border:1px solid var(--line);background:transparent;color:var(--text);padding:7px 12px;border-radius:6px;cursor:pointer}.summary-assets-pagination button.active{border-color:var(--blue);background:var(--panel)}.summary-assets-pagination button:disabled{opacity:.4;cursor:default}.summary-assets-pagination span{font-size:12px;color:var(--muted);margin-left:6px}
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -2051,7 +2052,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <div class="panel section return-monthly-panel"><div class="panelhead"><h2>Rentabilidade</h2><span id="returnTableNote" class="mini"></span></div><div class="tablewrap"><table class="data return-monthly-table"><thead><tr><th>Ano</th><th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th><th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th><th>Retorno anual</th><th>Acumulado</th></tr></thead><tbody id="returnMonthlyRows"></tbody></table></div></div>
 </section>
 <section id="page-lancamentos" class="page hidden">
-<div class="pagehead"><div><h1>Lançamentos</h1><div class="sub">Consolidação de compras, vendas e histórico das operações cadastradas.</div></div><div class="toolbar"><button class="ghost" type="button" onclick="openB3ImportsManager()">▤ Editar importações da B3</button><button class="ghost" type="button" onclick="openOperationManager()">☷ Editar lançamentos de ativos</button></div></div>
+<div class="pagehead"><div><h1>Lançamentos</h1><div class="sub">Consolidação de compras, vendas e histórico das operações cadastradas.</div></div><div class="toolbar"><button class="ghost" type="button" onclick="openB3ImportsManager()">▤ Editar importações da B3</button><button class="ghost" type="button" onclick="exportOperations()">⇩ Exportar lançamentos</button><button class="ghost" type="button" onclick="openOperationManager()">☷ Editar lançamentos de ativos</button></div></div>
 <div class="panel section"><div class="panelhead"><h2>Consolidação de aportes</h2><div class="toolbar"><select id="launchGranularity" onchange="renderLaunchConsolidation()"><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="anual">Anual</option></select><select id="launchPeriod" onchange="renderLaunchConsolidation()"><option value="12" selected>Últimos 12 meses</option><option value="24">2 anos</option><option value="60">5 anos</option><option value="all">Todo o período</option></select><select id="launchType" onchange="renderLaunchConsolidation()"><option value="todos">Todos os tipos</option></select></div></div><div class="chartbox launch-consolidation-chart"><canvas id="launchConsolidationChart"></canvas></div></div>
 <div class="panel section"><div class="panelhead"><h2>Consolidação mensal</h2><span id="launchConsolidationTotal" class="mini"></span></div><div class="tablewrap"><table class="data"><thead><tr><th>Período</th><th>Compras</th><th>Vendas</th><th>Aportes líquidos</th></tr></thead><tbody id="launchConsolidationRows"></tbody></table></div></div>
 <div class="panel section"><div class="panelhead"><h2>Lançamentos por tipo de ativo</h2><span class="mini">Cada classe tem sua própria tabela. Os registros originais foram preservados.</span></div><div id="operationGroups" class="operation-groups"></div></div>
@@ -2473,6 +2474,9 @@ function sortCategoryItems(items,category,totalPortfolio){
   return (Number(av)-Number(bv))*multiplier;
  });
 }
+let summaryAssetsPage=1;
+const SUMMARY_ASSETS_PAGE_SIZE=20;
+function changeSummaryAssetsPage(page){summaryAssetsPage=Math.max(1,Number(page)||1);renderPositionGroups(state.itens||[],'summaryGroups',true);}
 function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
  const categories=[
   {key:'acao',name:'Ações',icon:'▣'},{key:'fii',name:'FIIs',icon:'▥'},{key:'stocks',name:'Stocks',icon:'◎'},
@@ -2526,10 +2530,14 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);const action=share>ideal+0.005?'sell':share<ideal-0.005?'buy':'neutral';return `<td data-col="idealPct"><span class="ideal-balance-hint" data-action="${action}" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const needsContribution=share<ideal-0.005;return `<td data-col="comprar">${needsContribution?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
  ];
+ const summaryOrderedRows=summaryMode?visibleCategories.flatMap(cat=>sortCategoryItems(rows.filter(item=>item.tipo===cat.key),cat.key,totalPortfolio)):rows;
+ const summaryPages=Math.max(1,Math.ceil(summaryOrderedRows.length/SUMMARY_ASSETS_PAGE_SIZE));
+ if(summaryMode)summaryAssetsPage=Math.min(Math.max(1,summaryAssetsPage),summaryPages);
+ const summaryVisibleSet=summaryMode?new Set(summaryOrderedRows.slice((summaryAssetsPage-1)*SUMMARY_ASSETS_PAGE_SIZE,summaryAssetsPage*SUMMARY_ASSETS_PAGE_SIZE).map(item=>String(item.tipo)+'|'+String(item.ticker))):null;
  host.innerHTML=visibleCategories.map((cat,categoryIndex)=>{
-  const categoryRows=rows.filter(item=>item.tipo===cat.key),total=categoryRows.reduce((sum,item)=>sum+Number(item.valor_atual||0),0),items=sortCategoryItems(categoryRows,cat.key,totalPortfolio),invested=items.reduce((sum,item)=>sum+Number(item.investido||0),0);
-  const variation=total?items.reduce((sum,item)=>sum+Number(item.variacao_dia||0)*Number(item.valor_atual||0),0)/total:0;
-  const profitability=items.length?items.reduce((sum,item)=>sum+Number(item.lucro_pct||0)*Number(item.investido||0),0)/(invested||1):0;
+  const categoryRows=rows.filter(item=>item.tipo===cat.key),total=categoryRows.reduce((sum,item)=>sum+Number(item.valor_atual||0),0),allCategoryItems=sortCategoryItems(categoryRows,cat.key,totalPortfolio),items=summaryMode?allCategoryItems.filter(item=>summaryVisibleSet.has(String(item.tipo)+'|'+String(item.ticker))):allCategoryItems,invested=allCategoryItems.reduce((sum,item)=>sum+Number(item.investido||0),0);
+  const variation=total?allCategoryItems.reduce((sum,item)=>sum+Number(item.variacao_dia||0)*Number(item.valor_atual||0),0)/total:0;
+  const profitability=allCategoryItems.length?allCategoryItems.reduce((sum,item)=>sum+Number(item.lucro_pct||0)*Number(item.investido||0),0)/(invested||1):0;
   const target=distributionItems.find(x=>categoryKeyFromName(x.nome)===cat.key),ideal=Number(target?.percentual||0),portfolioPct=totalPortfolio?total/totalPortfolio*100:0;
   const expanded=summaryMode
    ? summaryExpandedAssetGroups[cat.key]===true
@@ -2539,14 +2547,14 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   const widthKeys=[...shown.map(([key])=>key),'opcoes'];
   const widthTotal=widthKeys.reduce((sum,key)=>sum+(columnWeights[key]||.9),0);
   const proportionalCols=`<colgroup>${widthKeys.map(key=>`<col style="width:${((columnWeights[key]||.9)/widthTotal*100).toFixed(3)}%">`).join('')}</colgroup>`;
-  const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">Nenhum ativo cadastrado nesta categoria.</div>`;
-  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${items.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${items.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${items.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${items.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
+  const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">${summaryMode&&allCategoryItems.length?"Os ativos desta classe estão em outra página.":"Nenhum ativo cadastrado nesta categoria."}</div>`;
+  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${allCategoryItems.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span><span class="asset-category-metric">Variação<b class="${allCategoryItems.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${allCategoryItems.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span><span class="asset-category-metric">Rentabilidade<b>${allCategoryItems.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
   const moveControls=`<div class="position-category-move">${categoryIndex>0?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para cima" aria-label="Mover ${cat.name} para cima" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',-1)">↑</button>`:''}${categoryIndex<visibleCategories.length-1?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para baixo" aria-label="Mover ${cat.name} para baixo" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',1)">↓</button>`:''}</div>`;
   const header=summaryMode
    ? `<div class="summary-category-head">${moveControls}<button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
    : `<div class="position-category-head">${moveControls}<button type="button" class="asset-category-head position-group-toggle" onclick="toggleAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`;
   return `<section class="asset-category ${expanded?'':'collapsed'} ${summaryMode?'summary-draggable-category':''}" ${summaryMode?`data-category-key="${cat.key}"`:!summaryMode?`data-category-key="${cat.key}"`:``}>${header}<div class="asset-category-body">${body}</div></section>`;
- }).join('');
+ }).join('')+(summaryMode&&summaryOrderedRows.length>SUMMARY_ASSETS_PAGE_SIZE?`<div class="summary-assets-pagination" role="navigation" aria-label="Paginação dos ativos"><button type="button" ${summaryAssetsPage===1?'disabled':''} onclick="changeSummaryAssetsPage(${summaryAssetsPage-1})">Anterior</button>${[...new Set([1,summaryAssetsPage-1,summaryAssetsPage,summaryAssetsPage+1,summaryPages].filter(page=>page>=1&&page<=summaryPages))].sort((a,b)=>a-b).map((page,index,arr)=>`${index&&page-arr[index-1]>1?'<span>…</span>':''}<button type="button" class="${page===summaryAssetsPage?'active':''}" ${page===summaryAssetsPage?'aria-current="page"':''} onclick="changeSummaryAssetsPage(${page})">${page}</button>`).join('')}<button type="button" ${summaryAssetsPage===summaryPages?'disabled':''} onclick="changeSummaryAssetsPage(${summaryAssetsPage+1})">Próximo</button><span>Página ${summaryAssetsPage} de ${summaryPages}</span></div>`:'');
  applyPositionColumnPrefs();
  requestAnimationFrame(()=>alignCategoryMoveControls(hostId));
 }
@@ -4573,8 +4581,30 @@ async function saveDistribution(){
  }catch(e){toast(e.message);}
 }
 
+
+async function exportOperations(){
+ try{
+  const response=await fetch('/api/operacoes/exportar');
+  if(!response.ok){let message='Não foi possível exportar os lançamentos.';try{const data=await response.json();message=data.erro||message}catch(e){}throw new Error(message)}
+  const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='Lonely-Wallet-Lancamentos-B3.xlsx';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  toast('Planilha de lançamentos exportada.');
+ }catch(error){toast(error.message||'Falha ao exportar lançamentos.')}
+}
+async function autoSyncPluggyOnPageLoad(){
+ try{
+  const stateData=await api('/api/pluggy/state',{skipAutoRefresh:true});
+  if(!(stateData.items||[]).length)return;
+  const configured=await api('/api/integracoes',{skipAutoRefresh:true});
+  const pluggy=(configured.providers||[]).find(p=>p.id==='pluggy'||p.provider==='pluggy');
+  if(pluggy&&(!pluggy.configured||pluggy.enabled===false))return;
+  const result=await api('/api/pluggy/sync',{method:'POST',body:'{}',skipAutoRefresh:true});
+  if(result&&result.ok!==false){await refresh();if(document.getElementById('pluggyState'))await loadPluggyState();toast('Pluggy atualizada. Novas movimentações foram conciliadas sem duplicar lançamentos.');}
+ }catch(error){console.warn('Sincronização automática Pluggy:',error.message||error)}
+}
+
 updateDocumentIdentity('resumo');
-refresh();loadDistribution();
+refresh();loadDistribution();autoSyncPluggyOnPageLoad();
 
 // Preferências locais: tema claro/escuro e ocultação de valores.
 function applyTheme(light){
