@@ -607,7 +607,8 @@ def pluggy_state():
         """SELECT i.*,
            (SELECT COUNT(*) FROM pluggy_accounts a WHERE a.item_id=i.item_id) AS accounts_count,
            (SELECT COUNT(*) FROM pluggy_investments v WHERE v.item_id=i.item_id) AS investments_count,
-           (SELECT COUNT(*) FROM pluggy_transactions t WHERE t.item_id=i.item_id) AS transactions_count
+           (SELECT COUNT(*) FROM pluggy_transactions t WHERE t.item_id=i.item_id) AS transactions_count,
+           (SELECT COUNT(*) FROM pluggy_investment_transactions vtx WHERE vtx.item_id=i.item_id) AS investment_transactions_count
            FROM pluggy_items i WHERE i.active=1 ORDER BY i.created_at"""
     ).fetchall()
     investments = db().execute(

@@ -1853,6 +1853,8 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 .return-chart-note{padding:10px 16px 16px}
 .api-intro{margin-bottom:16px}.pluggy-state{margin-top:10px;display:grid;gap:8px}.pluggy-item-row,.pluggy-investment-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--border);border-radius:9px;margin-top:7px}.pluggy-investment-list{max-height:260px;overflow:auto}.pluggy-investment-row small{display:block;color:var(--muted);font-size:11px}.pluggy-investments{margin-top:10px}.pluggy-investments summary{cursor:pointer;color:var(--muted);padding:8px 0}.pluggy-investment-row strong{font-size:12px}.api-section-title{font-size:15px;margin:18px 0 10px}.api-section-title.native{margin-top:26px}.api-provider-card.api-pluggy{border-color:var(--blue);box-shadow:inset 3px 0 0 var(--blue)}.api-credential-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}.api-credential-fields label{display:flex;flex-direction:column;gap:5px}.api-credential-fields input{width:100%;min-width:0}@media(max-width:700px){.api-credential-fields{grid-template-columns:1fr}}
 .api-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#apiPluggyGrid{grid-template-columns:minmax(0,1fr)}
+#apiPluggyGrid .api-provider-card{width:100%;max-width:none}
 .api-provider-card{padding:17px;display:flex;flex-direction:column;gap:11px;min-width:0}
 .api-provider-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .api-provider-head h3{margin:0;font-size:15px}
@@ -3706,15 +3708,16 @@ function renderRentabilidadePage(){
   <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>Resultado consolidado sobre todo o valor investido: ${brl(consolidatedGain)}</small>${returnBenchmarkSelectHTML('total')}</div>
  `;
  const allTypesSelected=(typeSelect.value||'todos')==='todos';
- // A série histórica parcial pode ser útil, desde que identificada como parcial.
- // Não a descartamos apenas porque há ativos sem histórico ou um saldo-base importado.
+ // Não comparar uma série parcial de alguns ativos com o retorno consolidado de toda a carteira.
+ // Em Todos os tipos, o gráfico mostra o mesmo retorno atual do Resumo; a série mensal parcial
+ // permanece disponível na tabela e nas visualizações por classe, sem ser rotulada como total.
  const incompleteConsolidatedHistory=allTypesSelected&&Boolean(performance.historico_parcial);
  const chartRows=visible;
- const labelsX=chartRows.length?chartRows.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`):['Atual'];
+ const labelsX=allTypesSelected?['Atual']:(chartRows.length?chartRows.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`):['Atual']);
  const visibleFirstKey=chartRows.length?chartRows[0].year+'-'+String(chartRows[0].month).padStart(2,'0'):'';
  const priorPortfolioRow=period==='12'&&chartRows.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
  const portfolioBase=priorPortfolioRow?1+priorPortfolioRow.cumulative/100:1;
- const values=chartRows.length?chartRows.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4))):(total===null?[]:[Number(total.toFixed(4))]);
+ const values=allTypesSelected?(total===null?[]:[Number(total.toFixed(4))]):(chartRows.length?chartRows.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4))):(total===null?[]:[Number(total.toFixed(4))]));
  const note=document.getElementById('returnChartNote');
  if(note){
   const activeSources=RETURN_BENCHMARKS.filter(code=>returnVisibleSeries.has(code)&&returnBenchmarkData?.meta?.[code]).map(code=>code+': '+returnBenchmarkData.meta[code].source+(returnBenchmarkData.meta[code].last_available?' · até '+returnBenchmarkData.meta[code].last_available:'')+(returnBenchmarkData.meta[code].sample?' · amostra de 30 pregões':''));
@@ -3723,12 +3726,12 @@ function renderRentabilidadePage(){
   const missingAssets=Array.isArray(performance.ativos_sem_historico)?performance.ativos_sem_historico:[];
   const coveredAssets=Number(performance.ativos_com_historico||0),assetTotal=Number(performance.total_ativos||0);
   const coverageText=(assetTotal?` Cobertura de histórico: ${coveredAssets}/${assetTotal} ativos.`:'')+(missingAssets.length?' Sem histórico: '+missingAssets.join(', ')+'.':'');
-  note.textContent=allTypesSelected?(incompleteConsolidatedHistory?'Curva histórica parcial: representa somente os ativos com preços históricos disponíveis. O retorno consolidado atual permanece no indicador acima.'+coverageText:'Rentabilidade histórica da carteira.'+coverageText):'Série histórica da classe selecionada, calculada somente com os ativos que possuem histórico disponível. Dados ausentes não são interpolados.'+coverageText+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
+  note.textContent=allTypesSelected?('Ponto atual consolidado: '+(total===null?'indisponível':pct(total))+', igual ao indicador de Rentabilidade do Resumo. A curva histórica completa ainda não pode ser calculada com segurança.'+coverageText):'Série histórica da classe selecionada, calculada somente com os ativos que possuem histórico disponível. Dados ausentes não são interpolados.'+coverageText+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
  }
  // A ausência temporária de dados não deve bloquear a interação da legenda.
  const datasets=[];
- if(returnVisibleSeries.has('portfolio'))datasets.push({label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
- RETURN_BENCHMARKS.forEach(code=>{
+ if(returnVisibleSeries.has('portfolio'))datasets.push({label:allTypesSelected?'Rentabilidade consolidada atual':'Rentabilidade da classe',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
+ if(!allTypesSelected)RETURN_BENCHMARKS.forEach(code=>{
   if(!returnVisibleSeries.has(code))return;
   const series=returnIndexSeries(code),map=new Map(series.map(x=>[x.mes,Number(x.valor)]));
   const priorIndex=series.filter(x=>x.mes<visibleFirstKey).slice(-1)[0];
@@ -3737,6 +3740,8 @@ function renderRentabilidadePage(){
   if(data.some(x=>x!==null))datasets.push({label:code,data,borderColor:RETURN_BENCHMARK_COLORS[code],backgroundColor:'transparent',fill:false,tension:.18,pointRadius:2,pointHoverRadius:4,borderWidth:2,spanGaps:true});
  });
  chart('returnPerformanceChart','line',{labels:labelsX,datasets},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${pct(ctx.raw)}`}}},interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#aab3c2',maxRotation:0,autoSkip:true},grid:{display:false}},y:{ticks:{color:'#aab3c2',callback:v=>`${Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})}%`},grid:{color:'#383e49'}}}});
+ const chartTitle=document.querySelector('.return-investor-head h2');
+ if(chartTitle)chartTitle.textContent=allTypesSelected?'Rentabilidade consolidada da carteira':'Rentabilidade da classe comparada com índices';
  const legend=document.getElementById('returnChartLegend');
  if(legend)legend.querySelectorAll('button[data-series]').forEach(button=>{
   const active=returnVisibleSeries.has(button.dataset.series);
@@ -3745,7 +3750,9 @@ function renderRentabilidadePage(){
   const availableSeries=code==='portfolio'||returnIndexSeries(code).length>0;
   const meta=returnBenchmarkData?.meta?.[code];
   button.title=code==='portfolio'?'Clique para exibir ou ocultar a rentabilidade da carteira':meta?'Fonte: '+meta.source+' · último dado: '+(meta.last_available||'indisponível')+(meta.sample?' · amostra recente':''):availableSeries?'Clique para exibir ou ocultar esta série':'Sem dados históricos disponíveis no momento; clique para exibir quando a fonte responder';
-  button.disabled=false;button.setAttribute('aria-disabled','false');
+  const unavailableForConsolidated=allTypesSelected&&code!=='portfolio';
+  button.disabled=unavailableForConsolidated;button.setAttribute('aria-disabled',String(unavailableForConsolidated));
+  if(unavailableForConsolidated)button.title='Comparação desativada: a curva histórica consolidada ainda não tem cobertura completa.';
  });
  const yearGroups=new Map();
  monthly.forEach(row=>{if(!yearGroups.has(row.year))yearGroups.set(row.year,[]);yearGroups.get(row.year).push(row);});
@@ -3987,7 +3994,7 @@ async function loadPluggyState(){
  try{
   const data=await api('/api/pluggy/state',{skipAutoRefresh:true});
   if(!data.items||!data.items.length){host.innerHTML='Nenhuma conexão cadastrada. Adicione o itemId do MeuPluggy.';return;}
-  host.innerHTML=data.items.map(item=>{const accounts=Number(item.accounts_count||0),investments=Number(item.investments_count||0),transactions=Number(item.transactions_count||0),hasData=accounts+investments+transactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização concluída · nenhum dado retornado':'Aguardando primeira sincronização',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${accounts} contas · ${investments} investimentos · ${transactions} transações${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
+  host.innerHTML=data.items.map(item=>{const accounts=Number(item.accounts_count||0),investments=Number(item.investments_count||0),transactions=Number(item.transactions_count||0),investmentTransactions=Number(item.investment_transactions_count||0),hasData=accounts+investments+transactions+investmentTransactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização executada · nenhum dado retornado':'Item cadastrado · ainda não sincronizado',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${accounts} contas · ${investments} investimentos · ${transactions} transações bancárias · ${investmentTransactions} movimentações de investimento${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
   const invHost=document.getElementById('pluggyInvestments');
   if(invHost){
    const inv=data.investments||[];
@@ -4012,7 +4019,9 @@ async function syncPluggy(){
   const s=result.summary||{};
   await loadPluggyState();
   const msg=`Sincronização concluída: ${s.accounts||0} contas, ${s.investments||0} investimentos, ${s.transactions||0} transações bancárias, ${s.investment_transactions||0} movimentações de investimento. ${s.operations_imported||0} operações novas, ${s.operations_matched||0} conciliadas, ${s.dividends_imported||0} proventos importados e ${s.duplicates_ignored||0} duplicidades ignoradas.`;
-  if(host)host.textContent=msg;toast('Pluggy sincronizada com sucesso.');
+  const hasAnyData=Number(s.accounts||0)+Number(s.investments||0)+Number(s.transactions||0)+Number(s.investment_transactions||0)>0;
+  const outcome=hasAnyData?'A Pluggy retornou dados.':'A API respondeu, mas não retornou contas, investimentos ou movimentações. Confira o itemId, o status da conexão e as permissões no MeuPluggy.';
+  if(host)host.textContent=outcome+' '+msg;toast(hasAnyData?'Sincronização concluída com dados.':'Sincronização sem dados retornados.');
   if(typeof refresh==='function')refresh();
  }catch(error){if(host)host.textContent=error.message||'Falha na sincronização.';toast(error.message||'Falha na sincronização.');}
 }
