@@ -1,8 +1,8 @@
-# Lonely Wallet v3.3.14
+# Lonely Wallet v3.3.15
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
 
-## v3.3.14
+## v3.3.15
 
 - Pluggy passa a sincronizar exclusivamente investimentos e movimentações de investimento. A consulta a contas e transações bancárias foi removida.
 - Dados bancários em cache de versões anteriores são apagados na inicialização; conexões Pluggy e credenciais são preservadas.

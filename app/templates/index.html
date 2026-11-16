@@ -2563,7 +2563,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['preco_alvo','Meu Preço-Alvo',i=>`<td data-col="preco_alvo">—</td>`],
   ['preco_graham','Preço Justo (Graham)',i=>`<td data-col="preco_graham">—</td>`],
   ['preco_teto_bazin','Preço-teto (Bazin)',i=>`<td data-col="preco_teto_bazin">${i.preco_teto_bazin?brl(i.preco_teto_bazin):'—'}</td>`],
-  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint" tabindex="0" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
+  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
   ['lucro_pct','Rentabilidade',i=>`<td data-col="lucro_pct"><span class="variation-pill ${Number(i.lucro_pct)>=0?'positive':'negative'}">${Number(i.lucro_pct)>=0?'↗':'↘'} ${pct(i.lucro_pct)}</span></td>`],
   ['valor_atual','Saldo',i=>`<td data-col="valor_atual">${brl(i.valor_atual)}</td>`],
   ['buyhold','Pontuação Buy and Hold',i=>`<td data-col="buyhold">—</td>`],
@@ -2574,7 +2574,6 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['pvp','P/VP',i=>`<td data-col="pvp">${i.pvp==null?'—':Number(i.pvp).toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>`],
   ['roe','ROE',i=>`<td data-col="roe">—</td>`],['margem_liquida','Margem Líquida',i=>`<td data-col="margem_liquida">—</td>`],
   ['margem_bruta','Margem Bruta',i=>`<td data-col="margem_bruta">—</td>`],['cagr_receitas','CAGR Receitas (5 anos)',i=>`<td data-col="cagr_receitas">—</td>`],['cagr_lucros','CAGR Lucros (5 anos)',i=>`<td data-col="cagr_lucros">—</td>`],
-  ['nota','Análise',i=>{const rating=i.avaliacao||{},score=assetScore(i),detail=(rating.details||[]).join(' · '),sources=(rating.providers||[]).join(', '),hint=rating.score!=null?`${rating.label} · ${rating.coverage} indicadores avaliados · Fontes: ${sources||'não informada'} · ${detail}`:(rating.label||'Sem dados fundamentalistas suficientes');return `<td data-col="nota"><button class="note-inline value-hint" data-hint="${escapeHTML(hint)}" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">${score?score.toLocaleString('pt-BR',{maximumFractionDigits:1})+'/10':'N/D'}</button></td>`;}],
   ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;return `<td data-col="portfolioPct">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</td>`;}],
   ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);const action=share>ideal+0.005?'sell':share<ideal-0.005?'buy':'neutral';return `<td data-col="idealPct"><span class="ideal-balance-hint" data-action="${action}" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const needsContribution=share<ideal-0.005;return `<td data-col="comprar">${needsContribution?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
@@ -2797,7 +2796,7 @@ const POSITION_COLUMNS=[
   ['cagr_receitas','CAGR Receitas (5 anos)',false],['cagr_lucros','CAGR Lucros (5 anos)',false]
  ]},
  {group:'Rebalanceamento de carteira',items:[
-  ['nota','Análise automática',true],['portfolioPct','% na Carteira',true],['idealPct','% Ideal',true],['comprar','Comprar',true]
+  ['portfolioPct','% na Carteira',true],['idealPct','% Ideal',true],['comprar','Comprar',true]
  ]}
 ];
 function getPositionColumnPrefs(){
