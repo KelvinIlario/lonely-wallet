@@ -2359,9 +2359,17 @@ def _pluggy_total_return(ticker, current_value, dividends=0.0):
             sells += max(0.0, amount - expenses)
     if buys <= 0:
         return None
-    result = float(current_value or 0) + sells + float(dividends or 0) - buys
-    return {'pct': round(result / buys * 100, 2), 'value': round(result, 2),
-            'invested': round(buys, 2), 'first_buy': first_buy}
+    # Variação considera somente resultado de preço e operações realizadas.
+    # Rentabilidade total acrescenta os proventos recebidos no período.
+    variation_value = float(current_value or 0) + sells - buys
+    total_return_value = variation_value + float(dividends or 0)
+    return {
+        'variation_pct': round(variation_value / buys * 100, 2),
+        'variation_value': round(variation_value, 2),
+        'total_pct': round(total_return_value / buys * 100, 2),
+        'total_value': round(total_return_value, 2),
+        'invested': round(buys, 2), 'first_buy': first_buy
+    }
 
 
 def _prefetch_quotes_parallel(tickers):
@@ -2437,7 +2445,12 @@ def carteira():
         pluggy_return = _pluggy_total_return(ticker, value, dividends) if pluggy_position else None
         invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
         default_name = imported.get('nome') if imported else ticker
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(value-cost,2),'lucro_pct':round((value/cost-1)*100,2) if cost else 0,'pluggy_retorno_pct':pluggy_return['pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['value'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')})
+        daily_variation = quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')
+        # Com histórico Pluggy, Variação é o ganho/perda sem proventos; Rentabilidade inclui proventos.
+        # Sem histórico suficiente, preserva os cálculos locais anteriores.
+        variation_pct = pluggy_return['variation_pct'] if pluggy_return else daily_variation
+        profitability_pct = pluggy_return['total_pct'] if pluggy_return else (round((value/cost-1)*100,2) if cost else 0)
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(value-cost,2),'lucro_pct':profitability_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)

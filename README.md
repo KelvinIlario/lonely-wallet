@@ -141,3 +141,14 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Destaques calculam retorno total desde a primeira compra usando movimentações Pluggy (compras, vendas, custos e proventos), com fallback quando não há histórico Pluggy.
 - Percentual do resultado total exibido ao lado do patrimônio, com tooltip em reais.
 - Destaques com cores neutras, seguindo a paleta padrão do projeto.
+
+## v3.3.10
+- Botão **Abrir MeuPluggy** atualizado para o mesmo estilo visual dos botões do projeto.
+- Seletor de limpeza agora permite escolher uma conexão específica ou **Todas as conexões**.
+- Limpeza de todas as conexões executada individualmente, preservando conexões, credenciais e lançamentos manuais/B3.
+- Card **Destaques da carteira** simplificado, com melhor distribuição dos dois destaques e sem informações secundárias de saldo/resultado.
+- Card **Posições no lucro** reorganizado para distribuir melhor o total, percentual, barra e contadores, mantendo o estilo existente.
+- **Variação** passa a representar o ganho/perda desde a primeira compra registrada na Pluggy, considerando compras, vendas, custos e valor atual, sem proventos.
+- **Rentabilidade** usa o mesmo histórico e inclui os proventos recebidos.
+- Tooltip da variação informa o resultado financeiro em reais e a data da primeira compra.
+- Quando não há histórico Pluggy suficiente, os cálculos locais anteriores são mantidos.

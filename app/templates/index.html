@@ -114,8 +114,8 @@
 .insight-icon{width:30px;height:30px;border-radius:50%;background:#151a24;border:1px solid var(--line);display:grid;place-items:center;font-size:16px}
 .insight-main{font-size:21px;font-weight:750;color:var(--text);margin:10px 0 5px}
 .insight-sub{font-size:11px;color:var(--muted);line-height:1.5}
-.insight-split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-.insight-split b{display:block;font-size:14px;margin-top:5px}.insight-highlight-detail{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:7px;color:var(--muted);font-size:10px;line-height:1.35}.insight-highlight-detail strong{color:var(--text);font-weight:650}.insight-highlight-column{min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}.insight-highlight-pill{margin-top:5px}
+.insight-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;flex:1;align-items:stretch}
+.insight-split b{display:block;font-size:16px;margin-top:9px}.insight-highlight-column{min-width:0;min-height:88px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);display:flex;flex-direction:column;justify-content:center;align-items:flex-start}.insight-highlight-pill{margin-top:8px}
 .insight-bar{height:8px;border-radius:99px;background:#303541;overflow:hidden;display:flex;margin:10px 0}
 .insight-bar .positive{background:#20bd82}.insight-bar .negative{background:#f17898}
 .insight-action{width:100%;margin-top:9px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--text);padding:7px;cursor:pointer;font-size:11px}
@@ -579,6 +579,7 @@ body.light-theme .tax-tabs button.active{background:#fff}
 .insight-title{min-height:30px;display:flex;align-items:center;gap:9px}
 .insight-title .info-tip{margin-left:auto;flex:0 0 16px}
 .insight-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px;min-height:30px;margin:10px 0 5px;font-variant-numeric:tabular-nums}
+.insight-profit-summary{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;margin-top:8px}.insight-profit-summary .insight-main{margin:0}.insight-profit-counts{display:flex;justify-content:space-between;gap:8px;margin-top:8px}.insight-profit-counts button{flex:1;min-width:0}.pluggy-open-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none!important}
 .insight-split{flex:1;align-items:start;gap:var(--layout-gap)}
 .insight-bar{width:100%;margin:10px 0}
 .insight-action{margin-top:auto;min-height:32px}
@@ -2259,8 +2260,8 @@ function renderPositionInsights(rows){
  const returnValue=x=>x&&x.pluggy_retorno_valor!==null&&x.pluggy_retorno_valor!==undefined?Number(x.pluggy_retorno_valor):Number(x?.lucro||0);
  const sorted=rows.filter(x=>Number.isFinite(returnPct(x))).slice().sort((a,b)=>returnPct(b)-returnPct(a));
  const best=sorted[0],worst=sorted[sorted.length-1];
- const winners=rows.filter(x=>Number(x.lucro||0)>0).length;
- const losers=rows.filter(x=>Number(x.lucro||0)<0).length;
+ const winners=rows.filter(x=>Number(x.lucro_pct||0)>0).length;
+ const losers=rows.filter(x=>Number(x.lucro_pct||0)<0).length;
  const total=rows.length,positivePct=total?(winners/total)*100:0;
  const opportunities=rows.filter(x=>Number(x.preco_atual)>0&&Number(x.preco_medio)>0&&Number(x.preco_atual)<Number(x.preco_medio));
  const recentAssets=[];
@@ -2286,15 +2287,15 @@ function renderPositionInsights(rows){
   <article class="insight-card">
    <div class="insight-title">Destaques da carteira<span class="info-tip" tabindex="0" aria-label="Sobre os destaques da carteira" data-tip="Consideramos como destaque da carteira os ativos dos seguintes tipos: Ações, FIIs, Stocks, BDRs, REITs, ETFs e Criptomoedas.">i</span></div>
    <div class="insight-split">
-    <div class="insight-highlight-column"><span class="insight-sub">🏆 Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill positive" title="${best?`Desde a primeira compra (${best.pluggy_primeira_compra||'histórico Pluggy'}): ${brl(returnValue(best))}`:'Sem histórico'}">${best?pct(returnPct(best)):'Sem posições'} <span aria-hidden="true">↗</span></span><div class="insight-highlight-detail"><span>Saldo <strong>${best?brl(best.valor_atual):'—'}</strong></span><span>Resultado <strong>${best?brl(returnValue(best)):'—'}</strong></span></div></div>
-    <div class="insight-highlight-column"><span class="insight-sub">📉 Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill negative" title="${worst?`Desde a primeira compra (${worst.pluggy_primeira_compra||'histórico Pluggy'}): ${brl(returnValue(worst))}`:'Sem histórico'}">${worst?pct(returnPct(worst)):'Sem posições'} <span aria-hidden="true">↘</span></span><div class="insight-highlight-detail"><span>Saldo <strong>${worst?brl(worst.valor_atual):'—'}</strong></span><span>Resultado <strong>${worst?brl(returnValue(worst)):'—'}</strong></span></div></div>
+    <div class="insight-highlight-column"><span class="insight-sub">Melhor posição</span><b>${best?escapeHTML(best.ticker):'—'}</b><span class="insight-highlight-pill positive" title="${best?`Rentabilidade desde a primeira compra (${best.pluggy_primeira_compra||'histórico Pluggy'}): ${brl(returnValue(best))}`:'Sem histórico suficiente'}">${best?pct(returnPct(best)):'—'} <span aria-hidden="true">↗</span></span></div>
+    <div class="insight-highlight-column"><span class="insight-sub">Pior posição</span><b>${worst?escapeHTML(worst.ticker):'—'}</b><span class="insight-highlight-pill negative" title="${worst?`Rentabilidade desde a primeira compra (${worst.pluggy_primeira_compra||'histórico Pluggy'}): ${brl(returnValue(worst))}`:'Sem histórico suficiente'}">${worst?pct(returnPct(worst)):'—'} <span aria-hidden="true">↘</span></span></div>
    </div>
   </article>
   <article class="insight-card">
    <div class="insight-title">Posições no lucro<span class="info-tip" tabindex="0" aria-label="Sobre posições no lucro" data-tip="Consideramos a rentabilidade para fornecer a informação dos ativos no lucro e no prejuízo.">i</span></div>
-   <div class="insight-main">${winners} de ${total} <small style="font-size:12px;color:#d5b34f">${total?Math.round(positivePct)+'%':'—'}</small></div>
+   <div class="insight-profit-summary"><div class="insight-main">${winners} de ${total}</div><small style="font-size:13px;color:var(--muted);font-weight:650">${total?Math.round(positivePct)+'%':'—'}</small></div>
    <div class="insight-bar"><span class="positive" style="width:${positivePct}%"></span><span class="negative" style="width:${total?losers/total*100:0}%"></span></div>
-   <div class="insight-sub insight-profit-links"><button type="button" class="green" onclick="openProfitPositionsModal('lucro')">${winners} no lucro ▲</button><button type="button" class="red" onclick="openProfitPositionsModal('prejuizo')">${losers} no prejuízo ▼</button></div>
+   <div class="insight-profit-counts insight-profit-links"><button type="button" class="green" onclick="openProfitPositionsModal('lucro')">${winners} no lucro ▲</button><button type="button" class="red" onclick="openProfitPositionsModal('prejuizo')">${losers} no prejuízo ▼</button></div>
   </article>
   <article class="insight-card">
    <div class="insight-title">Oportunidades de compra<span class="info-tip" tabindex="0" aria-label="Sobre oportunidades de compra" data-tip="Ativos marcados como “comprar” e com o valor atual abaixo do preço médio.">i</span></div>
@@ -2631,8 +2632,9 @@ function moveIdealBalanceTooltip(event,el){
 }
 
 function variationMoneyHint(item,change){
- const amount=Number(item.quantidade||0)*Number(item.preco_atual||0)*Number(change||0)/100;
- return `Quanto uma variação de ${pct(change)} representa?\n${brl(amount)}`;
+ const amount=item&&item.pluggy_variacao_valor!==null&&item.pluggy_variacao_valor!==undefined?Number(item.pluggy_variacao_valor):Number(item.quantidade||0)*Number(item.preco_atual||0)*Number(change||0)/100;
+ const basis=item&&item.pluggy_primeira_compra?` desde a primeira compra em ${item.pluggy_primeira_compra}`:'';
+ return `Resultado de ${pct(change)}${basis} (sem proventos):\n${brl(amount)}`;
 }
 function closeAssetMenu(){
  const menu=document.getElementById('assetActionMenu');
@@ -4001,7 +4003,7 @@ function renderAPIProviders(){
   p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar; cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
   `<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.':'Não é necessário cadastrar token.'}</span></div>`}
   <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
-  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
+  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
   <div class="api-provider-links"><a href="${p.url}" target="_blank" rel="noopener noreferrer">Obter acesso</a><a href="${p.docs}" target="_blank" rel="noopener noreferrer">Documentação</a></div>
  </article>`;
  host.innerHTML=credentialed.map(card).join('');if(pluggyHost)pluggyHost.innerHTML=pluggy.map(card).join('')||'<div class="panel empty">Pluggy indisponível.</div>'; 
@@ -4011,8 +4013,9 @@ async function loadPluggyState(){
  const host=document.getElementById('pluggyState');if(!host)return;
  try{
   const data=await api('/api/pluggy/state',{skipAutoRefresh:true});
+  window.pluggyConnections=data.items||[];
+  const clearSelect=document.getElementById('pluggyClearItemSelect');if(clearSelect){const previous=clearSelect.value;clearSelect.innerHTML='<option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option>'+window.pluggyConnections.map(item=>`<option value="${escapeHTML(item.item_id)}">${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</option>`).join('');if(previous==='__all__'||window.pluggyConnections.some(item=>item.item_id===previous))clearSelect.value=previous;}
   if(!data.items||!data.items.length){host.innerHTML='Nenhuma conexão cadastrada. Adicione o itemId do MeuPluggy.';return;}
-  const clearSelect=document.getElementById('pluggyClearItemSelect');if(clearSelect){const previous=clearSelect.value;clearSelect.innerHTML='<option value="">Selecione a conexão</option>'+data.items.map(item=>`<option value="${escapeHTML(item.item_id)}">${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</option>`).join('');if(data.items.some(item=>item.item_id===previous))clearSelect.value=previous;}
   host.innerHTML=data.items.map(item=>{const accounts=Number(item.accounts_count||0),investments=Number(item.investments_count||0),transactions=Number(item.transactions_count||0),investmentTransactions=Number(item.investment_transactions_count||0),hasData=accounts+investments+transactions+investmentTransactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização executada · nenhum dado retornado':'Item cadastrado · ainda não sincronizado',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${accounts} contas · ${investments} investimentos · ${transactions} transações bancárias · ${investmentTransactions} movimentações de investimento${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
   const invHost=document.getElementById('pluggyInvestments');
   if(invHost){
@@ -4048,16 +4051,21 @@ async function syncPluggy(){
 }
 async function clearPluggyImportedData(){
  const select=document.getElementById('pluggyClearItemSelect'),itemId=select?.value||'';
- if(!itemId){toast('Selecione a conexão MeuPluggy que deseja limpar.');return;}
- const label=select.options[select.selectedIndex]?.text||'conexão selecionada';
- if(!await appConfirm('Limpar dados importados da Pluggy','Os dados sincronizados de '+label+' serão apagados: contas, investimentos, transações, movimentações e lançamentos/proventos criados por essa conexão. A conexão e suas credenciais serão mantidas. Lançamentos manuais ou conciliados com a B3 não serão apagados. Esta ação não pode ser desfeita.','Limpar dados'))return;
+ if(!itemId){toast('Selecione uma conexão ou escolha todas.');return;}
+ const all=itemId==='__all__',connections=all?(window.pluggyConnections||[]):(window.pluggyConnections||[]).filter(item=>item.item_id===itemId);
+ if(!connections.length){toast('Não há conexões para limpar.');return;}
+ const label=all?'todas as conexões':(select.options[select.selectedIndex]?.text||'conexão selecionada');
+ if(!await appConfirm('Limpar dados importados da Pluggy','Os dados sincronizados de '+label+' serão apagados: contas, investimentos, transações, movimentações e lançamentos/proventos criados por essas conexões. As conexões e credenciais serão mantidas. Lançamentos manuais ou conciliados com a B3 não serão apagados. Esta ação não pode ser desfeita.','Limpar dados'))return;
  try{
-  const result=await api('/api/pluggy/items/'+encodeURIComponent(itemId)+'/clear',{method:'POST',body:'{}',skipAutoRefresh:true});
+  let operations=0,dividends=0;
+  for(const connection of connections){
+   const result=await api('/api/pluggy/items/'+encodeURIComponent(connection.item_id)+'/clear',{method:'POST',body:'{}',skipAutoRefresh:true});
+   const deleted=result.deleted||{};operations+=Number(deleted.operacoes||0);dividends+=Number(deleted.proventos||0);
+  }
   await loadPluggyState();
-  const d=result.deleted||{};
-  toast('Dados removidos: '+Number(d.operacoes||0)+' lançamentos, '+Number(d.proventos||0)+' proventos e dados sincronizados da conexão.');
+  toast('Dados removidos: '+operations+' lançamentos e '+dividends+' proventos.');
   refresh();loadDistribution();
- }catch(error){toast(error.message||'Não foi possível limpar os dados desta conexão.');}
+ }catch(error){toast(error.message||'Não foi possível limpar todos os dados selecionados.');await loadPluggyState();}
 }
 async function removePluggyItem(itemId){
  if(!await appConfirm('Desativar conexão MeuPluggy','A conexão será desativada localmente. Os dados já importados serão preservados no SQLite.','Desativar conexão'))return;
