@@ -1,4 +1,4 @@
-# Lonely Wallet v2.0.76
+# Lonely Wallet v2.0.77
 
 Aplicação Flask + SQLite para controle pessoal de investimentos, posições, rentabilidade e proventos.
 
@@ -22,3 +22,9 @@ Aplicação Flask + SQLite para controle pessoal de investimentos, posições, r
 - Permite exibir as séries dos índices selecionados junto à carteira, sem exigir a seleção de uma classe específica.
 - Resume o status da sincronização de proventos na tela principal.
 - Move erros e avisos detalhados dos provedores para uma seção técnica expansível, sem expor uma longa mensagem na página.
+
+
+## v2.0.77
+- Integração pessoal MeuPluggy com cadastro local de itemIds, sincronização de contas, investimentos e transações.
+- Conciliação de compras/vendas de investimentos com lançamentos manuais e B3.
+- Proteção contra duplicidade de proventos por origem, ticker, data e valor.

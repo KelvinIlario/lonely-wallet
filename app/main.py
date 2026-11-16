@@ -128,6 +128,86 @@ def init_db():
       categoria TEXT NOT NULL,
       importado_em TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS pluggy_items (
+      item_id TEXT PRIMARY KEY,
+      label TEXT NOT NULL DEFAULT '',
+      connector_name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT '',
+      consent_expires_at TEXT DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      last_synced_at TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pluggy_accounts (
+      account_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      account_type TEXT NOT NULL DEFAULT '',
+      subtype TEXT NOT NULL DEFAULT '',
+      number TEXT NOT NULL DEFAULT '',
+      balance REAL NOT NULL DEFAULT 0,
+      currency_code TEXT NOT NULL DEFAULT 'BRL',
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_accounts_item ON pluggy_accounts(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_investments (
+      investment_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      code TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
+      investment_type TEXT NOT NULL DEFAULT '',
+      subtype TEXT NOT NULL DEFAULT '',
+      quantity REAL NOT NULL DEFAULT 0,
+      amount_original REAL NOT NULL DEFAULT 0,
+      balance REAL NOT NULL DEFAULT 0,
+      unit_value REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT '',
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_investments_item ON pluggy_investments(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_transactions (
+      transaction_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      transaction_date TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      direction TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT '',
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_transactions_item ON pluggy_transactions(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_investment_transactions (
+      transaction_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      investment_id TEXT NOT NULL,
+      ticker TEXT NOT NULL DEFAULT '',
+      transaction_date TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      movement_type TEXT NOT NULL DEFAULT '',
+      quantity REAL NOT NULL DEFAULT 0,
+      unit_value REAL NOT NULL DEFAULT 0,
+      amount REAL NOT NULL DEFAULT 0,
+      import_state TEXT NOT NULL DEFAULT 'imported_only',
+      imported_operation_id INTEGER,
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_invtx_item ON pluggy_investment_transactions(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_imported_events (
+      external_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      ticker TEXT NOT NULL DEFAULT '',
+      event_date TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      target_id INTEGER,
+      import_state TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
     ''')
     goal_columns = [row[1] for row in con.execute('PRAGMA table_info(metas)').fetchall()]
     for name, definition in [('categoria', "TEXT DEFAULT ''"), ('ticker', "TEXT DEFAULT ''"), ('variacao_anual', 'REAL DEFAULT 0'), ('classes', "TEXT DEFAULT '[]'")]:
@@ -293,6 +373,386 @@ def _get_pluggy_credentials():
         return {}
 
 
+
+# Pluggy personal-use integration (Meu Pluggy).
+# The personal/free flow does not expose GET /v2/items. Keep itemIds locally:
+# the user copies each itemId from the Pluggy Dashboard Demo page.
+PLUGGY_AUTH_CACHE = {'api_key': '', 'expires_at': 0}
+
+
+def _pluggy_api_key(force=False):
+    now = time.time()
+    if not force and PLUGGY_AUTH_CACHE.get('api_key') and PLUGGY_AUTH_CACHE.get('expires_at', 0) > now + 60:
+        return PLUGGY_AUTH_CACHE['api_key']
+    credentials = _get_pluggy_credentials()
+    if not credentials.get('client_id') or not credentials.get('client_secret'):
+        raise ValueError('Cadastre Client ID e Client Secret da Pluggy.')
+    response = requests.post(
+        'https://api.pluggy.ai/auth',
+        json={'clientId': credentials['client_id'], 'clientSecret': credentials['client_secret']},
+        timeout=25
+    )
+    response.raise_for_status()
+    api_key = str((response.json() or {}).get('apiKey') or '')
+    if not api_key:
+        raise ValueError('A Pluggy não retornou uma API Key.')
+    PLUGGY_AUTH_CACHE.update(api_key=api_key, expires_at=now + 6900)
+    return api_key
+
+
+def _pluggy_request(method, path, params=None, force_auth=False):
+    url = 'https://api.pluggy.ai' + path
+    key = _pluggy_api_key(force=force_auth)
+    response = requests.request(method, url, headers={'X-API-KEY': key, 'Accept': 'application/json'}, params=params, timeout=35)
+    if response.status_code == 401 and not force_auth:
+        key = _pluggy_api_key(force=True)
+        response = requests.request(method, url, headers={'X-API-KEY': key, 'Accept': 'application/json'}, params=params, timeout=35)
+    response.raise_for_status()
+    return response.json() if response.content else {}
+
+
+def _pluggy_results(path, params=None):
+    params = dict(params or {})
+    params.setdefault('pageSize', 500)
+    page = 1
+    output = []
+    while page <= 100:
+        current = dict(params)
+        current['page'] = page
+        data = _pluggy_request('GET', path, params=current)
+        rows = data.get('results') or []
+        output.extend(rows)
+        total_pages = int(data.get('totalPages') or 1)
+        if page >= total_pages or not rows:
+            break
+        page += 1
+    return output
+
+
+def _pluggy_account_transactions(account_id):
+    output = []
+    next_query = ''
+    for _ in range(100):
+        path = '/v2/transactions' + next_query
+        data = _pluggy_request('GET', path, params=None if next_query else {'accountId': account_id})
+        output.extend(data.get('results') or [])
+        next_value = data.get('next')
+        if not next_value:
+            break
+        # Pluggy returns a ready-to-append query string. Keep it on the same
+        # documented endpoint and do not accept arbitrary external URLs.
+        if not str(next_value).startswith('?'):
+            break
+        next_query = str(next_value)
+    return output
+
+
+def _pluggy_date(value):
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    try:
+        return datetime.fromisoformat(raw.replace('Z', '+00:00')).astimezone(TZ).date().isoformat()
+    except Exception:
+        try:
+            return date.fromisoformat(raw[:10]).isoformat()
+        except Exception:
+            return ''
+
+
+def _pluggy_asset_type(investment):
+    kind = str(investment.get('type') or '').upper()
+    subtype = str(investment.get('subtype') or '').upper()
+    if kind == 'EQUITY':
+        return 'acao'
+    if kind == 'ETF':
+        return 'etf'
+    if kind == 'FIXED_INCOME':
+        return 'renda_fixa'
+    if kind == 'MUTUAL_FUND':
+        return 'fundo'
+    if kind == 'SECURITY':
+        return 'outros'
+    if kind == 'COE':
+        return 'outros'
+    return 'outros'
+
+
+def _pluggy_ticker(investment):
+    candidates = [investment.get('code'), investment.get('ticker'), investment.get('symbol'), investment.get('name')]
+    for candidate in candidates:
+        value = str(candidate or '').strip().upper()
+        # Only map unambiguous exchange-style tickers into the stock ledger.
+        if re.fullmatch(r'[A-Z]{4}[0-9]{1,2}', value):
+            return value
+    return ''
+
+
+def _pluggy_import_investment_transaction(item_id, investment, movement, now_text):
+    external_id = str(movement.get('id') or '').strip()
+    if not external_id:
+        return 'sem_id'
+    ticker = _pluggy_ticker(investment)
+    trade_date = _pluggy_date(movement.get('tradeDate') or movement.get('date'))
+    movement_type = str(movement.get('type') or '').upper()
+    qty = abs(float(movement.get('quantity') or 0))
+    unit_value = abs(float(movement.get('value') or 0))
+    amount = abs(float(movement.get('netAmount') or movement.get('amount') or (qty * unit_value)))
+    description = str(movement.get('description') or movement_type)
+    state = 'imported_only'
+    imported_operation_id = None
+
+    if movement_type in ('BUY', 'SELL') and ticker and trade_date and qty > 0:
+        side = 'compra' if movement_type == 'BUY' else 'venda'
+        price = unit_value if unit_value > 0 else (amount / qty if qty else 0)
+        asset_type = _pluggy_asset_type(investment)
+        # Match manual/B3 entries before inserting. A small tolerance handles
+        # rounding differences between the broker and the spreadsheet export.
+        existing = db().execute(
+            """SELECT id FROM operacoes
+               WHERE UPPER(ticker)=? AND lower(lado)=? AND data=?
+                 AND ABS(quantidade-?)<=?
+                 AND ABS(preco-?)<=0.03
+               ORDER BY id LIMIT 1""",
+            (ticker, side, trade_date, qty, max(0.00001, qty * 0.001), price)
+        ).fetchone()
+        if existing:
+            imported_operation_id = int(existing['id'])
+            state = 'matched_existing'
+        else:
+            base_date = snapshot_date_for(trade_date)
+            if base_date and trade_date <= base_date:
+                state = 'historico_anterior_ao_saldo_base'
+            elif side == 'venda':
+                available, _ = posicao(ticker, trade_date)
+                if qty > available + max(0.00001, qty * 0.001):
+                    state = 'revisar_venda'
+                else:
+                    cursor = db().execute(
+                        """INSERT INTO operacoes
+                           (ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                        (ticker, asset_type, side, qty, price, trade_date, 0, 'executada',
+                         trade_date, trade_date + 'T10:00:00-03:00',
+                         json.dumps({'origem':'Pluggy','pluggy_transaction_id':external_id,'item_id':item_id,'descricao':description}, ensure_ascii=False))
+                    )
+                    imported_operation_id = int(cursor.lastrowid)
+                    state = 'imported_operation'
+            else:
+                cursor = db().execute(
+                    """INSERT INTO operacoes
+                       (ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                    (ticker, asset_type, side, qty, price, trade_date, 0, 'executada',
+                     trade_date, trade_date + 'T10:00:00-03:00',
+                     json.dumps({'origem':'Pluggy','pluggy_transaction_id':external_id,'item_id':item_id,'descricao':description}, ensure_ascii=False))
+                )
+                imported_operation_id = int(cursor.lastrowid)
+                state = 'imported_operation'
+
+    # Income is only imported as a provento when the investment transaction
+    # explicitly identifies a dividend/JCP/rendimento event.
+    income_markers = ('DIVIDEND', 'INTEREST_ON_EQUITY', 'JCP', 'RENDIMENTO', 'DISTRIBUTION', 'INCOME')
+    text_for_income = (movement_type + ' ' + description).upper()
+    if any(marker in text_for_income for marker in income_markers) and ticker and trade_date and amount > 0:
+        duplicate = db().execute(
+            """SELECT id FROM proventos WHERE UPPER(ticker)=? AND data=?
+               AND ABS(valor_total-?)<=0.02 LIMIT 1""",
+            (ticker, trade_date, amount)
+        ).fetchone()
+        api_duplicate = db().execute(
+            """SELECT event_key FROM proventos_api WHERE UPPER(ticker)=?
+               AND data_pagamento=? AND ABS(valor_total-?)<=0.02 LIMIT 1""",
+            (ticker, trade_date, amount)
+        ).fetchone()
+        if duplicate or api_duplicate:
+            state = 'provento_duplicado_ignorado'
+        else:
+            cursor = db().execute(
+                'INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)',
+                (ticker, amount, trade_date)
+            )
+            db().execute(
+                """INSERT OR IGNORE INTO pluggy_imported_events
+                   (external_id,event_type,ticker,event_date,amount,target_id,import_state,created_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (external_id, 'provento', ticker, trade_date, amount, int(cursor.lastrowid), 'imported', now_text)
+            )
+            state = 'imported_provento'
+
+    db().execute(
+        """INSERT INTO pluggy_investment_transactions
+           (transaction_id,item_id,investment_id,ticker,transaction_date,description,movement_type,
+            quantity,unit_value,amount,import_state,imported_operation_id,raw_json,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(transaction_id) DO UPDATE SET
+             item_id=excluded.item_id, investment_id=excluded.investment_id, ticker=excluded.ticker,
+             transaction_date=excluded.transaction_date, description=excluded.description,
+             movement_type=excluded.movement_type, quantity=excluded.quantity, unit_value=excluded.unit_value,
+             amount=excluded.amount, import_state=CASE
+               WHEN pluggy_investment_transactions.import_state IN ('imported_operation','imported_provento','matched_existing','provento_duplicado_ignorado')
+               THEN pluggy_investment_transactions.import_state ELSE excluded.import_state END,
+             imported_operation_id=COALESCE(pluggy_investment_transactions.imported_operation_id,excluded.imported_operation_id),
+             raw_json=excluded.raw_json, updated_at=excluded.updated_at""",
+        (external_id, item_id, str(investment.get('id') or ''), ticker, trade_date, description,
+         movement_type, qty, unit_value, amount, state, imported_operation_id,
+         json.dumps(movement, ensure_ascii=False), now_text)
+    )
+    return state
+
+
+@app.route('/api/pluggy/state', methods=['GET'])
+def pluggy_state():
+    items = db().execute(
+        """SELECT i.*,
+           (SELECT COUNT(*) FROM pluggy_accounts a WHERE a.item_id=i.item_id) AS accounts_count,
+           (SELECT COUNT(*) FROM pluggy_investments v WHERE v.item_id=i.item_id) AS investments_count,
+           (SELECT COUNT(*) FROM pluggy_transactions t WHERE t.item_id=i.item_id) AS transactions_count
+           FROM pluggy_items i WHERE i.active=1 ORDER BY i.created_at"""
+    ).fetchall()
+    investments = db().execute(
+        """SELECT investment_id,item_id,code,name,investment_type,subtype,quantity,
+                  amount_original,balance,unit_value,status,updated_at
+           FROM pluggy_investments ORDER BY name LIMIT 250"""
+    ).fetchall()
+    return jsonify(items=[dict(row) for row in items], investments=[dict(row) for row in investments])
+
+
+@app.route('/api/pluggy/items', methods=['POST'])
+def pluggy_add_item():
+    payload = request.get_json(silent=True) or {}
+    item_id = str(payload.get('item_id') or '').strip()
+    label = str(payload.get('label') or '').strip()[:100]
+    if not re.fullmatch(r'[0-9a-fA-F-]{20,50}', item_id):
+        return json_error('Informe um itemId válido copiado do Dashboard da Pluggy.')
+    try:
+        item = _pluggy_request('GET', '/items/' + item_id)
+        connector = item.get('connector') or {}
+        connector_name = str(connector.get('name') or item.get('connectorName') or 'MeuPluggy')
+        status = str(item.get('status') or 'UNKNOWN')
+        consent_expires = str(item.get('consentExpiresAt') or '')
+        now_text = datetime.now(TZ).isoformat(timespec='seconds')
+        db().execute(
+            """INSERT INTO pluggy_items(item_id,label,connector_name,status,consent_expires_at,active,created_at,updated_at)
+               VALUES(?,?,?,?,?,1,?,?)
+               ON CONFLICT(item_id) DO UPDATE SET label=excluded.label,
+               connector_name=excluded.connector_name,status=excluded.status,
+               consent_expires_at=excluded.consent_expires_at,active=1,updated_at=excluded.updated_at""",
+            (item_id, label or connector_name, connector_name, status, consent_expires, now_text, now_text)
+        )
+        db().commit()
+        return jsonify(ok=True, item={'item_id':item_id,'label':label or connector_name,'connector_name':connector_name,'status':status})
+    except requests.HTTPError as exc:
+        code = exc.response.status_code if exc.response is not None else 502
+        detail = ''
+        try: detail = (exc.response.json() or {}).get('message') or (exc.response.json() or {}).get('code') or ''
+        except Exception: pass
+        return json_error('Não foi possível validar o itemId na Pluggy. HTTP %s %s' % (code, str(detail)[:140]), 400)
+    except Exception as exc:
+        return json_error('Falha ao validar conexão Pluggy: ' + str(exc)[:180], 400)
+
+
+@app.route('/api/pluggy/items/<item_id>', methods=['DELETE'])
+def pluggy_remove_item(item_id):
+    db().execute('UPDATE pluggy_items SET active=0,updated_at=? WHERE item_id=?',
+                 (datetime.now(TZ).isoformat(timespec='seconds'), item_id))
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/pluggy/sync', methods=['POST'])
+def pluggy_sync():
+    items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
+    if not items:
+        return json_error('Adicione ao menos um itemId do MeuPluggy antes de sincronizar.')
+    summary = {'items':0,'accounts':0,'investments':0,'transactions':0,
+               'investment_transactions':0,'operations_imported':0,'operations_matched':0,
+               'dividends_imported':0,'duplicates_ignored':0,'warnings':[]}
+    now_text = datetime.now(TZ).isoformat(timespec='seconds')
+    try:
+        _pluggy_api_key()
+        for local_item in items:
+            item_id = local_item['item_id']
+            item = _pluggy_request('GET', '/items/' + item_id)
+            accounts = _pluggy_results('/accounts', {'itemId':item_id})
+            investments = _pluggy_results('/investments', {'itemId':item_id})
+            summary['items'] += 1
+            connector = item.get('connector') or {}
+            db().execute(
+                'UPDATE pluggy_items SET connector_name=?,status=?,consent_expires_at=?,updated_at=? WHERE item_id=?',
+                (str(connector.get('name') or local_item['connector_name'] or 'MeuPluggy'),
+                 str(item.get('status') or ''), str(item.get('consentExpiresAt') or ''),
+                 now_text, item_id)
+            )
+            for account in accounts:
+                account_id = str(account.get('id') or '')
+                if not account_id: continue
+                db().execute(
+                    """INSERT INTO pluggy_accounts(account_id,item_id,name,account_type,subtype,number,balance,currency_code,raw_json,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(account_id) DO UPDATE SET item_id=excluded.item_id,name=excluded.name,
+                       account_type=excluded.account_type,subtype=excluded.subtype,number=excluded.number,
+                       balance=excluded.balance,currency_code=excluded.currency_code,raw_json=excluded.raw_json,updated_at=excluded.updated_at""",
+                    (account_id,item_id,str(account.get('name') or account.get('marketingName') or ''),
+                     str(account.get('type') or ''),str(account.get('subtype') or ''),
+                     str(account.get('number') or ''),float(account.get('balance') or 0),
+                     str(account.get('currencyCode') or 'BRL'),json.dumps(account,ensure_ascii=False),now_text)
+                )
+                transactions = _pluggy_account_transactions(account_id)
+                for transaction in transactions:
+                    tx_id = str(transaction.get('id') or '')
+                    if not tx_id: continue
+                    tx_date = _pluggy_date(transaction.get('date'))
+                    db().execute(
+                        """INSERT INTO pluggy_transactions(transaction_id,item_id,account_id,transaction_date,description,amount,direction,status,raw_json,updated_at)
+                           VALUES(?,?,?,?,?,?,?,?,?,?)
+                           ON CONFLICT(transaction_id) DO UPDATE SET item_id=excluded.item_id,account_id=excluded.account_id,
+                           transaction_date=excluded.transaction_date,description=excluded.description,amount=excluded.amount,
+                           direction=excluded.direction,status=excluded.status,raw_json=excluded.raw_json,updated_at=excluded.updated_at""",
+                        (tx_id,item_id,account_id,tx_date,str(transaction.get('description') or ''),
+                         float(transaction.get('amount') or 0),str(transaction.get('type') or ''),
+                         str(transaction.get('status') or ''),json.dumps(transaction,ensure_ascii=False),now_text)
+                    )
+                    summary['transactions'] += 1
+            for investment in investments:
+                investment_id = str(investment.get('id') or '')
+                if not investment_id: continue
+                db().execute(
+                    """INSERT INTO pluggy_investments(investment_id,item_id,code,name,investment_type,subtype,quantity,
+                       amount_original,balance,unit_value,status,raw_json,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(investment_id) DO UPDATE SET item_id=excluded.item_id,code=excluded.code,name=excluded.name,
+                       investment_type=excluded.investment_type,subtype=excluded.subtype,quantity=excluded.quantity,
+                       amount_original=excluded.amount_original,balance=excluded.balance,unit_value=excluded.unit_value,
+                       status=excluded.status,raw_json=excluded.raw_json,updated_at=excluded.updated_at""",
+                    (investment_id,item_id,str(investment.get('code') or ''),str(investment.get('name') or ''),
+                     str(investment.get('type') or ''),str(investment.get('subtype') or ''),
+                     float(investment.get('quantity') or 0),float(investment.get('amountOriginal') or 0),
+                     float(investment.get('balance') or 0),float(investment.get('value') or 0),
+                     str(investment.get('status') or ''),json.dumps(investment,ensure_ascii=False),now_text)
+                )
+                summary['investments'] += 1
+                inv_transactions = _pluggy_results('/investments/' + investment_id + '/transactions')
+                for movement in inv_transactions:
+                    summary['investment_transactions'] += 1
+                    state = _pluggy_import_investment_transaction(item_id, investment, movement, now_text)
+                    if state == 'imported_operation': summary['operations_imported'] += 1
+                    elif state == 'matched_existing': summary['operations_matched'] += 1
+                    elif state == 'imported_provento': summary['dividends_imported'] += 1
+                    elif state == 'provento_duplicado_ignorado': summary['duplicates_ignored'] += 1
+            db().execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
+                         (now_text,now_text,item_id))
+            db().commit()
+    except requests.HTTPError as exc:
+        db().commit()
+        code = exc.response.status_code if exc.response is not None else 502
+        return json_error('Falha ao sincronizar Pluggy (HTTP %s). Confira itemId, autorização MeuPluggy e credenciais.' % code, 400)
+    except Exception as exc:
+        db().commit()
+        return json_error('Falha na sincronização Pluggy: ' + str(exc)[:220], 400)
+    return jsonify(ok=True, summary=summary, synced_at=now_text)
+
+
 @app.route('/api/integracoes', methods=['GET'])
 def api_integrations_list():
     rows = {row['provider']: row for row in db().execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()}
@@ -311,6 +771,7 @@ def api_integrations_save(provider):
         return jsonify({'error':'Este provedor não aceita token nesta tela.'}), 400
     if request.method == 'DELETE':
         db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); db().commit()
+        if provider == 'pluggy': PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
         if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True})
@@ -324,6 +785,7 @@ def api_integrations_save(provider):
         encrypted = _api_fernet().encrypt(packed.encode()).decode()
         db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', ('pluggy',encrypted,1,datetime.now(TZ).isoformat(timespec='seconds')))
         db().commit()
+        PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
         return jsonify({'ok':True,'configured':True})
     token = str(payload.get('token') or '').strip()
     enabled = bool(payload.get('enabled', True))
@@ -354,7 +816,7 @@ def api_integrations_test(provider):
             data = response.json()
             if not data.get('apiKey'):
                 raise ValueError(data.get('message') or 'A Pluggy não retornou uma API Key.')
-            return jsonify({'ok':True,'message':'Credenciais autenticadas com sucesso. A vinculação de instituições via Pluggy Connect será a próxima etapa.'})
+            return jsonify({'ok':True,'message':'Credenciais autenticadas. API Key válida; o fluxo pessoal MeuPluggy usa itemIds cadastrados manualmente.'})
         except (requests.RequestException, ValueError) as exc:
             return jsonify({'ok':False,'message':str(exc)[:240] or 'Falha ao autenticar na Pluggy.'}), 400
     token = _get_api_token(provider)
