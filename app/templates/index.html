@@ -1838,13 +1838,49 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 .return-summary-card{gap:9px}
 @media(max-width:900px){.return-benchmark-row{grid-template-columns:1fr}.return-chart-legend{gap:6px 10px}}
 
+
+/* v2.0.55 — gráfico de rentabilidade ocupa a área útil e filtros padronizados */
+.return-investor-chart-panel{display:flex;flex-direction:column;min-height:560px;height:100%}
+.return-main-chart{height:auto;min-height:340px;flex:1 1 auto;width:100%;padding:12px 18px 14px}
+.return-main-chart canvas{width:100%!important;height:100%!important}
+.return-investor-filters{gap:9px}
+.return-investor-filters select,.return-benchmark-select,.api-provider-card select{
+ min-height:40px;height:40px;padding:9px 36px 9px 13px!important;min-width:172px;
+ border:1px solid #3a4352!important;border-radius:9px!important;background-color:var(--panel2)!important;
+ color:var(--text)!important;font:inherit;font-size:13px;line-height:1.2;outline:none;appearance:none;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23929baa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;
+ background-repeat:no-repeat!important;background-position:right 13px center!important;color-scheme:dark
+}
+.return-investor-filters select:focus,.return-benchmark-select:focus{border-color:var(--blue)!important}
+.return-chart-note{padding:10px 16px 16px}
+.api-intro{margin-bottom:16px}
+.api-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.api-provider-card{padding:17px;display:flex;flex-direction:column;gap:11px;min-width:0}
+.api-provider-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.api-provider-head h3{margin:0;font-size:15px}
+.api-provider-category{font-size:11px;color:var(--muted);margin-top:4px}
+.api-provider-desc{font-size:12px;color:var(--muted);line-height:1.5;min-height:38px}
+.api-provider-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.api-provider-card input[type=password],.api-provider-card input[type=text]{width:100%;min-height:40px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);padding:9px 12px;outline:none}
+.api-provider-card input:focus{border-color:var(--blue)}
+.api-provider-card .mini{line-height:1.45}
+.api-status{font-size:11px;min-height:15px;color:var(--muted)}
+.api-status.ok{color:var(--green)}.api-status.error{color:var(--red)}
+.api-provider-links{display:flex;gap:14px;font-size:11px}
+.api-provider-links a{color:var(--blue);text-decoration:none}.api-provider-links a:hover{text-decoration:underline}
+.api-security-note{padding:13px 15px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--muted);font-size:12px;line-height:1.5;margin-bottom:16px}
+.api-status-pill{font-size:10px;border-radius:99px;padding:4px 8px;background:#343b48;color:#aeb8c8;white-space:nowrap}
+.api-status-pill.configured{background:#123c32;color:#31d5a0}
+@media(max-width:900px){.return-investor-chart-panel{min-height:480px}.return-main-chart{min-height:300px}}
+@media(max-width:620px){.return-investor-chart-panel{min-height:440px}.return-main-chart{min-height:270px;padding:8px}.api-grid{grid-template-columns:1fr}.return-investor-filters select{min-width:0;flex:1}}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
 <button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar tabela da B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
-<nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="rentabilidade">⌁ Rentabilidade</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="metas">◎ Metas</button></nav>
+<nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="rentabilidade">⌁ Rentabilidade</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="metas">◎ Metas</button><button data-page="apis">⌘ APIs</button></nav>
 <main>
 <section id="page-resumo" class="page"><div class="pagehead summary-pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
 <div class="grid stats summary-investor10" id="stats"></div><div class="grid charts"><div class="panel"><div class="panelhead"><h2>Evolução do patrimônio</h2><div class="toolbar"><select id="aportePeriod" aria-label="Período da evolução" onchange="renderEvolutionChart()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="all">Todo o período</option></select><select id="aporteType" aria-label="Tipo de ativo da evolução" onchange="renderEvolutionChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div></div><div class="chartbox"><canvas id="aporteChart"></canvas></div><div class="chart-footnote">O ganho de capital atual aparece no mês mais recente; os meses anteriores mostram os aportes registrados, pois o sistema não mantém cotações históricas próprias.</div></div><div class="panel allocation-panel"><div class="panelhead"><h2>Ativos na carteira</h2><select id="allocationType" aria-label="Filtrar ativos na carteira" onchange="renderAllocationChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div><div class="allocation-content"><div class="chartbox small"><canvas id="allocationChart"></canvas></div><div id="allocationLegend" class="allocation-legend"></div></div></div></div>
@@ -1946,6 +1982,7 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 <div class="panel section"><div class="panelhead"><h2>Posições importadas</h2><span id="importedBalancesDate" class="mini"></span></div><p class="mini imported-balance-note">Saldo-base da posição final em 31/10/2026. As operações anteriores continuam no histórico, mas não são somadas novamente ao saldo atual. Ações e FIIs usam preço médio e preço de referência da captura; em renda fixa, o custo foi reconstituído a partir do saldo e da rentabilidade exibidos.</p><div id="importedBalanceGroups" class="operation-groups"></div></div>
 </section>
 <section id="page-metas" class="page hidden"><div class="pagehead"><div><h1>Metas financeiras</h1><div class="sub">Defina objetivos e acompanhe o progresso da sua carteira.</div></div><button class="primary" onclick="openGoalWizard()">＋ Criar meta</button></div><div id="goalRows"></div></section>
+<section id="page-apis" class="page hidden"><div class="pagehead"><div><h1>Integrações e APIs</h1><div class="sub">Gerencie fontes de cotações, séries históricas, proventos e indicadores econômicos.</div></div><button class="ghost" type="button" onclick="loadAPIProviders()">↻ Atualizar status</button></div><div class="api-security-note"><b>Segurança:</b> os tokens cadastrados são enviados somente ao servidor e armazenados criptografados no volume local do aplicativo. Eles nunca são devolvidos à interface em texto aberto. Não informe senha de corretora, código de autenticação ou credenciais bancárias nesta página. Como o app não possui login próprio, mantenha-o restrito à sua rede confiável ou atrás de uma camada de autenticação; não exponha a porta diretamente à internet.</div><div id="apiProvidersGrid" class="api-grid"><div class="panel">Carregando provedores…</div></div></section>
 
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
@@ -2044,7 +2081,7 @@ async function api(url,opts={}){
  const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});
  let d={};
  try{d=await r.json();}catch(error){if(r.ok)throw new Error('O servidor não retornou uma resposta válida.');}
- if(!r.ok)throw new Error(d.erro||'Não foi possível concluir a operação.');
+ if(!r.ok)throw new Error(d.erro||d.error||d.message||'Não foi possível concluir a operação.');
  if(['POST','PUT','PATCH','DELETE'].includes(method)&&!opts.skipAutoRefresh)scheduleMutationRefresh();
  return d;
 }
@@ -3717,8 +3754,56 @@ document.getElementById('goalRows').innerHTML=(state.metas||[]).length?state.met
  return `<div class="panel goal-dashboard-card"><div class="goalrow"><div class="goal-title"><span class="goal-icon">${m.tipo==='proventos'?'◉':m.tipo==='ativos'?'▣':'◎'}</span><span><small class="mini">${typeLabel}</small><br>${escapeHTML(title)}</span></div><button class="ghost" onclick="removeGoal(${m.id})">Excluir</button></div><div class="goal-progress-head"><strong>${pct(progress)}</strong><span>do objetivo alcançado</span></div><div class="progress"><span style="width:${progress}%"></span></div><div class="goal-dashboard-metrics"><div class="goal-dashboard-metric">${currentLabel}<b>${brl(current)}</b></div>${m.tipo!=='proventos'?`<div class="goal-dashboard-metric">Aporte mensal<b>${brl(monthly)}</b></div>`:''}<div class="goal-dashboard-metric">Faltam<b>${brl(remaining)}</b></div><div class="goal-dashboard-metric">Conclusão estimada<b>${eta}</b></div><div class="goal-dashboard-metric">Objetivo<b>${brl(target)}${m.tipo==='proventos'?'/mês':''}</b></div>${m.ticker?`<div class="goal-dashboard-metric">Ativo<b>${escapeHTML(m.ticker)}</b></div>`:''}${annual?`<div class="goal-dashboard-metric">Variação anual estimada<b>${pct(annual)}</b></div>`:''}</div></div>`;
  }).join(''):'<div class="panel empty">Você ainda não criou metas. Defina um objetivo para acompanhar seu progresso.</div>';
 }
-function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',rentabilidade:'Rentabilidade',lancamentos:'Lançamentos',metas:'Metas'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon.png';}
-function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
+const API_PROVIDER_FALLBACK=[
+ {id:'brapi',name:'brapi',connected:true,category:'Brasil · cotações e histórico',description:'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. Cobertura e limites variam por plano.',auth:true,url:'https://brapi.dev/dashboard',docs:'https://brapi.dev/docs'},
+ {id:'hgbrasil',name:'HG Brasil',connected:true,category:'Brasil · mercado e indicadores',description:'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano.',auth:true,url:'https://console.hgbrasil.com/',docs:'https://console.hgbrasil.com/documentation/finance'},
+ {id:'twelvedata',name:'Twelve Data',category:'Global · cotações e séries',description:'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura B3 e os créditos do plano.',auth:true,url:'https://twelvedata.com/account',docs:'https://twelvedata.com/docs'},
+ {id:'alphavantage',name:'Alpha Vantage',category:'Global · cotações e fundamentos',description:'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. Cobertura brasileira varia por endpoint.',auth:true,url:'https://www.alphavantage.co/support/#api-key',docs:'https://www.alphavantage.co/documentation/'},
+ {id:'fred',name:'FRED',category:'Macroeconomia internacional',description:'Séries macroeconômicas e indicadores econômicos internacionais; não substitui preços de ativos B3.',auth:true,url:'https://fred.stlouisfed.org/docs/api/api_key.html',docs:'https://fred.stlouisfed.org/docs/api/fred/'},
+ {id:'bcb',name:'Banco Central · SGS',connected:true,category:'Brasil · fonte oficial',description:'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.',auth:false,url:'https://www.bcb.gov.br/gestao_site/webservices.asp',docs:'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais'},
+ {id:'ibge',name:'IBGE · SIDRA',category:'Brasil · estatísticas e inflação',description:'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.',auth:false,url:'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3',docs:'https://apisidra.ibge.gov.br/'},
+ {id:'tesouro',name:'Tesouro Transparente',category:'Brasil · títulos públicos',description:'Dados abertos de taxas e preços diários de títulos do Tesouro Direto e relatórios da dívida pública. Sem token.',auth:false,url:'https://www.tesourotransparente.gov.br/temas/divida-publica-federal/tesouro-direto',docs:'https://www.tesourotransparente.gov.br/ckan/dataset'},
+ {id:'cvm',name:'CVM Dados Abertos',category:'Brasil · fundos e demonstrações',description:'Dados públicos de fundos, informes e demonstrações financeiras. Não é uma API de cotação em tempo real; não exige token.',auth:false,url:'https://dados.cvm.gov.br/',docs:'https://dados.cvm.gov.br/'},
+ {id:'b3',name:'B3 · APIs oficiais',category:'Brasil · dados oficiais',description:'Posições, movimentações, eventos provisionados e negociação. Exige contratação/licença B2B e autorização do investidor.',auth:false,url:'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/b3-for-developers/',docs:'https://developers.b3.com.br/apis'},
+ {id:'yahoo',name:'Yahoo Finance',category:'Global · fonte complementar',description:'Histórico e cotações por endpoints não oficiais. Não há API pública oficial com garantia de disponibilidade ou licença comercial.',auth:false,url:'https://finance.yahoo.com/',docs:'https://finance.yahoo.com/'}
+];
+let apiProviders=[];
+async function loadAPIProviders(){
+ const host=document.getElementById('apiProvidersGrid');if(!host)return;
+ try{const data=await api('/api/integracoes',{skipAutoRefresh:true});apiProviders=data.providers||API_PROVIDER_FALLBACK;}
+ catch(error){apiProviders=API_PROVIDER_FALLBACK.map(p=>({...p,configured:false,enabled:false,masked:''}));}
+ renderAPIProviders();
+}
+function renderAPIProviders(){
+ const host=document.getElementById('apiProvidersGrid');if(!host)return;
+ host.innerHTML=apiProviders.map(p=>`<article class="panel api-provider-card" data-api-provider="${p.id}">
+  <div class="api-provider-head"><div><h3>${escapeHTML(p.name)}</h3><div class="api-provider-category">${escapeHTML(p.category||'')}</div></div><span class="api-status-pill ${p.configured?'configured':''}">${p.auth?(p.configured?'Token cadastrado':'Token não configurado'):'Sem token'}</span></div>
+  <div class="api-provider-desc">${escapeHTML(p.description||'')}</div>
+  ${p.connected?'<div class="mini green">Conectada ao motor atual de dados</div>':p.auth?'<div class="mini">Cadastro e teste de token disponíveis; integração com os gráficos ainda não ativada.</div>':'<div class="mini">Fonte catalogada; integração futura conforme disponibilidade e licença.</div>'}${p.auth?`<label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:`<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.': 'Não é necessário cadastrar token.'}</span></div>`}
+  <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
+  <div class="api-provider-links"><a href="${p.url}" target="_blank" rel="noopener noreferrer">Obter acesso</a><a href="${p.docs}" target="_blank" rel="noopener noreferrer">Documentação</a></div>
+ </article>`).join('');
+}
+async function saveAPIProvider(id){
+ const input=document.getElementById('apiToken_'+id),token=input?.value.trim()||'';
+ if(!token){toast('Cole um token antes de salvar.');return;}
+ const status=document.getElementById('apiStatus_'+id);if(status){status.className='api-status';status.textContent='Salvando token…';}
+ try{await api('/api/integracoes/'+id,{method:'POST',body:JSON.stringify({token,enabled:true}),skipAutoRefresh:true});if(input)input.value='';await loadAPIProviders();const el=document.getElementById('apiStatus_'+id);if(el){el.className='api-status ok';el.textContent='Token salvo e criptografado no armazenamento local.';}toast('Integração salva.');}
+ catch(error){if(status){status.className='api-status error';status.textContent=error.message;}toast(error.message);}
+}
+async function testAPIProvider(id){
+ const status=document.getElementById('apiStatus_'+id);if(status){status.className='api-status';status.textContent='Testando conexão…';}
+ try{const result=await api('/api/integracoes/'+id+'/test',{method:'POST',body:'{}',skipAutoRefresh:true});if(status){status.className='api-status ok';status.textContent=result.message||'Conexão validada.';}}
+ catch(error){if(status){status.className='api-status error';status.textContent=error.message||'Falha no teste.';}}
+}
+async function deleteAPIProvider(id){
+ if(!confirm('Remover o token salvo desta integração?'))return;
+ try{await api('/api/integracoes/'+id,{method:'DELETE',skipAutoRefresh:true});await loadAPIProviders();toast('Token removido.');}
+ catch(error){toast(error.message);}
+}
+
+function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',rentabilidade:'Rentabilidade',lancamentos:'Lançamentos',metas:'Metas',apis:'APIs'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon.png';}
+function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();if(name==='apis')loadAPIProviders();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
 function renderSpecificFields(type){
  const host=document.getElementById('assetSpecificFields'); if(!host)return;
  const fixed=['renda_fixa','tesouro'].includes(type);

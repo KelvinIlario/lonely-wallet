@@ -3,12 +3,14 @@ from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
 from zoneinfo import ZoneInfo
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 from openpyxl import load_workbook
 from flask import Flask, g, jsonify, render_template, request
 
 app = Flask(__name__)
 DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
 TOKEN = os.environ.get('BRAPI_TOKEN') or os.environ.get('BRAPI_API_KEY', '')
+API_KEY_FILE = os.environ.get('API_KEYS_KEY_FILE', '/data/.api-credentials.key')
 TZ = ZoneInfo('America/Sao_Paulo')
 MARKET_OPEN = clock_time(10, 0)
 MARKET_CLOSE = clock_time(17, 55)
@@ -114,6 +116,12 @@ def init_db():
     CREATE TABLE IF NOT EXISTS integracao_estado (
       chave TEXT PRIMARY KEY,
       valor TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS api_credentials (
+      provider TEXT PRIMARY KEY,
+      token_encrypted TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS b3_importados (
       fingerprint TEXT PRIMARY KEY,
@@ -229,6 +237,113 @@ def init_db():
 
 init_db()
 
+API_PROVIDERS = {
+    'brapi': {'name':'brapi', 'category':'Brasil · cotações e histórico', 'description':'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. A cobertura e os limites dependem do plano.', 'auth':True, 'url':'https://brapi.dev/dashboard', 'docs':'https://brapi.dev/docs'},
+    'hgbrasil': {'name':'HG Brasil', 'category':'Brasil · mercado e indicadores', 'description':'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano contratado.', 'auth':True, 'url':'https://console.hgbrasil.com/', 'docs':'https://console.hgbrasil.com/documentation/finance'},
+    'twelvedata': {'name':'Twelve Data', 'category':'Global · cotações e séries', 'description':'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura da B3 e os créditos do plano.', 'auth':True, 'url':'https://twelvedata.com/account', 'docs':'https://twelvedata.com/docs'},
+    'alphavantage': {'name':'Alpha Vantage', 'category':'Global · cotações e fundamentos', 'description':'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. A cobertura de tickers brasileiros varia por endpoint.', 'auth':True, 'url':'https://www.alphavantage.co/support/#api-key', 'docs':'https://www.alphavantage.co/documentation/'},
+    'fred': {'name':'FRED', 'category':'Macroeconomia internacional', 'description':'Séries macroeconômicas e indicadores econômicos internacionais. Não substitui dados de preços de ativos da B3.', 'auth':True, 'url':'https://fred.stlouisfed.org/docs/api/api_key.html', 'docs':'https://fred.stlouisfed.org/docs/api/fred/'},
+    'bcb': {'name':'Banco Central · SGS', 'category':'Brasil · fonte oficial', 'description':'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.', 'auth':False, 'url':'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais', 'docs':'https://www.bcb.gov.br/gestao_site/webservices.asp'},
+    'ibge': {'name':'IBGE · SIDRA', 'category':'Brasil · estatísticas e inflação', 'description':'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.', 'auth':False, 'url':'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3', 'docs':'https://apisidra.ibge.gov.br/'},
+    'tesouro': {'name':'Tesouro Transparente', 'category':'Brasil · títulos públicos', 'description':'Dados abertos de taxas e preços diários de títulos do Tesouro Direto, além de relatórios e séries da dívida pública. Sem token.', 'auth':False, 'url':'https://www.tesourotransparente.gov.br/temas/divida-publica-federal/tesouro-direto', 'docs':'https://www.tesourotransparente.gov.br/ckan/dataset'},
+    'cvm': {'name':'CVM Dados Abertos', 'category':'Brasil · fundos e demonstrações', 'description':'Dados públicos de fundos, informes e demonstrações financeiras. Não é uma API de cotação em tempo real; acesso aos conjuntos públicos não exige token.', 'auth':False, 'url':'https://dados.cvm.gov.br/', 'docs':'https://dados.cvm.gov.br/'},
+    'b3': {'name':'B3 · APIs oficiais', 'category':'Brasil · dados oficiais de mercado e investidor', 'description':'Posições, movimentações, eventos provisionados e negociação. Exige contratação/licença e autorização do investidor; a B3 informa que as APIs do catálogo são voltadas a clientes B2B.', 'auth':False, 'url':'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/b3-for-developers/', 'docs':'https://developers.b3.com.br/apis'},
+    'yahoo': {'name':'Yahoo Finance', 'category':'Global · fonte complementar', 'description':'Histórico e cotações usados como fonte complementar por endpoints não oficiais. Não há API pública oficial com garantia de disponibilidade ou licença para uso comercial.', 'auth':False, 'url':'https://finance.yahoo.com/', 'docs':'https://finance.yahoo.com/'},
+}
+
+
+def _api_fernet():
+    key_path = API_KEY_FILE
+    os.makedirs(os.path.dirname(key_path) or '.', exist_ok=True)
+    if not os.path.exists(key_path):
+        key = Fernet.generate_key()
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(key)
+    with open(key_path, 'rb') as handle:
+        return Fernet(handle.read().strip())
+
+
+def _get_api_token(provider):
+    try:
+        row = db().execute('SELECT token_encrypted,enabled FROM api_credentials WHERE provider=?', (provider,)).fetchone()
+        if row and row['enabled']:
+            return _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
+    except (InvalidToken, OSError, ValueError):
+        return ''
+    if provider == 'brapi':
+        return TOKEN
+    return ''
+
+
+def _brapi_token():
+    return _get_api_token('brapi') or TOKEN
+
+
+@app.route('/api/integracoes', methods=['GET'])
+def api_integrations_list():
+    rows = {row['provider']: row for row in db().execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()}
+    providers = []
+    for key, meta in API_PROVIDERS.items():
+        row = rows.get(key)
+        token = _get_api_token(key) if meta['auth'] else ''
+        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb'), 'configured':bool(token), 'enabled':bool(row['enabled']) if row else bool(token), 'masked':('••••••••' + token[-4:]) if token else '', 'updated_at':row['updated_at'] if row else None})
+    return jsonify({'providers':providers})
+
+
+@app.route('/api/integracoes/<provider>', methods=['POST','DELETE'])
+def api_integrations_save(provider):
+    if provider not in API_PROVIDERS or not API_PROVIDERS[provider]['auth']:
+        return jsonify({'error':'Este provedor não aceita token nesta tela.'}), 400
+    if request.method == 'DELETE':
+        db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); db().commit()
+        if provider in ('brapi','hgbrasil'):
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE['data'].clear()
+        return jsonify({'ok':True})
+    payload = request.get_json(silent=True) or {}
+    token = str(payload.get('token') or '').strip()
+    enabled = bool(payload.get('enabled', True))
+    if token:
+        encrypted = _api_fernet().encrypt(token.encode()).decode()
+        db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', (provider,encrypted,1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds')))
+    else:
+        db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
+    db().commit()
+    if provider in ('brapi','hgbrasil'):
+        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE['data'].clear()
+    return jsonify({'ok':True,'configured':bool(_get_api_token(provider))})
+
+
+@app.route('/api/integracoes/<provider>/test', methods=['POST'])
+def api_integrations_test(provider):
+    if provider not in API_PROVIDERS:
+        return jsonify({'ok':False,'message':'Provedor desconhecido.'}), 404
+    if provider in ('bcb','ibge','tesouro','cvm','b3','yahoo'):
+        return jsonify({'ok':False,'message':'Esta fonte não usa token cadastrado. A disponibilidade e os requisitos estão descritos no catálogo.'}), 400
+    token = _get_api_token(provider)
+    if not token:
+        return jsonify({'ok':False,'message':'Cadastre um token antes de testar.'}), 400
+    try:
+        if provider == 'brapi':
+            response = requests.get('https://brapi.dev/api/v2/user/usage', headers={'Authorization':f'Bearer {token}'}, timeout=15)
+        elif provider == 'hgbrasil':
+            response = requests.get('https://api.hgbrasil.com/finance', params={'key':token}, timeout=15)
+        elif provider == 'twelvedata':
+            response = requests.get('https://api.twelvedata.com/time_series', params={'symbol':'AAPL','interval':'1day','outputsize':1,'apikey':token}, timeout=15)
+        elif provider == 'alphavantage':
+            response = requests.get('https://www.alphavantage.co/query', params={'function':'GLOBAL_QUOTE','symbol':'IBM','apikey':token}, timeout=15)
+        elif provider == 'fred':
+            response = requests.get('https://api.stlouisfed.org/fred/series', params={'series_id':'GDP','api_key':token,'file_type':'json'}, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if provider == 'twelvedata' and data.get('status') == 'error': raise ValueError(data.get('message') or 'A API retornou erro.')
+        if provider == 'alphavantage' and (data.get('Error Message') or data.get('Note') or data.get('Information')): raise ValueError(data.get('Error Message') or data.get('Note') or data.get('Information'))
+        if provider == 'hgbrasil' and data.get('valid_key') is False: raise ValueError('A chave foi recusada pela HG Brasil.')
+        return jsonify({'ok':True,'message':'Conexão autenticada. A cobertura de cada ticker e endpoint ainda depende do plano e do provedor.'})
+    except (requests.RequestException, ValueError) as exc:
+        message = str(exc)[:240] or 'Não foi possível validar a integração.'
+        return jsonify({'ok':False,'message':message}), 400
+
 
 def cotacao(ticker):
     now = time.time()
@@ -237,10 +352,10 @@ def cotacao(ticker):
         return CACHE[ticker][1]
 
     data = {}
-    headers = {'Authorization': f'Bearer {TOKEN}'} if TOKEN else {}
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
     params = {'fundamental': 'true', 'dividends': 'true'}
-    if TOKEN:
-        params['token'] = TOKEN
+    if _brapi_token():
+        params['token'] = _brapi_token()
 
     # Primeira tentativa: endpoint de cotação individual.
     try:
@@ -1024,7 +1139,7 @@ def _fetch_brapi_dividend_events(asset_type, symbols, start_date):
     """Busca eventos em dinheiro usando os endpoints v2 dedicados de ações e FIIs."""
     if not symbols:
         return [], []
-    headers = {'Authorization': f'Bearer {TOKEN}'} if TOKEN else {}
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
     events, errors = [], []
     if asset_type == 'fii':
         url = 'https://brapi.dev/api/v2/fii/dividends'
@@ -1040,7 +1155,7 @@ def _fetch_brapi_dividend_events(asset_type, symbols, start_date):
         # Algumas respostas limitam a janela padrão ao passado. Abrir endDate
         # permite receber pagamentos já anunciados para os próximos 12 meses.
         params['endDate'] = (datetime.now(TZ).date() + timedelta(days=365)).isoformat()
-        if asset_type != 'fii' and TOKEN:
+        if asset_type != 'fii' and _brapi_token():
             params['includeRaw'] = 'true'
         try:
             response = requests.get(url, params=params, headers=headers, timeout=18)
@@ -1095,7 +1210,7 @@ def sync_brapi_proventos(force=False, quote_items=None):
 
     # Sem token, evita enviar lotes com tickers protegidos. O sandbox da brapi documenta
     # apenas MXRF11/HGLG11 para FIIs; as ações são sincronizadas quando o endpoint autorizar.
-    if not TOKEN:
+    if not _brapi_token():
         fii_symbols = [symbol for symbol in fii_symbols if symbol in {'MXRF11', 'HGLG11'}]
         stock_symbols = [symbol for symbol in stock_symbols if symbol in {'PETR4', 'MGLU3', 'VALE3', 'ITUB4'}]
 
@@ -1368,7 +1483,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
         if now - cached['time'] < ttl:
             return cached['data']
 
-    headers = {'Authorization': f'Bearer {TOKEN}'} if TOKEN else {}
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
     response_data = {}
 
     # Ações, BDRs e ETFs negociados em bolsa usam o histórico de ações da API v2.
@@ -1753,6 +1868,58 @@ def _benchmark_monthly_bcb(code, start_date, end_date):
     return output if len(output) >= 1 else None
 
 
+def _benchmark_monthly_hg(symbol, start_date, end_date, token):
+    """Histórico mensal HG Brasil. A API documenta BVSP e IFIX no endpoint histórico."""
+    response = requests.get(
+        'https://api.hgbrasil.com/v2/finance/historical',
+        params={'key':token,'symbols':symbol,'start_date':date.fromisoformat(str(start_date)[:10]).isoformat(),
+                'end_date':date.fromisoformat(str(end_date)[:10]).isoformat(),'sample_by':'1M'},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('valid_key') is False:
+        raise ValueError('Chave HG Brasil inválida.')
+    rows = (payload.get('results') or {}).get(symbol.upper()) or (payload.get('results') or {}).get(symbol.lower()) or {}
+    by_month = {}
+    for timestamp, values in rows.items():
+        try:
+            month_key = str(timestamp)[:7]
+            close = float((values or {}).get('close') or 0)
+            if close > 0:
+                by_month[month_key] = close
+        except (TypeError, ValueError, AttributeError):
+            continue
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    return [{'mes':key,'valor':round((value/base-1)*100,4)} for key,value in ordered if base>0]
+
+
+def _benchmark_monthly_brapi(symbol, start_date, end_date, token):
+    """Histórico mensal brapi; aceita apenas uma resposta real do endpoint histórico."""
+    response = requests.get(
+        'https://brapi.dev/api/v2/stocks/historical',
+        params={'symbols':symbol,'startDate':date.fromisoformat(str(start_date)[:10]).isoformat(),
+                'endDate':date.fromisoformat(str(end_date)[:10]).isoformat(),'interval':'1mo','sortOrder':'asc'},
+        headers={'Authorization':f'Bearer {token}'}, timeout=20
+    )
+    response.raise_for_status()
+    found = _parse_historical_payload(response.json())
+    points = found.get(symbol.upper()) or []
+    by_month = {}
+    for point in points:
+        price = float(point.get('preco') or 0)
+        if price > 0:
+            by_month[point['data'].strftime('%Y-%m')] = price
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    return [{'mes':key,'valor':round((value/base-1)*100,4)} for key,value in ordered if base>0]
+
+
 @app.route('/api/benchmarks')
 def api_benchmarks():
     """Séries mensais de referência. Nenhuma série é simulada quando a fonte não responde."""
@@ -1778,6 +1945,7 @@ def api_benchmarks():
         'IVVB11': ['IVVB11.SA']
     }
     series = {}
+    source_map = {}
     unavailable = []
     # CDI/IPCA são consultados diretamente nas séries oficiais do BCB.
     for code in ('CDI', 'IPCA'):
@@ -1790,23 +1958,49 @@ def api_benchmarks():
         except (requests.RequestException, ValueError, TypeError):
             unavailable.append(code)
 
+    hg_token = _get_api_token('hgbrasil')
+    brapi_token = _brapi_token()
+    hg_symbols = {'IBOV':'BVSP','IFIX':'IFIX'}
     for code, symbols in index_symbols.items():
         data = None
-        for symbol in symbols:
+        # HG Brasil possui endpoint histórico documentado para BVSP e IFIX.
+        if hg_token and code in hg_symbols:
             try:
-                data = _benchmark_monthly_from_yahoo(symbol, start, end)
+                data = _benchmark_monthly_hg(hg_symbols[code], start, end, hg_token)
                 if data:
                     series[code] = data
-                    break
+                    result_source = 'HG Brasil · histórico mensal'
             except (requests.RequestException, ValueError, TypeError, KeyError):
-                continue
+                data = None
+        # O endpoint histórico da brapi pode complementar o Ibovespa quando houver cobertura no plano.
+        if not data and brapi_token and code == 'IBOV':
+            try:
+                data = _benchmark_monthly_brapi('^BVSP', start, end, brapi_token)
+                if data:
+                    series[code] = data
+                    result_source = 'brapi · histórico mensal (^BVSP)'
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                data = None
         if not data:
+            for symbol in symbols:
+                try:
+                    data = _benchmark_monthly_from_yahoo(symbol, start, end)
+                    if data:
+                        series[code] = data
+                        result_source = f"Yahoo Finance ({symbol})"
+                        break
+                except (requests.RequestException, ValueError, TypeError, KeyError):
+                    continue
+        if data:
+            # Preserve the actual provider selected for this series.
+            source_map[code] = result_source
+        else:
             unavailable.append(code)
 
     result = {
         'series': series,
         'unavailable': unavailable,
-        'source': {'CDI': 'Banco Central do Brasil (SGS 12)', 'IPCA': 'Banco Central do Brasil (SGS 433)', **{k: f"Yahoo Finance ({', '.join(v)})" for k, v in index_symbols.items() if k in series}},
+        'source': {'CDI': 'Banco Central do Brasil (SGS 12)', 'IPCA': 'Banco Central do Brasil (SGS 433)', **source_map},
         'start': start.isoformat(),
         'end': end.isoformat()
     }
@@ -2020,7 +2214,7 @@ def busca_ativos():
     elif tipo in ('internacional', 'cripto', 'renda_fixa', 'reit', 'tesouro', 'fundo', 'outros'):
         return jsonify(itens=[], mensagem='Busca automática ainda não disponível para esta classe. Digite o ticker manualmente.')
 
-    headers = {'Authorization': f'Bearer {TOKEN}'} if TOKEN else {}
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
     try:
         response = requests.get('https://brapi.dev/api/quote/list',
                                 params=params, headers=headers, timeout=8)
