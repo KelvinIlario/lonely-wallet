@@ -1,16 +1,28 @@
-# Lonely Wallet v3.3.13
+# Lonely Wallet v3.3.14
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
 
-## v3.3.13
+## v3.3.14
 
-- Tela de carregamento mantém a mensagem **Carregando sua carteira…** durante todas as tentativas automáticas de conexão.
-- Tooltip da coluna **Variação** reforçado com o valor financeiro correspondente, inclusive por tooltip nativo do navegador.
-- Coluna **Nota** passa a exibir a avaliação do ativo em escala de 0 a 10, editável junto das observações.
-- O **% Ideal** de cada ativo é distribuído proporcionalmente à nota atribuída dentro da meta percentual da respectiva classe. Quando nenhum ativo da classe possui nota, a distribuição permanece igualitária.
-- Indicadores de proventos do Resumo consideram somente pagamentos com data efetiva até hoje; proventos futuros permanecem em A receber.
-- Margens internas do card Destaques da carteira equalizadas.
+- Pluggy passa a sincronizar exclusivamente investimentos e movimentações de investimento. A consulta a contas e transações bancárias foi removida.
+- Dados bancários em cache de versões anteriores são apagados na inicialização; conexões Pluggy e credenciais são preservadas.
+- Tela de APIs não exibe transações bancárias nem contadores de contas bancárias.
+- Colunas do cabeçalho de Renda Fixa usam a mesma grade das demais classes; a posição de Variação fica reservada, mas sem indicador para Renda Fixa.
+- Indicadores de variação positiva/negativa recebem cores explícitas verde/vermelho.
+- A antiga nota manual foi substituída por avaliação automática baseada nos indicadores fundamentalistas efetivamente retornados pela APIs de fundamentos da brapi e Alpha Vantage (quando habilitada), incluindo valuation, ROE, margens, endividamento, liquidez, geração de lucro/caixa, crescimento, payout e distância da máxima de 52 semanas quando disponíveis.
+- A avaliação informa cobertura e indicadores utilizados. Com menos de três indicadores válidos, mostra análise incompleta e não inventa uma pontuação; a distribuição ideal volta à divisão igualitária da classe até haver dados suficientes.
+- Observações pessoais permanecem editáveis, mas não interferem na avaliação automática.
+- Tooltip de variação usa o tema visual do aplicativo e não abre o tooltip branco nativo do navegador.
 
+## Dados e atualização
+
+Preserve integralmente o volume persistente `/DATA/AppData/lonely-wallet/data:/data`, incluindo `/data/carteira.db` e `/data/.api-credentials.key`. Não apague nem recrie esses arquivos ao atualizar. A inicialização desta versão remove apenas os caches legados de contas e transações bancárias Pluggy, pois o aplicativo passa a ser exclusivamente voltado a investimentos.
+
+Porta externa recomendada no ZimaOS: `8085`, apontando para a porta interna `8080`. Fuso: `America/Sao_Paulo`.
+
+## Limites de validação
+
+A avaliação fundamentalista depende dos campos realmente fornecidos pelo endpoints fundamentalistas da brapi e, quando habilitada, da Alpha Vantage para cada ativo e plano. A integração HG Brasil permanece como fonte alternativa de cotação, mas não é tratada como fornecedora de fundamentos quando esses dados não são retornados. Não foi possível testar chamadas reais às APIs neste ambiente.
 
 ## Destaques da versão 3.0.4
 

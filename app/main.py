@@ -274,6 +274,9 @@ def init_db():
       created_at TEXT NOT NULL
     );
     ''')
+    # Lonely Wallet is investment-only: remove bank-account/transaction cache from older versions.
+    con.execute('DELETE FROM pluggy_transactions')
+    con.execute('DELETE FROM pluggy_accounts')
     goal_columns = [row[1] for row in con.execute('PRAGMA table_info(metas)').fetchall()]
     for name, definition in [('categoria', "TEXT DEFAULT ''"), ('ticker', "TEXT DEFAULT ''"), ('variacao_anual', 'REAL DEFAULT 0'), ('classes', "TEXT DEFAULT '[]'")]:
         if name not in goal_columns:
@@ -499,30 +502,6 @@ def _pluggy_results(path, params=None):
             break
         page += 1
     return output
-
-
-def _pluggy_account_transactions(account_id):
-    """Lê todas as páginas de transações bancárias pelo cursor oficial da Pluggy."""
-    output = []
-    next_query = ''
-    seen_cursors = set()
-    for page_number in range(1, 501):
-        path = '/v2/transactions' + next_query
-        data = _pluggy_request('GET', path, params=None if next_query else {'accountId': account_id})
-        if not isinstance(data, dict) or not isinstance(data.get('results'), list):
-            raise ValueError('Resposta inesperada da Pluggy ao consultar transações da conta ' + str(account_id))
-        output.extend(data['results'])
-        next_value = data.get('next')
-        if not next_value:
-            return output
-        # A Pluggy entrega uma query pronta, que já contém accountId e after.
-        if not isinstance(next_value, str) or not next_value.startswith('?'):
-            raise ValueError('Cursor de paginação inválido retornado pela Pluggy.')
-        if next_value in seen_cursors:
-            raise ValueError('A Pluggy repetiu o cursor de transações; sincronização interrompida para evitar duplicação.')
-        seen_cursors.add(next_value)
-        next_query = next_value
-    raise ValueError('A sincronização excedeu 500 páginas de transações bancárias.')
 
 
 def _pluggy_date(value):
@@ -923,9 +902,7 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
 def pluggy_state():
     items = db().execute(
         """SELECT i.*,
-           (SELECT COUNT(*) FROM pluggy_accounts a WHERE a.item_id=i.item_id) AS accounts_count,
            (SELECT COUNT(*) FROM pluggy_investments v WHERE v.item_id=i.item_id) AS investments_count,
-           (SELECT COUNT(*) FROM pluggy_transactions t WHERE t.item_id=i.item_id) AS transactions_count,
            (SELECT COUNT(*) FROM pluggy_investment_transactions vtx WHERE vtx.item_id=i.item_id) AS investment_transactions_count
            FROM pluggy_items i WHERE i.active=1 ORDER BY i.created_at"""
     ).fetchall()
@@ -935,22 +912,6 @@ def pluggy_state():
            FROM pluggy_investments ORDER BY name LIMIT 250"""
     ).fetchall()
     return jsonify(items=[dict(row) for row in items], investments=[dict(row) for row in investments])
-
-
-@app.route('/api/pluggy/transactions', methods=['GET'])
-def pluggy_transactions_list():
-    limit = min(250, max(1, int(request.args.get('limit', 100) or 100)))
-    rows = db().execute(
-        """SELECT t.transaction_id,t.item_id,t.account_id,t.transaction_date,t.description,
-                  t.amount,t.direction,t.status,t.updated_at,COALESCE(a.name,'Conta') AS account_name,
-                  COALESCE(i.label,i.connector_name,'MeuPluggy') AS connection_name
-           FROM pluggy_transactions t
-           LEFT JOIN pluggy_accounts a ON a.account_id=t.account_id
-           LEFT JOIN pluggy_items i ON i.item_id=t.item_id
-           ORDER BY t.transaction_date DESC,t.updated_at DESC LIMIT ?""", (limit,)
-    ).fetchall()
-    total = db().execute('SELECT COUNT(*) FROM pluggy_transactions').fetchone()[0]
-    return jsonify(items=[dict(row) for row in rows], total=int(total))
 
 
 @app.route('/api/pluggy/items', methods=['POST'])
@@ -1090,10 +1051,10 @@ def pluggy_sync():
     if not items:
         return jsonify(ok=True, skipped_recent=skipped_recent, interval_minutes=sync_interval_minutes,
                        message='Sincronização recente. Nenhuma consulta à Pluggy foi necessária.')
-    summary = {'items':0,'accounts':0,'investments':0,'transactions':0,
+    summary = {'items':0,'investments':0,
                'investment_transactions':0,'operations_imported':0,'operations_matched':0,
                'dividends_imported':0,'duplicates_ignored':0,'b3_duplicates_reconciled':0,
-               'skipped_recent':skipped_recent,'accounts_without_transaction_product':0,'transaction_sync_errors':0,'interval_minutes':sync_interval_minutes,'warnings':[]}
+               'skipped_recent':skipped_recent,'interval_minutes':sync_interval_minutes,'warnings':[]}
     now_text = datetime.now(TZ).isoformat(timespec='seconds')
     try:
         _pluggy_api_key()
@@ -1101,7 +1062,6 @@ def pluggy_sync():
         for local_item in items:
             item_id = local_item['item_id']
             item = _pluggy_request('GET', '/items/' + item_id)
-            accounts = _pluggy_results('/accounts', {'itemId':item_id})
             investments = _pluggy_results('/investments', {'itemId':item_id})
             summary['items'] += 1
             connector = item.get('connector') or {}
@@ -1111,51 +1071,6 @@ def pluggy_sync():
                  str(item.get('status') or ''), str(item.get('consentExpiresAt') or ''),
                  now_text, item_id)
             )
-            for account in accounts:
-                account_id = str(account.get('id') or '')
-                if not account_id: continue
-                db().execute(
-                    """INSERT INTO pluggy_accounts(account_id,item_id,name,account_type,subtype,number,balance,currency_code,raw_json,updated_at)
-                       VALUES(?,?,?,?,?,?,?,?,?,?)
-                       ON CONFLICT(account_id) DO UPDATE SET item_id=excluded.item_id,name=excluded.name,
-                       account_type=excluded.account_type,subtype=excluded.subtype,number=excluded.number,
-                       balance=excluded.balance,currency_code=excluded.currency_code,raw_json=excluded.raw_json,updated_at=excluded.updated_at""",
-                    (account_id,item_id,str(account.get('name') or account.get('marketingName') or ''),
-                     str(account.get('type') or ''),str(account.get('subtype') or ''),
-                     str(account.get('number') or ''),float(account.get('balance') or 0),
-                     str(account.get('currencyCode') or 'BRL'),json.dumps(account,ensure_ascii=False),now_text)
-                )
-                # O produto Transações da Pluggy cobre contas BANK e CREDIT.
-                # Contas do tipo INVESTMENT não possuem esse endpoint/produto.
-                account_kind = str(account.get('type') or '').upper()
-                if account_kind not in ('BANK', 'CREDIT'):
-                    summary['accounts_without_transaction_product'] += 1
-                    transactions = []
-                else:
-                    try:
-                        transactions = _pluggy_account_transactions(account_id)
-                    except requests.RequestException as tx_error:
-                        summary['transaction_sync_errors'] += 1
-                        status_code = tx_error.response.status_code if getattr(tx_error, 'response', None) is not None else 'conexão'
-                        summary['warnings'].append('Não foi possível sincronizar transações da conta %s (HTTP %s): %s' % (account_id[:8], status_code, str(tx_error)[:120]))
-                        transactions = []
-                for transaction in transactions:
-                    tx_id = str(transaction.get('id') or '')
-                    if not tx_id: continue
-                    tx_date = _pluggy_date(transaction.get('date'))
-                    db().execute(
-                        """INSERT INTO pluggy_transactions(transaction_id,item_id,account_id,transaction_date,description,amount,direction,status,raw_json,updated_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?)
-                           ON CONFLICT(transaction_id) DO UPDATE SET item_id=excluded.item_id,account_id=excluded.account_id,
-                           transaction_date=excluded.transaction_date,description=excluded.description,amount=excluded.amount,
-                           direction=excluded.direction,status=excluded.status,raw_json=excluded.raw_json,updated_at=excluded.updated_at""",
-                        (tx_id,item_id,account_id,tx_date,str(transaction.get('description') or ''),
-                         float(transaction.get('amount') or 0),str(transaction.get('type') or ''),
-                         str(transaction.get('status') or ''),json.dumps(transaction,ensure_ascii=False),now_text)
-                    )
-                    summary['transactions'] += 1
-            if summary['accounts_without_transaction_product']:
-                summary['warnings'].append(str(summary['accounts_without_transaction_product']) + ' conta(s) não consultada(s) para transações bancárias porque não são do tipo BANK/CREDIT.')
             for investment in investments:
                 investment_id = str(investment.get('id') or '')
                 if not investment_id: continue
@@ -1351,6 +1266,122 @@ def api_integrations_test(provider):
         return jsonify({'ok':False,'message':message}), 400
 
 
+def _fundamental_rating(quote, asset_type=''):
+    """Nota automática conservadora: pontua somente indicadores realmente recebidos da API."""
+    if not isinstance(quote, dict) or asset_type in ('renda_fixa', 'tesouro', 'cripto', 'outros'):
+        return {'score': None, 'coverage': 0, 'label': 'Dados fundamentalistas indisponíveis', 'details': []}
+    def number(*keys):
+        for key in keys:
+            value = quote.get(key)
+            try:
+                if value is not None and value != '':
+                    n = float(value)
+                    if n == n and abs(n) != float('inf'):
+                        return n
+            except (TypeError, ValueError):
+                continue
+        return None
+    metrics = []
+    # Cada métrica contribui apenas quando o provedor devolve um valor válido.
+    pe = number('priceEarnings', 'trailingPE', 'peRatio')
+    if pe is not None and pe > 0:
+        metrics.append(('Valuation P/L', 8 if pe <= 10 else 7 if pe <= 15 else 5 if pe <= 25 else 3, 'P/L %.2f' % pe))
+    pb = number('priceToBook', 'priceToBookRatio', 'priceToBookValue')
+    if pb is not None and pb > 0:
+        metrics.append(('Valuation P/VP', 8 if pb <= 1.2 else 7 if pb <= 2 else 5 if pb <= 4 else 3, 'P/VP %.2f' % pb))
+    roe = number('returnOnEquity', 'roe')
+    if roe is not None:
+        roe = roe * 100 if abs(roe) <= 1 else roe
+        metrics.append(('Rentabilidade ROE', 9 if roe >= 20 else 8 if roe >= 15 else 6 if roe >= 10 else 4 if roe >= 0 else 1, 'ROE %.1f%%' % roe))
+    margin = number('profitMargins', 'netProfitMargin', 'margemLiquida')
+    if margin is not None:
+        margin = margin * 100 if abs(margin) <= 1 else margin
+        metrics.append(('Margem líquida', 9 if margin >= 20 else 8 if margin >= 12 else 6 if margin >= 6 else 4 if margin >= 0 else 1, 'Margem %.1f%%' % margin))
+    op_margin = number('operatingMargins', 'operatingMargin')
+    if op_margin is not None:
+        op_margin = op_margin * 100 if abs(op_margin) <= 1 else op_margin
+        metrics.append(('Eficiência operacional', 9 if op_margin >= 20 else 8 if op_margin >= 12 else 6 if op_margin >= 6 else 4 if op_margin >= 0 else 1, 'Margem operacional %.1f%%' % op_margin))
+    debt = number('debtToEquity', 'debtToEquityRatio')
+    if debt is not None:
+        metrics.append(('Endividamento', 9 if debt <= 30 else 8 if debt <= 60 else 6 if debt <= 100 else 3 if debt <= 200 else 1, 'Dívida/PL %.1f' % debt))
+    current = number('currentRatio', 'current_ratio')
+    if current is not None and current > 0:
+        metrics.append(('Liquidez corrente', 9 if current >= 2 else 8 if current >= 1.5 else 6 if current >= 1 else 3, 'Liquidez corrente %.2f' % current))
+    quick = number('quickRatio', 'quick_ratio')
+    if quick is not None and quick > 0:
+        metrics.append(('Liquidez imediata', 9 if quick >= 1.5 else 8 if quick >= 1 else 6 if quick >= .7 else 3, 'Liquidez rápida %.2f' % quick))
+    market_price = number('regularMarketPrice', 'close', 'price')
+    high_52 = number('fiftyTwoWeekHigh', '52WeekHigh', 'yearHigh')
+    if market_price and high_52 and high_52 > 0:
+        drawdown = (market_price / high_52 - 1) * 100
+        metrics.append(('Queda desde máxima de 52 semanas', 9 if drawdown >= -10 else 7 if drawdown >= -20 else 5 if drawdown >= -35 else 2, 'Distância da máxima de 52 semanas %.1f%%' % drawdown))
+    revenue_growth = number('revenueGrowth', 'revenueQuarterlyGrowth')
+    if revenue_growth is not None:
+        revenue_growth = revenue_growth * 100 if abs(revenue_growth) <= 1 else revenue_growth
+        metrics.append(('Crescimento de receita', 9 if revenue_growth >= 20 else 8 if revenue_growth >= 10 else 6 if revenue_growth >= 0 else 2, 'Crescimento de receita %.1f%%' % revenue_growth))
+    operating_cash = number('operatingCashflow', 'operatingCashFlow')
+    free_cash = number('freeCashflow', 'freeCashFlow')
+    if operating_cash is not None and free_cash is not None:
+        metrics.append(('Geração de caixa', 9 if operating_cash > 0 and free_cash > 0 else 5 if operating_cash > 0 else 1, 'Fluxo operacional e fluxo de caixa livre disponíveis'))
+    earnings = number('earningsGrowth', 'earningsQuarterlyGrowth')
+    if earnings is not None:
+        earnings = earnings * 100 if abs(earnings) <= 1 else earnings
+        metrics.append(('Geração de lucro', 9 if earnings >= 20 else 8 if earnings >= 10 else 6 if earnings >= 0 else 2, 'Crescimento de lucro %.1f%%' % earnings))
+    dividend_yield = number('dividendYield', 'yield')
+    payout = number('payoutRatio', 'payout')
+    if payout is not None:
+        payout = payout * 100 if abs(payout) <= 1 else payout
+        metrics.append(('Sustentabilidade dos proventos', 9 if 0 <= payout <= 60 else 7 if payout <= 80 else 4 if payout <= 100 else 1, 'Payout %.1f%%' % payout))
+    if dividend_yield is not None and dividend_yield > 0:
+        dividend_yield = dividend_yield * 100 if dividend_yield <= 1 else dividend_yield
+        metrics.append(('Histórico de proventos', 8 if dividend_yield <= 12 else 6 if dividend_yield <= 18 else 3, 'Dividend yield %.1f%%' % dividend_yield))
+    coverage = len(metrics)
+    if coverage < 3:
+        return {'score': None, 'coverage': coverage, 'label': 'Análise incompleta · aguardando fundamentos', 'providers': quote.get('fundamentalProviders') or ([quote.get('quoteProvider')] if quote.get('quoteProvider') else []), 'details': [m[2] for m in metrics]}
+    score = round(sum(m[1] for m in metrics) / coverage, 1)
+    label = 'Excelente' if score >= 8.5 else 'Boa' if score >= 7 else 'Atenção' if score >= 5 else 'Risco elevado'
+    return {'score': score, 'coverage': coverage, 'label': label, 'providers': quote.get('fundamentalProviders') or ([quote.get('quoteProvider')] if quote.get('quoteProvider') else []), 'details': [m[2] for m in metrics]}
+
+
+def _enrich_quote_fundamentals(ticker, quote):
+    """Complementa fundamentos com provedores conectados que oferecem dados por empresa."""
+    enriched = dict(quote or {})
+    # Alpha Vantage OVERVIEW: só consulta se o usuário cadastrou e habilitou a chave.
+    token = _get_api_token('alphavantage')
+    if token:
+        try:
+            symbol = str(ticker or '').upper()
+            if symbol.endswith('.SA'):
+                symbol = symbol[:-3]
+            response = requests.get('https://www.alphavantage.co/query',
+                params={'function': 'OVERVIEW', 'symbol': symbol + '.SA', 'apikey': token}, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict) and data.get('Symbol') and not data.get('Note') and not data.get('Information'):
+                aliases = {
+                    'ReturnOnEquityTTM':'returnOnEquity','ProfitMargin':'profitMargins',
+                    'OperatingMarginTTM':'operatingMargins','DebtToEquity':'debtToEquity',
+                    'CurrentRatio':'currentRatio','DividendYield':'dividendYield',
+                    'PayoutRatio':'payoutRatio','PERatio':'priceEarnings',
+                    'PriceToBookRatio':'priceToBook','QuarterlyRevenueGrowthYOY':'revenueGrowth',
+                    'QuarterlyEarningsGrowthYOY':'earningsGrowth','52WeekHigh':'fiftyTwoWeekHigh'
+                }
+                for source, target in aliases.items():
+                    value = data.get(source)
+                    if value not in (None, '', 'None', '0') and enriched.get(target) in (None, '', 0, '0'):
+                        try: enriched[target] = float(value)
+                        except (TypeError, ValueError): pass
+                enriched['fundamentalProviders'] = sorted(set((enriched.get('fundamentalProviders') or []) + ['Alpha Vantage']))
+        except (requests.RequestException, ValueError, TypeError):
+            pass
+    if enriched.get('priceEarnings') is not None or enriched.get('returnOnEquity') is not None:
+        providers = enriched.get('fundamentalProviders') or []
+        if enriched.get('quoteProvider') == 'brapi' and 'brapi' not in providers:
+            providers.append('brapi')
+        enriched['fundamentalProviders'] = providers
+    return enriched
+
+
 def cotacao(ticker):
     now = time.time()
     ticker = str(ticker or '').strip().upper()
@@ -1408,6 +1439,7 @@ def cotacao(ticker):
         if fallback:
             data = {**data, **fallback}
 
+    data = _enrich_quote_fundamentals(ticker, data)
     CACHE[ticker] = (now, data)
     return data
 
@@ -1909,7 +1941,7 @@ def cleanup_b3_operation_refs(operation_ids):
 
 def cleanup_pluggy_asset_refs(scope, tipo='', ticker='', operation_ids=None, investment_ids=None):
     """Remove Pluggy investment cache/transactions linked to assets explicitly removed in the asset manager.
-    Keeps Pluggy connections, credentials, accounts and ordinary bank transactions intact.
+    Keeps Pluggy connections and credentials intact; only investment data is handled by the integration.
     """
     con = db()
     operation_ids = [int(x) for x in (operation_ids or []) if x is not None]
@@ -2490,7 +2522,7 @@ def carteira():
         variation_pct = pluggy_return['variation_pct'] if pluggy_return else (round(variation_value/cost*100,2) if cost else 0)
         total_return_value = pluggy_return['total_value'] if pluggy_return else (variation_value + (0.0 if kind=='renda_fixa' else dividends))
         profitability_pct = pluggy_return['total_pct'] if pluggy_return else (round(total_return_value/cost*100,2) if cost else 0)
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)

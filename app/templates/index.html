@@ -1955,15 +1955,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
  .summary-assets-pagination{display:flex;justify-content:center;align-items:center;gap:6px;margin:16px 0 4px;flex-wrap:wrap}.summary-assets-pagination button{border:1px solid var(--line);background:transparent;color:var(--text);padding:7px 12px;border-radius:6px;cursor:pointer}.summary-assets-pagination button.active{border-color:var(--blue);background:var(--panel)}.summary-assets-pagination button:disabled{opacity:.4;cursor:default}.summary-assets-pagination span{font-size:12px;color:var(--muted);margin-left:6px}
 
-/* v3.3.12 — distribuição do cabeçalho de renda fixa e destaques */
-@media(min-width:1101px){
- .asset-category[data-category-key="renda_fixa"] .asset-category-head{
-  grid-template-columns:minmax(240px,2fr) repeat(4,minmax(125px,1fr)) 28px!important;
-  column-gap:clamp(14px,1.35vw,24px)!important;
-  padding-left:clamp(18px,1.6vw,30px)!important;
-  padding-right:clamp(18px,1.6vw,30px)!important;
- }
-}
+/* v3.3.14 — cabeçalho de renda fixa usa a mesma grade das demais classes */
 .insight-split{grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(20px,4vw,56px);padding:12px 10px;min-height:104px;align-items:center}
 .insight-highlight-column{width:100%;padding:8px 10px;gap:2px}
 .insight-highlight-pill.positive{background:color-mix(in srgb,var(--green) 17%,transparent);color:var(--green);border:1px solid color-mix(in srgb,var(--green) 35%,var(--line))}
@@ -2253,8 +2245,7 @@ function readAssetNoteData(ticker){
  return {score:raw.score===undefined||raw.score===null?'':String(raw.score),entries};
 }
 function assetScore(item){
- const data=readAssetNoteData(item?.ticker||'');
- const score=Number(data.score);
+ const score=Number(item?.avaliacao?.score);
  return Number.isFinite(score)&&score>0?Math.min(10,Math.max(0,score)):0;
 }
 function idealPercentForAsset(item){
@@ -2572,7 +2563,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['preco_alvo','Meu Preço-Alvo',i=>`<td data-col="preco_alvo">—</td>`],
   ['preco_graham','Preço Justo (Graham)',i=>`<td data-col="preco_graham">—</td>`],
   ['preco_teto_bazin','Preço-teto (Bazin)',i=>`<td data-col="preco_teto_bazin">${i.preco_teto_bazin?brl(i.preco_teto_bazin):'—'}</td>`],
-  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint" tabindex="0" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" title="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
+  ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint" tabindex="0" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
   ['lucro_pct','Rentabilidade',i=>`<td data-col="lucro_pct"><span class="variation-pill ${Number(i.lucro_pct)>=0?'positive':'negative'}">${Number(i.lucro_pct)>=0?'↗':'↘'} ${pct(i.lucro_pct)}</span></td>`],
   ['valor_atual','Saldo',i=>`<td data-col="valor_atual">${brl(i.valor_atual)}</td>`],
   ['buyhold','Pontuação Buy and Hold',i=>`<td data-col="buyhold">—</td>`],
@@ -2583,7 +2574,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['pvp','P/VP',i=>`<td data-col="pvp">${i.pvp==null?'—':Number(i.pvp).toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>`],
   ['roe','ROE',i=>`<td data-col="roe">—</td>`],['margem_liquida','Margem Líquida',i=>`<td data-col="margem_liquida">—</td>`],
   ['margem_bruta','Margem Bruta',i=>`<td data-col="margem_bruta">—</td>`],['cagr_receitas','CAGR Receitas (5 anos)',i=>`<td data-col="cagr_receitas">—</td>`],['cagr_lucros','CAGR Lucros (5 anos)',i=>`<td data-col="cagr_lucros">—</td>`],
-  ['nota','Nota',i=>{const score=assetScore(i);return `<td data-col="nota"><button class="note-inline" title="Editar nota e observações de ${escapeHTML(i.ticker)}" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">${score?score.toLocaleString('pt-BR',{maximumFractionDigits:1})+'/10':'—'} ✎</button></td>`;}],
+  ['nota','Análise',i=>{const rating=i.avaliacao||{},score=assetScore(i),detail=(rating.details||[]).join(' · '),sources=(rating.providers||[]).join(', '),hint=rating.score!=null?`${rating.label} · ${rating.coverage} indicadores avaliados · Fontes: ${sources||'não informada'} · ${detail}`:(rating.label||'Sem dados fundamentalistas suficientes');return `<td data-col="nota"><button class="note-inline value-hint" data-hint="${escapeHTML(hint)}" onclick="openAssetNotes('${escapeHTML(i.ticker)}')">${score?score.toLocaleString('pt-BR',{maximumFractionDigits:1})+'/10':'N/D'}</button></td>`;}],
   ['portfolioPct','% Carteira',i=>{const share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;return `<td data-col="portfolioPct">${share.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</td>`;}],
   ['idealPct','% Ideal',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const hint=idealBalanceHint(i.valor_atual,share,ideal,totalPortfolio);const action=share>ideal+0.005?'sell':share<ideal-0.005?'buy':'neutral';return `<td data-col="idealPct"><span class="ideal-balance-hint" data-action="${action}" tabindex="0" role="note" aria-label="${escapeHTML(hint)}" data-hint="${escapeHTML(hint)}" onmouseenter="showIdealBalanceTooltip(event,this)" onmousemove="moveIdealBalanceTooltip(event,this)" onmouseleave="hideIdealBalanceTooltip()" onfocus="showIdealBalanceTooltip(event,this)" onblur="hideIdealBalanceTooltip()">${ideal.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}%</span></td>`;}],
   ['comprar','Comprar?',i=>{const ideal=idealPercentForAsset(i),share=totalPortfolio?Number(i.valor_atual||0)/totalPortfolio*100:0;const needsContribution=share<ideal-0.005;return `<td data-col="comprar">${needsContribution?'<span class="buy-yes">✓ Sim</span>':'<span class="buy-no">⊗ Não</span>'}</td>`;}]
@@ -2604,7 +2595,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   const widthTotal=widthKeys.reduce((sum,key)=>sum+(columnWeights[key]||.9),0);
   const proportionalCols=`<colgroup>${widthKeys.map(key=>`<col style="width:${((columnWeights[key]||.9)/widthTotal*100).toFixed(3)}%">`).join('')}</colgroup>`;
   const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table ${summaryMode&&cat.key==='renda_fixa'?'data-fixed-income-summary="true"':''}>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">${summaryMode&&allCategoryItems.length?"Os ativos desta classe estão em outra página.":"Nenhum ativo cadastrado nesta categoria."}</div>`;
-  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${allCategoryItems.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span>${cat.key==='renda_fixa'?'':`<span class="asset-category-metric">Variação<b class="${allCategoryItems.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${allCategoryItems.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span>`}<span class="asset-category-metric">Rentabilidade<b>${allCategoryItems.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
+  const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${allCategoryItems.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span>${cat.key==='renda_fixa'?'<span class="asset-category-metric category-metric-placeholder" aria-hidden="true"><span>Variação</span><b>—</b></span>':`<span class="asset-category-metric">Variação<b class="${allCategoryItems.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${allCategoryItems.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span>`}<span class="asset-category-metric">Rentabilidade<b>${allCategoryItems.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
   const moveControls=`<div class="position-category-move">${categoryIndex>0?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para cima" aria-label="Mover ${cat.name} para cima" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',-1)">↑</button>`:''}${categoryIndex<visibleCategories.length-1?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para baixo" aria-label="Mover ${cat.name} para baixo" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',1)">↓</button>`:''}</div>`;
   const header=summaryMode
    ? `<div class="summary-category-head">${moveControls}<button type="button" class="asset-category-head summary-category-toggle" onclick="toggleSummaryAssetGroup('${cat.key}')" aria-expanded="${expanded}">${categoryMetrics}</button></div>`
@@ -2806,7 +2797,7 @@ const POSITION_COLUMNS=[
   ['cagr_receitas','CAGR Receitas (5 anos)',false],['cagr_lucros','CAGR Lucros (5 anos)',false]
  ]},
  {group:'Rebalanceamento de carteira',items:[
-  ['nota','Minha nota',true],['portfolioPct','% na Carteira',true],['idealPct','% Ideal',true],['comprar','Comprar',true]
+  ['nota','Análise automática',true],['portfolioPct','% na Carteira',true],['idealPct','% Ideal',true],['comprar','Comprar',true]
  ]}
 ];
 function getPositionColumnPrefs(){
@@ -2846,19 +2837,16 @@ function closeUtilityModal(id){const el=document.getElementById(id);if(el)el.sty
 function noteStorageKey(ticker){return 'lonelyWalletNotesV2:'+ticker.toUpperCase();}
 function openAssetNotes(ticker){
  const data=readAssetNoteData(ticker),today=new Date().toLocaleDateString('pt-BR');
- document.getElementById('notesModalTitle').textContent='Nota e observações ('+ticker+')';
- document.getElementById('notesModalContent').innerHTML=`<div class="note-entry"><div class="field"><label for="assetNoteScore">Nota do ativo (0 a 10)</label><input id="assetNoteScore" type="number" min="0" max="10" step="0.5" value="${escapeHTML(data.score)}" placeholder="Ex.: 8"><small class="mini">A nota define o peso ideal deste ativo dentro da classe. Quanto maior a nota, maior sua participação ideal.</small></div><strong>${today}</strong><textarea id="assetNoteText" rows="5" placeholder="Escreva suas observações sobre ${escapeHTML(ticker)}...">${escapeHTML(data.entries[today]||'')}</textarea><div class="note-actions"><button class="primary" type="button" onclick="saveAssetNote('${escapeHTML(ticker)}')">Salvar alterações</button></div></div>`;
+ document.getElementById('notesModalTitle').textContent='Observações ('+ticker+')';
+ document.getElementById('notesModalContent').innerHTML=`<div class="note-entry"><p class="mini">A avaliação do ativo é calculada automaticamente com os fundamentos disponíveis nas APIs conectadas. Este espaço é apenas para suas observações.</p><strong>${today}</strong><textarea id="assetNoteText" rows="5" placeholder="Escreva suas observações sobre ${escapeHTML(ticker)}...">${escapeHTML(data.entries[today]||'')}</textarea><div class="note-actions"><button class="primary" type="button" onclick="saveAssetNote('${escapeHTML(ticker)}')">Salvar observações</button></div></div>`;
  document.getElementById('notesModalBack').style.display='flex';
 }
 function saveAssetNote(ticker){
  const key=noteStorageKey(ticker),data=readAssetNoteData(ticker),today=new Date().toLocaleDateString('pt-BR');
- const rawScore=document.getElementById('assetNoteScore').value.trim();
- if(rawScore!==''&&(!Number.isFinite(Number(rawScore))||Number(rawScore)<0||Number(rawScore)>10)){toast('Informe uma nota entre 0 e 10.');return;}
  const value=document.getElementById('assetNoteText').value.trim();
  if(value)data.entries[today]=value;else delete data.entries[today];
- data.score=rawScore;
  try{localStorage.setItem(key,JSON.stringify(data));}catch(e){toast('Não foi possível salvar a nota.');return;}
- closeUtilityModal('notesModalBack');renderPositionGroups(state.itens||[],'summaryGroups',true);renderPositionGroups(state.itens||[],'positionGroups',false);toast('Nota e observações salvas.');
+ closeUtilityModal('notesModalBack');renderPositionGroups(state.itens||[],'summaryGroups',true);renderPositionGroups(state.itens||[],'positionGroups',false);toast('Observações salvas.');
 }
 let assetTransactionsPage=1,assetTransactionsTicker='';
 async function openAssetTransactions(ticker,page=1){
@@ -4052,7 +4040,7 @@ function renderAPIProviders(){
   p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar; cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
   `<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.':'Não é necessário cadastrar token.'}</span></div>`}
   <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
-  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte os bancos em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div><div id="pluggyTransactions" class="pluggy-transactions"></div>`:''}
+  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte suas instituições financeiras em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
   <div class="api-provider-links"><a href="${p.url}" target="_blank" rel="noopener noreferrer">Obter acesso</a><a href="${p.docs}" target="_blank" rel="noopener noreferrer">Documentação</a></div>
  </article>`;
  host.innerHTML=credentialed.map(card).join('');if(pluggyHost)pluggyHost.innerHTML=pluggy.map(card).join('')||'<div class="panel empty">Pluggy indisponível.</div>'; 
@@ -4065,22 +4053,13 @@ async function loadPluggyState(){
   window.pluggyConnections=data.items||[];
   const clearSelect=document.getElementById('pluggyClearItemSelect');if(clearSelect){const previous=clearSelect.value;clearSelect.innerHTML='<option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option>'+window.pluggyConnections.map(item=>`<option value="${escapeHTML(item.item_id)}">${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</option>`).join('');if(previous==='__all__'||window.pluggyConnections.some(item=>item.item_id===previous))clearSelect.value=previous;}
   if(!data.items||!data.items.length){host.innerHTML='Nenhuma conexão cadastrada. Adicione o itemId do MeuPluggy.';return;}
-  host.innerHTML=data.items.map(item=>{const accounts=Number(item.accounts_count||0),investments=Number(item.investments_count||0),transactions=Number(item.transactions_count||0),investmentTransactions=Number(item.investment_transactions_count||0),hasData=accounts+investments+transactions+investmentTransactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização executada · nenhum dado retornado':'Item cadastrado · ainda não sincronizado',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${accounts} contas · ${investments} investimentos · ${transactions} transações bancárias · ${investmentTransactions} movimentações de investimento${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
+  host.innerHTML=data.items.map(item=>{const investments=Number(item.investments_count||0),investmentTransactions=Number(item.investment_transactions_count||0),hasData=investments+investmentTransactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização executada · nenhum dado retornado':'Item cadastrado · ainda não sincronizado',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${investments} investimentos · ${investmentTransactions} movimentações de investimento${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
   const invHost=document.getElementById('pluggyInvestments');
   if(invHost){
    const inv=data.investments||[];
    invHost.innerHTML='';
   }
-  await loadPluggyTransactions();
  }catch(error){host.textContent=error.message||'Não foi possível carregar as conexões Pluggy.';}
-}
-async function loadPluggyTransactions(){
- const host=document.getElementById('pluggyTransactions');if(!host)return;
- try{
-  const data=await api('/api/pluggy/transactions?limit=100',{skipAutoRefresh:true});
-  const items=data.items||[];
-  host.innerHTML=`<h4>Transações bancárias recebidas <span class="muted">(${Number(data.total||0)})</span></h4>${items.length?`<div class="tablewrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Conta</th><th>Conexão</th><th>Status</th><th style="text-align:right">Valor</th></tr></thead><tbody>${items.map(t=>{const amount=Number(t.amount||0),direction=String(t.direction||'').toUpperCase(),positive=['CREDIT','INCOME','CREDIT_CARD_PAYMENT'].includes(direction)||(!['DEBIT','EXPENSE','TRANSFER'].includes(direction)&&amount>=0);return `<tr><td>${escapeHTML(t.transaction_date||'—')}</td><td>${escapeHTML(t.description||'Transação sem descrição')}</td><td>${escapeHTML(t.account_name||'Conta')}</td><td>${escapeHTML(t.connection_name||'MeuPluggy')}</td><td>${escapeHTML(t.status||'—')}</td><td class="amount ${positive?'green':'red'}">${brl(Math.abs(amount))} ${positive?'↑':'↓'}</td></tr>`;}).join('')}</tbody></table></div>`:'<div class="empty">Nenhuma transação bancária foi recebida. Verifique se a conexão oferece o produto Transações para contas BANK/CREDIT e se a sincronização foi concluída.</div>'}`;
- }catch(error){host.innerHTML=`<div class="empty">Não foi possível consultar as transações bancárias: ${escapeHTML(error.message||'erro desconhecido')}</div>`;}
 }
 async function addPluggyItem(){
  const itemId=document.getElementById('pluggyItemId')?.value.trim()||'';
@@ -4094,16 +4073,16 @@ async function addPluggyItem(){
  }catch(error){toast(error.message||'Não foi possível adicionar a conexão.');}
 }
 async function syncPluggy(){
- if(!await appConfirm('Sincronizar Pluggy','A sincronização consultará as conexões cadastradas e poderá importar novas movimentações para a carteira.','Sincronizar agora'))return;
- const host=document.getElementById('pluggyState');if(host)host.textContent='Sincronizando contas, investimentos e movimentações…';
+ if(!await appConfirm('Sincronizar Pluggy','A sincronização consultará somente investimentos e movimentações de investimento para atualizar sua carteira.','Sincronizar agora'))return;
+ const host=document.getElementById('pluggyState');if(host)host.textContent='Sincronizando investimentos e movimentações…';
  try{
   const result=await api('/api/pluggy/sync',{method:'POST',body:JSON.stringify({force:true}),skipAutoRefresh:true});
   const s=result.summary||{};
   await loadPluggyState();
-  const msg=`Sincronização concluída: ${s.accounts||0} contas, ${s.investments||0} investimentos, ${s.transactions||0} transações bancárias, ${s.investment_transactions||0} movimentações de investimento. ${s.operations_imported||0} operações novas, ${s.operations_matched||0} conciliadas, ${s.dividends_imported||0} proventos importados e ${s.duplicates_ignored||0} duplicidades ignoradas. ${s.fixed_income_positions||0} posições de renda fixa e ${s.market_positions||0} posições variáveis lançadas na carteira. ${s.fixed_income_skipped_missing_data||0} renda(s) fixa(s) ignorada(s) por falta de indexador ou taxa.`;
-  const hasAnyData=Number(s.accounts||0)+Number(s.investments||0)+Number(s.transactions||0)+Number(s.investment_transactions||0)>0;
-  const outcome=hasAnyData?'A Pluggy retornou dados.':'A API respondeu, mas não retornou contas, investimentos ou movimentações. Confira o itemId, o status da conexão e as permissões no MeuPluggy.';
-  if(host)host.textContent=outcome+' '+msg+(s.warnings?.length?' Avisos: '+s.warnings.join(' | '):'');await loadPluggyTransactions();toast(hasAnyData?'Sincronização concluída com dados.':'Sincronização sem dados retornados.');
+  const msg=`Sincronização concluída: ${s.investments||0} investimentos, ${s.investment_transactions||0} movimentações de investimento. ${s.operations_imported||0} operações novas, ${s.operations_matched||0} conciliadas, ${s.dividends_imported||0} proventos importados e ${s.duplicates_ignored||0} duplicidades ignoradas. ${s.fixed_income_positions||0} posições de renda fixa e ${s.market_positions||0} posições variáveis lançadas na carteira. ${s.fixed_income_skipped_missing_data||0} renda(s) fixa(s) ignorada(s) por falta de indexador ou taxa.`;
+  const hasAnyData=Number(s.investments||0)+Number(s.investment_transactions||0)>0;
+  const outcome=hasAnyData?'A Pluggy retornou dados.':'A API respondeu, mas não retornou investimentos ou movimentações de investimento. Confira o itemId, o status da conexão e as permissões no MeuPluggy.';
+  if(host)host.textContent=outcome+' '+msg+(s.warnings?.length?' Avisos: '+s.warnings.join(' | '):'');toast(hasAnyData?'Sincronização concluída com dados.':'Sincronização sem dados retornados.');
   if(typeof refresh==='function')refresh();
  }catch(error){if(host)host.textContent=error.message||'Falha na sincronização.';toast(error.message||'Falha na sincronização.');}
 }
@@ -4113,7 +4092,7 @@ async function clearPluggyImportedData(){
  const all=itemId==='__all__',connections=all?(window.pluggyConnections||[]):(window.pluggyConnections||[]).filter(item=>item.item_id===itemId);
  if(!connections.length){toast('Não há conexões para limpar.');return;}
  const label=all?'todas as conexões':(select.options[select.selectedIndex]?.text||'conexão selecionada');
- if(!await appConfirm('Limpar dados importados da Pluggy','Os dados sincronizados de '+label+' serão apagados: contas, investimentos, transações, movimentações e lançamentos/proventos criados por essas conexões. As conexões e credenciais serão mantidas. Lançamentos manuais ou conciliados com a B3 não serão apagados. Esta ação não pode ser desfeita.','Limpar dados'))return;
+ if(!await appConfirm('Limpar dados importados da Pluggy','Os dados sincronizados de '+label+' serão apagados: investimentos, movimentações e lançamentos/proventos criados por essas conexões. As conexões e credenciais serão mantidas. Lançamentos manuais ou conciliados com a B3 não serão apagados. Esta ação não pode ser desfeita.','Limpar dados'))return;
  try{
   let operations=0,dividends=0;
   for(const connection of connections){
@@ -5302,4 +5281,21 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 .prov-sync-details summary{cursor:pointer;display:inline-block;color:var(--muted,#8f9bad)}
 .prov-sync-details>div{max-height:180px;overflow:auto;margin-top:6px;padding:8px 10px;border:1px solid var(--border,#343b49);border-radius:8px;background:var(--panel,#20242d)}
 .prov-sync-details p{margin:3px 0;overflow-wrap:anywhere}
+</style>
+
+<style>
+/* v3.3.14: tooltip de variação com o tema do app, sem tooltip nativo do navegador */
+.value-hint{position:relative;z-index:2}
+.value-hint::after{background:var(--panel2)!important;color:var(--text)!important;border:1px solid var(--line)!important;border-radius:9px!important;padding:10px 12px!important;box-shadow:0 12px 30px #0009!important;max-width:min(360px,82vw)!important;white-space:normal!important;line-height:1.45!important;font-size:12px!important;font-weight:550!important}
+.value-hint.positive::after{border-color:color-mix(in srgb,var(--green) 65%,var(--line))!important}
+.value-hint.negative::after{border-color:color-mix(in srgb,var(--red) 65%,var(--line))!important}
+.category-metric-placeholder{visibility:hidden;pointer-events:none}
+</style>
+
+<style>
+/* v3.3.14: sinalização consistente para variação positiva/negativa */
+.asset-category-metric b.metric-change.green{color:var(--green)!important}
+.asset-category-metric b.metric-change.red{color:var(--red)!important}
+.proportional-assets-table .variation-pill.positive{background:rgba(0,190,145,.17)!important;color:#00d4a0!important}
+.proportional-assets-table .variation-pill.negative{background:rgba(232,91,121,.18)!important;color:#ff7894!important}
 </style>
