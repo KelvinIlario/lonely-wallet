@@ -1,4 +1,4 @@
-# Lonely Wallet v2.0.74
+# Lonely Wallet v2.0.76
 
 Aplicação Flask + SQLite para controle pessoal de investimentos, posições, rentabilidade e proventos.
 

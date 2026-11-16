@@ -238,6 +238,7 @@ def init_db():
 init_db()
 
 API_PROVIDERS = {
+    'pluggy': {'name':'Pluggy', 'category':'Open Finance · contas e investimentos', 'description':'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.', 'auth':True, 'credential_type':'client_id_secret', 'url':'https://dashboard.pluggy.ai/', 'docs':'https://docs.pluggy.ai/'},
     'brapi': {'name':'brapi', 'category':'Brasil · cotações e histórico', 'description':'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. A cobertura e os limites dependem do plano.', 'auth':True, 'url':'https://brapi.dev/dashboard', 'docs':'https://brapi.dev/docs'},
     'hgbrasil': {'name':'HG Brasil', 'category':'Brasil · mercado e indicadores', 'description':'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano contratado.', 'auth':True, 'url':'https://console.hgbrasil.com/', 'docs':'https://console.hgbrasil.com/documentation/finance'},
     'twelvedata': {'name':'Twelve Data', 'category':'Global · cotações e séries', 'description':'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura da B3 e os créditos do plano.', 'auth':True, 'url':'https://twelvedata.com/account', 'docs':'https://twelvedata.com/docs'},
@@ -281,14 +282,26 @@ def _brapi_token():
     return _get_api_token('brapi') or TOKEN
 
 
+def _get_pluggy_credentials():
+    raw = _get_api_token('pluggy')
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+        return {'client_id':str(value.get('client_id') or ''),'client_secret':str(value.get('client_secret') or '')}
+    except (ValueError, TypeError):
+        return {}
+
+
 @app.route('/api/integracoes', methods=['GET'])
 def api_integrations_list():
     rows = {row['provider']: row for row in db().execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()}
     providers = []
     for key, meta in API_PROVIDERS.items():
         row = rows.get(key)
-        token = _get_api_token(key) if meta['auth'] else ''
-        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':bool(token), 'enabled':bool(row['enabled']) if row else bool(token), 'masked':('••••••••' + token[-4:]) if token else '', 'updated_at':row['updated_at'] if row else None})
+        token = _get_api_token(key) if meta['auth'] and key != 'pluggy' else ''
+        pluggy_credentials = _get_pluggy_credentials() if key == 'pluggy' else {}
+        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':bool(pluggy_credentials.get('client_id') and pluggy_credentials.get('client_secret')) if key == 'pluggy' else bool(token), 'enabled':bool(row['enabled']) if row else bool(token or pluggy_credentials), 'masked':('••••••••' + token[-4:]) if token else '', 'client_id_masked':(('••••••••' + pluggy_credentials.get('client_id','')[-4:]) if pluggy_credentials.get('client_id') else ''), 'updated_at':row['updated_at'] if row else None})
     return jsonify({'providers':providers})
 
 
@@ -302,6 +315,16 @@ def api_integrations_save(provider):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True})
     payload = request.get_json(silent=True) or {}
+    if provider == 'pluggy':
+        client_id = str(payload.get('client_id') or '').strip()
+        client_secret = str(payload.get('client_secret') or '').strip()
+        if not client_id or not client_secret:
+            return jsonify({'error':'Informe Client ID e Client Secret.'}), 400
+        packed = json.dumps({'client_id':client_id,'client_secret':client_secret}, separators=(',',':'))
+        encrypted = _api_fernet().encrypt(packed.encode()).decode()
+        db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', ('pluggy',encrypted,1,datetime.now(TZ).isoformat(timespec='seconds')))
+        db().commit()
+        return jsonify({'ok':True,'configured':True})
     token = str(payload.get('token') or '').strip()
     enabled = bool(payload.get('enabled', True))
     if token:
@@ -321,6 +344,19 @@ def api_integrations_test(provider):
         return jsonify({'ok':False,'message':'Provedor desconhecido.'}), 404
     if provider in ('bcb','ibge','tesouro','cvm','b3','yahoo'):
         return jsonify({'ok':False,'message':'Esta fonte não usa token cadastrado. A disponibilidade e os requisitos estão descritos no catálogo.'}), 400
+    if provider == 'pluggy':
+        credentials = _get_pluggy_credentials()
+        if not credentials.get('client_id') or not credentials.get('client_secret'):
+            return jsonify({'ok':False,'message':'Cadastre Client ID e Client Secret antes de testar.'}), 400
+        try:
+            response = requests.post('https://api.pluggy.ai/auth', json={'clientId':credentials['client_id'],'clientSecret':credentials['client_secret']}, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get('apiKey'):
+                raise ValueError(data.get('message') or 'A Pluggy não retornou uma API Key.')
+            return jsonify({'ok':True,'message':'Credenciais autenticadas com sucesso. A vinculação de instituições via Pluggy Connect será a próxima etapa.'})
+        except (requests.RequestException, ValueError) as exc:
+            return jsonify({'ok':False,'message':str(exc)[:240] or 'Falha ao autenticar na Pluggy.'}), 400
     token = _get_api_token(provider)
     if not token:
         return jsonify({'ok':False,'message':'Cadastre um token antes de testar.'}), 400
