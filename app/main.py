@@ -821,6 +821,12 @@ def pluggy_sync():
     except Exception as exc:
         db().commit()
         return json_error('Falha na sincronização Pluggy: ' + str(exc)[:220], 400)
+    # Após atualizar as posições/movimentações, reconcilia proventos dos ativos atuais.
+    try:
+        current_items = (carteira().json or {}).get('itens', [])
+        summary['proventos_sync'] = sync_brapi_proventos(force=False, quote_items=current_items, active_items=current_items)
+    except Exception as dividend_exc:
+        summary['warnings'].append('Não foi possível atualizar proventos após a sincronização: ' + str(dividend_exc)[:160])
     return jsonify(ok=True, summary=summary, synced_at=now_text)
 
 
@@ -1756,7 +1762,14 @@ def importar_b3():
                         (item['fingerprint'],item['categoria'],imported_at,lote_id,record_id))
         con.execute('UPDATE b3_import_lotes SET operacoes=?,proventos=? WHERE id=?',(inserted_ops,inserted_provs,lote_id))
         con.commit()
-        return jsonify(ok=True,importadas=inserted_ops+inserted_provs,operacoes=inserted_ops,proventos=inserted_provs,duplicados=duplicates,lote_id=lote_id)
+        # A importação altera a carteira: verifica eventos de proventos dos ativos que permaneceram em posição.
+        dividend_sync = None
+        try:
+            current_items = (carteira().json or {}).get('itens', [])
+            dividend_sync = sync_brapi_proventos(force=False, quote_items=current_items, active_items=current_items)
+        except Exception as dividend_exc:
+            dividend_sync = {'ok': False, 'mensagem': str(dividend_exc)[:180]}
+        return jsonify(ok=True,importadas=inserted_ops+inserted_provs,operacoes=inserted_ops,proventos=inserted_provs,duplicados=duplicates,lote_id=lote_id, sincronizacao_proventos=dividend_sync)
     except Exception as exc:
         return json_error(str(exc) if isinstance(exc,ValueError) else 'Não foi possível ler a planilha B3. Confira o arquivo e tente novamente.')
 
@@ -2017,10 +2030,16 @@ def _fetch_alphavantage_dividend_events(symbols, start_date):
     return events, errors
 
 
-def sync_brapi_proventos(force=False, quote_items=None):
-    """Importa eventos pagos e anunciados, usando a quantidade na data-com. Idempotente."""
+def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
+    """Sincroniza proventos apenas para posições atualmente mantidas. Idempotente e limitada por cache."""
     now_ts = time.time()
-    types = _asset_type_map()
+    if active_items is None:
+        try:
+            active_items = (carteira().json or {}).get('itens', [])
+        except Exception:
+            active_items = []
+    types = {str(item.get('ticker') or '').strip().upper(): str(item.get('tipo') or 'outros').lower()
+             for item in (active_items or []) if str(item.get('ticker') or '').strip()}
     signature = tuple(sorted(types.items()))
     if (not force and PROVENTOS_SYNC_CACHE.get('result')
             and PROVENTOS_SYNC_CACHE.get('signature') == signature
@@ -2028,7 +2047,7 @@ def sync_brapi_proventos(force=False, quote_items=None):
         return PROVENTOS_SYNC_CACHE['result']
 
     if not types:
-        result = {'ok': True, 'importados': 0, 'ignorados': 0, 'erros': [], 'mensagem': 'Nenhum ativo cadastrado para sincronizar.'}
+        result = {'ok': True, 'importados': 0, 'ignorados': 0, 'erros': [], 'mensagem': 'Carteira sem posições: consulta de proventos pausada; os registros históricos foram preservados.'}
         PROVENTOS_SYNC_CACHE.update(time=now_ts, result=result, signature=signature)
         return result
 
@@ -2172,9 +2191,15 @@ def _is_income_event(event_type):
     return 'AMORTIZA' not in str(event_type or '').upper()
 
 
-def _received_proventos_records():
+def _received_proventos_records(active_tickers=None):
+    active_set = None if active_tickers is None else {str(t).upper() for t in active_tickers}
+    if active_set is not None and not active_set:
+        return []
     manual = [dict(row) for row in db().execute('SELECT * FROM proventos ORDER BY data,id').fetchall()]
     api_rows = [dict(row) for row in db().execute("SELECT * FROM proventos_api WHERE status='Pago' ORDER BY data_pagamento,event_key").fetchall()]
+    if active_set is not None:
+        manual = [row for row in manual if str(row.get('ticker') or '').upper() in active_set]
+        api_rows = [row for row in api_rows if str(row.get('ticker') or '').upper() in active_set]
     manual_keys = {(str(row['ticker']).upper(), str(row['data'])[:10], round(float(row['valor_total'] or 0), 2)) for row in manual}
     records = []
     today = datetime.now(TZ).date()
@@ -2200,8 +2225,20 @@ def typesafe_asset_type(ticker):
 
 
 def received_proventos_by_ticker():
+    # O resumo considera somente ativos com posição atual; o histórico bruto permanece no banco.
+    active = []
+    for row in db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall():
+        ticker = str(row['ticker']).upper()
+        if posicao(ticker)[0] > 1e-8:
+            active.append(ticker)
+    base_date = snapshot_date_for()
+    if base_date:
+        for row in db().execute('SELECT ticker FROM saldos_importados WHERE data_base=?', (base_date,)).fetchall():
+            ticker = str(row['ticker']).upper()
+            if ticker not in active and posicao(ticker)[0] > 1e-8:
+                active.append(ticker)
     totals = {}
-    for row in _received_proventos_records():
+    for row in _received_proventos_records(active):
         if not _is_income_event(row.get('tipo_evento')):
             continue
         ticker = row['ticker']
@@ -3264,14 +3301,20 @@ def dashboard():
     # A sincronização é automática, mas protegida por cache de 1 hora. O botão da
     # página Proventos permite forçar uma atualização quando o usuário desejar.
     portfolio_before_sync = carteira().json
-    sync_status = sync_brapi_proventos(force=False, quote_items=portfolio_before_sync.get('itens', []))
+    sync_status = sync_brapi_proventos(force=False, quote_items=portfolio_before_sync.get('itens', []), active_items=portfolio_before_sync.get('itens', []))
     # Recalcula o resumo para que proventos pagos sincronizados agora já apareçam.
     portfolio = carteira().json
     ops = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id").fetchall()]
     scheduled = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='agendada' ORDER BY data_execucao,id").fetchall()]
-    received_records = _received_proventos_records()
-    pending_rows = [dict(r) for r in db().execute("SELECT * FROM proventos_api WHERE status='A receber' ORDER BY data_pagamento,ticker").fetchall()]
-    manual_rows = [dict(r) for r in db().execute('SELECT * FROM proventos ORDER BY data').fetchall()]
+    active_tickers = {str(item.get('ticker') or '').upper() for item in portfolio.get('itens', []) if item.get('ticker')}
+    received_records = _received_proventos_records(active_tickers)
+    if active_tickers:
+        marks = ','.join('?' for _ in active_tickers)
+        pending_rows = [dict(r) for r in db().execute("SELECT * FROM proventos_api WHERE status='A receber' AND UPPER(ticker) IN (" + marks + ") ORDER BY data_pagamento,ticker", tuple(sorted(active_tickers))).fetchall()]
+        manual_rows = [dict(r) for r in db().execute('SELECT * FROM proventos WHERE UPPER(ticker) IN (' + marks + ') ORDER BY data', tuple(sorted(active_tickers))).fetchall()]
+    else:
+        pending_rows = []
+        manual_rows = []
 
     monthly = {}
     for op in ops:

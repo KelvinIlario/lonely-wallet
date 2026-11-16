@@ -38,3 +38,13 @@ A versão foi verificada por compilação sintática Python, verificação sint�
 - Permite excluir todos os lançamentos do ativo selecionado ou todos os lançamentos da carteira, com confirmação explícita e quantidade de registros afetados.
 - A exclusão remove os vínculos de rastreamento B3 das operações apagadas e atualiza os totais dos lotes, permitindo reimportar posteriormente uma operação removida.
 - A exclusão global afeta somente a tabela de operações; saldos-base importados e proventos independentes são preservados.
+
+
+## v3.0.6
+
+- Proventos sincronizados somente para ativos com posição atual positiva. Ativos totalmente vendidos deixam de alimentar os indicadores e gráficos da carteira.
+- Quando a carteira fica sem posições, recebidos e futuros exibidos no dashboard ficam em R$ 0,00; os registros históricos permanecem armazenados no SQLite.
+- Importação B3 e sincronização Pluggy disparam uma verificação de proventos após atualizar as posições.
+- A consulta automática do dashboard respeita cache de uma hora para limitar requisições. Uma alteração na lista de ativos atuais invalida a assinatura do cache.
+- Fontes de eventos implementadas: endpoints de dividendos da brapi, Alpha Vantage quando configurada/ativa e eventos de dividendos retornados pela cotação brapi. Provedores sem endpoint de proventos implementado não são consultados para esse fim.
+- Mantém o banco SQLite e o volume `/DATA/AppData/lonely-wallet/data:/data`; não apague `carteira.db` nem `.api-credentials.key`.
