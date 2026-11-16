@@ -124,3 +124,17 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Reaberto somente o menu solicitado pelo usuário.
 - Estado `aria-expanded` sincronizado nos botões.
 - Mantidos os estilos, opções, filtros e regras de seleção existentes.
+
+
+## v2.0.67
+
+### Correção da abertura simultânea de filtros
+- Implementado coordenador global em fase de captura, executado antes dos eventos individuais dos filtros.
+- Ao clicar em outro filtro, qualquer menu aberto anteriormente é fechado antes da abertura do novo.
+- Abrange os menus personalizados de período, status, tipo de ativo, ativos e os selects customizados do restante do projeto.
+- Mantido o comportamento de alternância ao clicar novamente no mesmo filtro.
+
+### Padronização das cores das tabelas
+- Cabeçalhos das tabelas passam a utilizar a variável de cor de superfície do tema.
+- Estados de hover usam uma variável compartilhada entre tema escuro e claro.
+- Listas de ativos da página Patrimônio alinhadas às cores dos demais painéis e tabelas.
