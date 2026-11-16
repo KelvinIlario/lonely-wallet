@@ -1,8 +1,8 @@
-# Lonely Wallet v3.0.3
+# Lonely Wallet v3.0.4
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
 
-## Destaques da versão 3.0.3
+## Destaques da versão 3.0.4
 
 - Controles **Ativar/Desativar** para APIs com credenciais. Desativar preserva o token criptografado; Remover continua sendo uma ação separada.
 - A desativação da brapi também impede o uso de um token configurado por variável de ambiente como fallback.
@@ -21,3 +21,12 @@ Porta externa recomendada no ZimaOS: `8085`, apontando para a porta interna `808
 ## Limites de validação
 
 A versão foi verificada por compilação sintática Python, verificação sintática do JavaScript inline e integridade do ZIP. O ambiente de preparação não possui Flask instalado, portanto não foi possível executar o aplicativo completo nem testar conexões reais com provedores externos. A reconciliação automática remove apenas linhas originadas pela Pluggy com uma única correspondência inequívoca da B3; casos ambíguos permanecem intactos para revisão.
+
+
+## v3.0.4
+
+- Remove da interface o catálogo de APIs nativas/fontes sem token, mantendo as fontes internas necessárias ao funcionamento do aplicativo.
+- Define **Últimos 12 meses** como período inicial do gráfico de Consolidação de aportes.
+- Adiciona o gerenciamento de importações da B3 ao lado de Novo lançamento. Importações novas registram arquivo, data, quantidades e vínculo dos registros criados, permitindo excluir um lote sem apagar lançamentos manuais.
+- Importações antigas aparecem agrupadas pela data de importação, mas não podem ser excluídas individualmente porque a versão anterior não guardava vínculos seguros nem o nome do arquivo.
+- Preserva o banco SQLite e o volume `/data`.

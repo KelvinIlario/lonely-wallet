@@ -1,4 +1,4 @@
-import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata
+import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid
 from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
 from zoneinfo import ZoneInfo
@@ -126,7 +126,11 @@ def init_db():
     CREATE TABLE IF NOT EXISTS b3_importados (
       fingerprint TEXT PRIMARY KEY,
       categoria TEXT NOT NULL,
-      importado_em TEXT NOT NULL
+      importado_em TEXT NOT NULL, lote_id TEXT, registro_id INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS b3_import_lotes (
+      id TEXT PRIMARY KEY, arquivo TEXT NOT NULL DEFAULT '', importado_em TEXT NOT NULL,
+      operacoes INTEGER NOT NULL DEFAULT 0, proventos INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS pluggy_items (
       item_id TEXT PRIMARY KEY,
@@ -312,6 +316,9 @@ def init_db():
     # Instalação limpa: não importar capturas nem inserir operações/proventos de demonstração.
     # Os registros já existentes em um banco persistente são preservados.
 
+    b3cols = {row[1] for row in con.execute('PRAGMA table_info(b3_importados)').fetchall()}
+    if 'lote_id' not in b3cols: con.execute('ALTER TABLE b3_importados ADD COLUMN lote_id TEXT')
+    if 'registro_id' not in b3cols: con.execute('ALTER TABLE b3_importados ADD COLUMN registro_id INTEGER')
     con.commit(); con.close()
 
 
@@ -1619,10 +1626,57 @@ def _parse_b3_workbook(file_storage):
     return parsed
 
 
+@app.route('/api/importar-b3/lotes', methods=['GET'])
+def listar_lotes_b3():
+    con = db()
+    batches = [dict(r) for r in con.execute("""
+        SELECT l.id, l.arquivo, l.importado_em, l.operacoes, l.proventos,
+               COUNT(i.fingerprint) AS registros
+        FROM b3_import_lotes l LEFT JOIN b3_importados i ON i.lote_id=l.id
+        GROUP BY l.id ORDER BY l.importado_em DESC
+    """).fetchall()]
+    legacy = [dict(r) for r in con.execute("""
+        SELECT importado_em, SUM(CASE WHEN categoria='operacao' THEN 1 ELSE 0 END) AS operacoes,
+               SUM(CASE WHEN categoria='provento' THEN 1 ELSE 0 END) AS proventos,
+               COUNT(*) AS registros
+        FROM b3_importados WHERE lote_id IS NULL GROUP BY importado_em ORDER BY importado_em DESC
+    """).fetchall()]
+    return jsonify(lotes=batches, legados=legacy)
+
+
+@app.route('/api/importar-b3/lotes/<lote_id>', methods=['DELETE'])
+def excluir_lote_b3(lote_id):
+    con = db()
+    lote = con.execute('SELECT * FROM b3_import_lotes WHERE id=?', (lote_id,)).fetchone()
+    if not lote:
+        return jsonify(error='Importação não encontrada ou sem vínculo seguro.'), 404
+    rows = con.execute('SELECT categoria,registro_id FROM b3_importados WHERE lote_id=?', (lote_id,)).fetchall()
+    deleted_ops = deleted_provs = 0
+    try:
+        for row in rows:
+            if not row['registro_id']:
+                continue
+            if row['categoria'] == 'operacao':
+                cur = con.execute("DELETE FROM operacoes WHERE id=? AND detalhes LIKE '%Importação B3%'", (row['registro_id'],))
+                deleted_ops += cur.rowcount
+            elif row['categoria'] == 'provento':
+                cur = con.execute('DELETE FROM proventos WHERE id=?', (row['registro_id'],))
+                deleted_provs += cur.rowcount
+        con.execute('DELETE FROM b3_importados WHERE lote_id=?', (lote_id,))
+        con.execute('DELETE FROM b3_import_lotes WHERE id=?', (lote_id,))
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    return jsonify(ok=True, operacoes=deleted_ops, proventos=deleted_provs)
+
+
 @app.route('/api/importar-b3', methods=['POST'])
 def importar_b3():
     try:
-        parsed=_parse_b3_workbook(request.files.get('arquivo'))
+        upload = request.files.get('arquivo')
+        parsed=_parse_b3_workbook(upload)
+        filename = os.path.basename(upload.filename or 'Planilha B3.xlsx')
         mode=request.form.get('modo','preview')
         existing={r['fingerprint'] for r in db().execute('SELECT fingerprint FROM b3_importados').fetchall()}
         new_rows=[r for r in parsed if r['fingerprint'] not in existing]
@@ -1632,19 +1686,27 @@ def importar_b3():
                 proventos=sum(1 for r in new_rows if r['categoria']=='provento'))
         inserted_ops=inserted_provs=duplicates=0
         con=db()
+        if not new_rows:
+            return jsonify(ok=True,importadas=0,operacoes=0,proventos=0,duplicados=len(parsed),lote_id=None)
+        lote_id=uuid.uuid4().hex
+        imported_at=datetime.now(TZ).isoformat(timespec='seconds')
+        con.execute('INSERT INTO b3_import_lotes(id,arquivo,importado_em,operacoes,proventos) VALUES(?,?,?,?,?)',
+                    (lote_id,filename,imported_at,0,0))
         for item in parsed:
             if con.execute('SELECT 1 FROM b3_importados WHERE fingerprint=?',(item['fingerprint'],)).fetchone():
                 duplicates+=1; continue
             rec=item['registro']
             if item['categoria']=='operacao':
-                con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (rec['ticker'],rec['tipo'],rec['lado'],rec['quantidade'],rec['preco'],rec['data'],0.0,'executada',rec['data'],rec['data']+'T10:00:00-03:00',json.dumps(rec['detalhes'],ensure_ascii=False)))
-                inserted_ops+=1
+                cur=con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (rec['ticker'],rec['tipo'],rec['lado'],rec['quantidade'],rec['preco'],rec['data'],0.0,'executada',rec['data'],rec['data']+'T10:00:00-03:00',json.dumps(rec['detalhes'],ensure_ascii=False)))
+                record_id=cur.lastrowid; inserted_ops+=1
             else:
-                con.execute('INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)',(rec['ticker'],rec['valor_total'],rec['data']))
-                inserted_provs+=1
-            con.execute('INSERT INTO b3_importados(fingerprint,categoria,importado_em) VALUES(?,?,?)',(item['fingerprint'],item['categoria'],datetime.now(TZ).isoformat(timespec='seconds')))
+                cur=con.execute('INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)',(rec['ticker'],rec['valor_total'],rec['data']))
+                record_id=cur.lastrowid; inserted_provs+=1
+            con.execute('INSERT INTO b3_importados(fingerprint,categoria,importado_em,lote_id,registro_id) VALUES(?,?,?,?,?)',
+                        (item['fingerprint'],item['categoria'],imported_at,lote_id,record_id))
+        con.execute('UPDATE b3_import_lotes SET operacoes=?,proventos=? WHERE id=?',(inserted_ops,inserted_provs,lote_id))
         con.commit()
-        return jsonify(ok=True,importadas=inserted_ops+inserted_provs,operacoes=inserted_ops,proventos=inserted_provs,duplicados=duplicates)
+        return jsonify(ok=True,importadas=inserted_ops+inserted_provs,operacoes=inserted_ops,proventos=inserted_provs,duplicados=duplicates,lote_id=lote_id)
     except Exception as exc:
         return json_error(str(exc) if isinstance(exc,ValueError) else 'Não foi possível ler a planilha B3. Confira o arquivo e tente novamente.')
 
