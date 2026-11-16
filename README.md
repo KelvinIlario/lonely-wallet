@@ -25,3 +25,10 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Os cards de último mês e últimos 12 meses passam a usar meses fechados; os 12 meses são compostos a partir dos retornos mensais.
 - A comparação com índices usa um mês anterior de referência quando disponível e não apresenta comparação sem base suficiente.
 - Corrigida a invalidação do cache de benchmarks ao salvar ou remover credenciais.
+
+
+## v2.0.57
+
+- Atualizado o favicon exibido na aba do navegador com o novo ícone Lonely Wallet.
+- Atualizado o ícone do aplicativo no catálogo/launcher do CasaOS e ZimaOS.
+- URLs dos ícones versionadas para evitar que o navegador e o launcher reutilizem a imagem antiga em cache.
