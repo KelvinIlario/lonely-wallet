@@ -32,3 +32,13 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Atualizado o favicon exibido na aba do navegador com o novo ícone Lonely Wallet.
 - Atualizado o ícone do aplicativo no catálogo/launcher do CasaOS e ZimaOS.
 - URLs dos ícones versionadas para evitar que o navegador e o launcher reutilizem a imagem antiga em cache.
+
+## v2.0.58
+
+- Os cards de rentabilidade agora aparecem na ordem: Últimos 12 meses, Último mês e Rentabilidade total.
+- Filtros da aba Proventos receberam menus mais compactos, cantos mais arredondados, espaçamento consistente e setas alinhadas nos cabeçalhos.
+- Cotações sem resposta válida da brapi agora tentam, em sequência, HG Brasil, Twelve Data, Alpha Vantage e Yahoo Finance, quando disponíveis. O aplicativo mantém um único provedor por cotação para não misturar preço e variação de fontes diferentes.
+- Histórico de preços da carteira ganhou fallback por ativo via Twelve Data e Alpha Vantage antes do fallback Yahoo, quando há credenciais configuradas.
+- Mantida a deduplicação idempotente de eventos sincronizados por chave de evento e a reconciliação com lançamentos manuais/B3; fontes não são somadas entre si como se fossem eventos diferentes.
+- CDI e IPCA continuam priorizando as séries oficiais do Banco Central, com conferência do IPCA pelo IBGE; índices de mercado priorizam Dados B3 e usam fontes alternativas identificadas quando necessário.
+- Fontes sem escopo de cotação de ativos (FRED, CVM, IBGE, Tesouro Transparente e catálogo B3) não são tratadas como se fornecessem preço intradiário ou proventos por ticker.

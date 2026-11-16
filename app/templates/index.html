@@ -3547,9 +3547,10 @@ function renderRentabilidadePage(){
  const total=performance.rentabilidade_total!==undefined&&performance.rentabilidade_total!==null?Number(performance.rentabilidade_total):null;
  const cards=document.getElementById('returnSummaryCards');
  if(cards)cards.innerHTML=`
-  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>${performance.resultado_por_saldo_base?'Retorno atual sobre o saldo-base importado':'Resultado financeiro: '+brl(summary.lucro||0)}</small>${returnBenchmarkSelectHTML('total')}</div>
   <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${twelve===null?'':twelve>=0?'green':'red'}">${twelve===null?'—':pct(twelve)+' '+(twelve>=0?'↗':'↘')}</strong><small>${twelve===null?'Exige 12 meses fechados de histórico':'Retorno composto dos 12 últimos meses fechados'}</small>${returnBenchmarkSelectHTML('12m')}</div>
-  <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':pct(last)+' '+(last>=0?'↗':'↘')}</strong><small>${lastComplete?'Último mês fechado: '+String(lastComplete.month).padStart(2,'0')+'/'+lastComplete.year:'Histórico mensal indisponível'}</small>${returnBenchmarkSelectHTML('month')}</div>`;
+  <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':pct(last)+' '+(last>=0?'↗':'↘')}</strong><small>${lastComplete?'Último mês fechado: '+String(lastComplete.month).padStart(2,'0')+'/'+lastComplete.year:'Histórico mensal indisponível'}</small>${returnBenchmarkSelectHTML('month')}</div>
+  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>${performance.resultado_por_saldo_base?'Retorno atual sobre o saldo-base importado':'Resultado financeiro: '+brl(summary.lucro||0)}</small>${returnBenchmarkSelectHTML('total')}</div>
+ `;
  const labelsX=visible.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`);
  const visibleFirstKey=visible.length?visible[0].year+'-'+String(visible[0].month).padStart(2,'0'):'';
  const priorPortfolioRow=period==='12'&&visible.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
@@ -4406,3 +4407,52 @@ async function confirmB3Import(){
 }
 
 </script></body></html>
+
+<style>
+
+/* v2.0.58 — filtros compactos, menus arredondados e cabeçalhos alinhados */
+.prov-history-filter,.my-prov-filter,.prov-chart-period{position:relative}
+.prov-history-trigger,.prov-chart-period-trigger,.prov-total-trigger{
+ display:flex!important;align-items:center!important;justify-content:space-between!important;
+ gap:12px!important;min-width:0;text-align:left!important;
+}
+.prov-history-trigger .prov-total-chevron,.prov-chart-period-trigger .prov-total-chevron,
+.prov-total-trigger .prov-total-chevron{
+ display:inline-flex;align-items:center;justify-content:center;
+ flex:0 0 16px;width:16px;height:16px;margin-left:auto;
+ line-height:1;font-size:15px;transform:translateY(-1px);
+}
+.prov-history-menu,.my-prov-period-menu,.prov-chart-period-menu,.prov-total-menu{
+ border-radius:12px!important;padding:9px!important;
+ box-shadow:0 16px 38px rgba(0,0,0,.38)!important;
+ transform-origin:top right;
+}
+.prov-history-menu .history-option,.my-prov-period-menu .period-option{
+ min-height:34px;padding:7px 9px!important;border-radius:7px!important;
+}
+.prov-history-menu .history-search{min-height:38px!important;border-radius:9px!important}
+.my-prov-period-menu{width:270px!important;max-height:min(70vh,500px)!important;gap:10px!important}
+.my-prov-month-nav{border-radius:9px!important;padding:8px 11px!important}
+.my-prov-month-nav button{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px}
+.my-prov-month-nav button:hover{background:var(--hover,rgba(127,145,170,.16))}
+.earnings-history-head,.earnings-head{align-items:center!important}
+.earnings-history-head>h2,.earnings-head>h2{min-width:0;line-height:1.25}
+.earnings-history-toolbar,.my-provents-toolbar{align-items:center!important}
+.earnings-history-toolbar .prov-history-filter,.my-provents-toolbar .my-prov-filter{align-self:center}
+.earnings-main .panelhead .toolbar{align-items:center!important}
+#provChartPeriod{align-self:center}
+#provChartPeriodTrigger{min-height:40px;border-radius:9px}
+#provHistoryStatusWrap,#myProvPeriodWrap{width:176px}
+#provHistoryTypeWrap,#provHistoryAssetWrap,#myProvTypeWrap,#myProvAssetWrap{width:153px}
+@media(max-width:760px){
+ .earnings-history-head,.earnings-head{align-items:flex-start!important}
+ .earnings-history-toolbar,.my-provents-toolbar{width:100%;justify-content:flex-start!important}
+ .prov-history-menu{left:0;right:auto}
+ .my-prov-period-menu{left:0;right:auto;width:min(270px,calc(100vw - 42px))!important}
+}
+body.light-theme .prov-history-menu,body.light-theme .my-prov-period-menu,
+body.light-theme .prov-chart-period-menu,body.light-theme .prov-total-menu{
+ box-shadow:0 16px 38px rgba(23,32,51,.16)!important;
+}
+
+</style>

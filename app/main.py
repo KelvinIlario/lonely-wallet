@@ -399,8 +399,100 @@ def cotacao(ticker):
         except Exception:
             pass
 
+    # Fontes alternativas configuradas: a cotação completa vem de uma única fonte
+    # por vez para não misturar preço de um provedor com variação de outro.
+    has_price = any(data.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price'))
+    if not has_price and ticker:
+        fallback = _fallback_market_quote(ticker)
+        if fallback:
+            data = {**data, **fallback}
+
     CACHE[ticker] = (now, data)
     return data
+
+
+def _fallback_market_quote(ticker):
+    """Busca cotação/variação em provedores alternativos configurados, sem combinar séries."""
+    headers = {'User-Agent': 'Mozilla/5.0 LonelyWallet/2.0.58'}
+    # HG Brasil: cobertura de ativos B3 conforme o plano.
+    token = _get_api_token('hgbrasil')
+    if token:
+        try:
+            response = requests.get('https://api.hgbrasil.com/finance',
+                params={'key': token, 'symbol': ticker}, headers=headers, timeout=10)
+            response.raise_for_status()
+            payload = response.json()
+            results = payload.get('results') or {}
+            stocks = results.get('stocks') or results
+            item = stocks.get(ticker) or stocks.get(ticker.upper()) or {}
+            price = item.get('price') or item.get('close')
+            change = item.get('change_percent') or item.get('changePercent')
+            if price and float(price) > 0:
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(change) if change is not None else None,
+                        'longName': item.get('name') or ticker,
+                        'quoteProvider': 'HG Brasil'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Twelve Data: consulta apenas quando há chave cadastrada.
+    token = _get_api_token('twelvedata')
+    if token:
+        try:
+            response = requests.get('https://api.twelvedata.com/quote',
+                params={'symbol': ticker, 'exchange': 'BVMF', 'apikey': token},
+                headers=headers, timeout=10)
+            response.raise_for_status()
+            item = response.json()
+            price = item.get('close') or item.get('price')
+            if item.get('status') != 'error' and price and float(price) > 0:
+                change = item.get('percent_change')
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(change) if change not in (None, '') else None,
+                        'longName': item.get('name') or ticker,
+                        'quoteProvider': 'Twelve Data'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Alpha Vantage é fallback final para tickers que o endpoint reconhece.
+    token = _get_api_token('alphavantage')
+    if token:
+        try:
+            response = requests.get('https://www.alphavantage.co/query',
+                params={'function': 'GLOBAL_QUOTE', 'symbol': ticker, 'apikey': token},
+                headers=headers, timeout=10)
+            response.raise_for_status()
+            item = response.json().get('Global Quote') or {}
+            price = item.get('05. price')
+            change = item.get('10. change percent')
+            if price and float(price) > 0:
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(str(change or '').replace('%', '').replace(',', '.')) if change else None,
+                        'longName': ticker, 'quoteProvider': 'Alpha Vantage'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Yahoo Finance sem chave permanece como contingência pública, não oficial.
+    try:
+        response = requests.get(
+            f'https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(ticker, safe="")}',
+            params={'range': '5d', 'interval': '1d'},
+            headers=headers, timeout=10)
+        response.raise_for_status()
+        result = next(iter(response.json().get('chart', {}).get('result') or []), None)
+        if result:
+            meta = result.get('meta') or {}
+            price = meta.get('regularMarketPrice')
+            previous = meta.get('chartPreviousClose') or meta.get('previousClose')
+            if price and float(price) > 0:
+                change = ((float(price) / float(previous)) - 1) * 100 if previous else None
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': change,
+                        'longName': meta.get('longName') or meta.get('shortName') or ticker,
+                        'quoteProvider': 'Yahoo Finance'}
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        pass
+    return {}
 
 
 def _sgs_series(series_id, start_date, end_date):
@@ -1027,7 +1119,7 @@ def carteira():
         has_imported_reference = imported_price > 0
         price=float(raw_price) if market_quote_available else (imported_price if has_imported_reference else avg)
         quote_available=market_quote_available or has_imported_reference
-        quote_source='Mercado' if market_quote_available else ('Posição importada' if has_imported_reference else 'Sem cotação')
+        quote_source=(quote.get('quoteProvider') or 'brapi') if market_quote_available else ('Posição importada' if has_imported_reference else 'Sem cotação')
         dividends = float(received_proventos_by_ticker().get(ticker, 0.0))
         divs = (quote.get('dividendsData') or {}).get('cashDividends',[])[:12]
         annual_div = sum(float(x.get('rate') or 0) for x in divs)
@@ -1538,6 +1630,49 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
                 fii_url, [symbol], fii_params, response_key='fiis', headers=headers
             )
             response_data.update(fii_found)
+
+    # Provedores alternativos autenticados: usados apenas para tickers sem série
+    # válida na brapi. Mantemos uma fonte por ativo e não concatenamos preços distintos.
+    twelve_token = _get_api_token('twelvedata')
+    alpha_token = _get_api_token('alphavantage')
+    for symbol in [item for item in symbols if item not in response_data]:
+        if twelve_token:
+            try:
+                response = requests.get('https://api.twelvedata.com/time_series',
+                    params={'symbol':symbol,'exchange':'BVMF','interval':'1day','outputsize':5000,'apikey':twelve_token},
+                    headers={'User-Agent':'LonelyWallet/2.0.58'},timeout=18)
+                response.raise_for_status()
+                payload = response.json()
+                if payload.get('status') != 'error' and isinstance(payload.get('values'),list):
+                    points=[]
+                    for row in payload.get('values') or []:
+                        try:
+                            day=date.fromisoformat(str(row.get('datetime') or '')[:10])
+                            close=float(row.get('adjusted_close') or row.get('close') or 0)
+                            if close>0: points.append({'data':day,'preco':close,'fechamento':close,'ajustado':bool(row.get('adjusted_close'))})
+                        except (TypeError,ValueError,AttributeError): continue
+                    if points: response_data[symbol]=sorted(points,key=lambda x:x['data'])
+            except (requests.RequestException,ValueError,TypeError,AttributeError):
+                pass
+        if symbol not in response_data and alpha_token:
+            try:
+                response = requests.get('https://www.alphavantage.co/query',
+                    params={'function':'TIME_SERIES_DAILY_ADJUSTED','symbol':symbol,'outputsize':'full','apikey':alpha_token},
+                    headers={'User-Agent':'LonelyWallet/2.0.58'},timeout=18)
+                response.raise_for_status()
+                payload=response.json()
+                rows=payload.get('Time Series (Daily)') or {}
+                points=[]
+                for day_text,row in rows.items():
+                    try:
+                        day=date.fromisoformat(day_text)
+                        close=float(row.get('5. adjusted close') or row.get('4. close') or 0)
+                        raw_close=float(row.get('4. close') or close)
+                        if close>0: points.append({'data':day,'preco':close,'fechamento':raw_close,'ajustado':bool(row.get('5. adjusted close'))})
+                    except (TypeError,ValueError,AttributeError): continue
+                if points: response_data[symbol]=sorted(points,key=lambda x:x['data'])
+            except (requests.RequestException,ValueError,TypeError,AttributeError):
+                pass
 
     # Classes sem endpoint histórico específico (ex.: renda fixa cadastrada manualmente)
     # não podem bloquear as séries de ativos negociados em bolsa. Para classes não reconhecidas,
