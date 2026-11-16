@@ -50,3 +50,12 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Mantida a deduplicação idempotente de eventos sincronizados por chave de evento e a reconciliação com lançamentos manuais/B3; fontes não são somadas entre si como se fossem eventos diferentes.
 - CDI e IPCA continuam priorizando as séries oficiais do Banco Central, com conferência do IPCA pelo IBGE; índices de mercado priorizam Dados B3 e usam fontes alternativas identificadas quando necessário.
 - Fontes sem escopo de cotação de ativos (FRED, CVM, IBGE, Tesouro Transparente e catálogo B3) não são tratadas como se fornecessem preço intradiário ou proventos por ticker.
+
+
+## v2.0.60
+
+### Correção visual dos filtros de Proventos
+- Corrigido o alinhamento vertical das setas dos filtros em **Meus proventos**.
+- Corrigido o alinhamento vertical das setas dos filtros em **Histórico mensal**.
+- Setas posicionadas no centro vertical dos campos e alinhadas à direita, dentro dos filtros.
+- Mantido o estilo e o espaçamento dos demais elementos da página.

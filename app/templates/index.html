@@ -1893,6 +1893,34 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
  pointer-events:none;
 }
 
+
+/* v2.0.60 — setas centralizadas no eixo vertical e alinhadas à direita */
+.earnings-history-toolbar .prov-history-trigger,
+.my-provents-toolbar .prov-history-trigger{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:12px!important;
+  padding-right:13px!important;
+}
+.earnings-history-toolbar .prov-history-trigger>.prov-total-chevron,
+.my-provents-toolbar .prov-history-trigger>.prov-total-chevron{
+  position:static!important;
+  inset:auto!important;
+  top:auto!important;
+  right:auto!important;
+  transform:none!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  align-self:center!important;
+  flex:0 0 16px!important;
+  width:16px!important;
+  height:16px!important;
+  margin:0 0 0 auto!important;
+  line-height:1!important;
+  pointer-events:none;
+}
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -4493,4 +4521,32 @@ body.light-theme .prov-chart-period-menu,body.light-theme .prov-total-menu{
  pointer-events:none;
 }
 
+
+/* v2.0.60 — setas centralizadas no eixo vertical e alinhadas à direita */
+.earnings-history-toolbar .prov-history-trigger,
+.my-provents-toolbar .prov-history-trigger{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:12px!important;
+  padding-right:13px!important;
+}
+.earnings-history-toolbar .prov-history-trigger>.prov-total-chevron,
+.my-provents-toolbar .prov-history-trigger>.prov-total-chevron{
+  position:static!important;
+  inset:auto!important;
+  top:auto!important;
+  right:auto!important;
+  transform:none!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  align-self:center!important;
+  flex:0 0 16px!important;
+  width:16px!important;
+  height:16px!important;
+  margin:0 0 0 auto!important;
+  line-height:1!important;
+  pointer-events:none;
+}
 </style>
