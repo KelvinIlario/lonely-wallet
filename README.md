@@ -160,3 +160,22 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Quando houver ativos sem histórico, o gráfico informa a cobertura parcial em vez de inventar cotações.
 - Fontes históricas: brapi (v2 e endpoint legado), Twelve Data e Alpha Vantage conforme credenciais, cobertura e limites disponíveis.
 - Renda fixa e Tesouro com dados contratuais informados usam o histórico do indexador consultado no Banco Central; posições importadas sem dados do indexador mantêm o valor-base informado, sem estimar rendimento.
+
+
+## v2.0.70
+
+### Gráfico de evolução do patrimônio
+- Ajustado o gráfico para utilizar exclusivamente barras, seguindo o modelo visual de referência.
+- Barras empilhadas exibem **Valor aplicado** e **Ganho de Capital** em cada mês.
+- Ganhos positivos aparecem em verde-claro; prejuízos aparecem em vermelho e abaixo da linha zero.
+- Removida a linha de capital aplicado.
+- Tooltip mantém o patrimônio mensal e o resultado de ganho ou prejuízo.
+
+
+## v2.0.71
+
+### Gráfico de evolução do patrimônio
+- Refinado o gráfico para seguir o modelo visual de referência do Investidor10.
+- Mantidas exclusivamente barras empilhadas: valor aplicado em verde e ganho de capital em verde-claro.
+- Ganhos positivos aparecem acima do valor aplicado; prejuízos aparecem abaixo da linha zero, também em verde-claro.
+- Mantidos os filtros de período e tipo de ativo, com atualização do gráfico conforme a seleção.

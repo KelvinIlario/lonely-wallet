@@ -3403,18 +3403,18 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
   if(note){
    const missing=Number(performance.ativos_sem_historico?.length||0);
    note.textContent=missing
-    ? `Patrimônio histórico calculado pelas cotações mensais disponíveis. ${missing} ativo(s) sem histórico foram excluídos do cálculo.`
-    : 'Patrimônio histórico calculado com fechamentos mensais dos ativos, considerando compras, vendas e ganhos ou prejuízos. A cobertura depende das APIs configuradas.';
+    ? `Patrimônio histórico em barras, com valor aplicado e ganho ou prejuízo mensal. ${missing} ativo(s) sem histórico foram excluídos do cálculo.`
+    : 'Patrimônio histórico em barras: valor aplicado e ganho ou prejuízo de capital em cada mês. Considera fechamentos mensais, compras e vendas; a cobertura depende das APIs configuradas.';
   }
   chart(canvasId,'bar',{labels,datasets:[
-   {type:'bar',label:'Patrimônio',data:visibleHistory.map(row=>Number(row.patrimonio||0)),backgroundColor:ctx=>Number(visibleHistory[ctx.dataIndex]?.ganho||0)<0?'#e76583':'#28b579',borderRadius:3,order:2},
-   {type:'line',label:'Capital líquido aplicado',data:applied,borderColor:'#9be8c3',backgroundColor:'#9be8c3',borderWidth:2,pointRadius:2,pointHoverRadius:4,tension:.22,fill:false,order:1}
+   {label:'Valor aplicado',data:applied,backgroundColor:'#28b579',borderRadius:3,stack:'patrimonio'},
+   {label:'Ganho de Capital',data:gains,backgroundColor:'#9be8c3',borderRadius:3,stack:'patrimonio'}
   ]},{plugins:{legend:{display:true,labels:{color:'#b8c1ce'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw||0)}`,footer:items=>{
     const row=visibleHistory[items?.[0]?.dataIndex||0];
     if(!row)return '';
     const gain=Number(row.ganho||0);
-    return `${gain>=0?'Ganho acumulado':'Prejuízo acumulado'}: ${brl(Math.abs(gain))}`;
-   }}}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
+    return `Patrimônio no mês: ${brl(Number(row.patrimonio||0))} · ${gain>=0?'Ganho':'Prejuízo'}: ${brl(Math.abs(gain))}`;
+   }}}},scales:{x:{stacked:true,ticks:{color:'#8f99a8'},grid:{display:false}},y:{stacked:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
   return;
  }
  // Fallback for classes without historical market-price coverage, such as manually registered fixed income.
