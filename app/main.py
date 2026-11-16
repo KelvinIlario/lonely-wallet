@@ -1571,6 +1571,63 @@ def cleanup_b3_operation_refs(operation_ids):
         con.execute('UPDATE b3_import_lotes SET operacoes=? WHERE id=?',(int(counts),batch_id))
 
 
+
+def cleanup_pluggy_asset_refs(scope, tipo='', ticker='', operation_ids=None, investment_ids=None):
+    """Remove Pluggy investment cache/transactions linked to assets explicitly removed in the asset manager.
+    Keeps Pluggy connections, credentials, accounts and ordinary bank transactions intact.
+    """
+    con = db()
+    operation_ids = [int(x) for x in (operation_ids or []) if x is not None]
+    investment_ids = list(dict.fromkeys(str(x) for x in (investment_ids or []) if x))
+    if scope == 'todas':
+        inv_ids = [r[0] for r in con.execute('SELECT investment_id FROM pluggy_investments').fetchall()]
+        deleted_tx = con.execute('SELECT COUNT(*) FROM pluggy_investment_transactions').fetchone()[0]
+        con.execute('DELETE FROM pluggy_investment_transactions')
+        con.execute('DELETE FROM pluggy_investments')
+        # Pluggy event ledger is investment/dividend import provenance, not the bank account feed.
+        deleted_events = con.execute("SELECT COUNT(*) FROM pluggy_imported_events").fetchone()[0]
+        con.execute('DELETE FROM pluggy_imported_events')
+        return {'pluggy_investments': len(inv_ids), 'pluggy_transactions': int(deleted_tx), 'pluggy_events': int(deleted_events)}
+    ticker = str(ticker or '').strip().upper()
+    if not ticker:
+        return {'pluggy_investments': 0, 'pluggy_transactions': 0, 'pluggy_events': 0}
+    inv_ids = [r[0] for r in con.execute(
+        "SELECT investment_id FROM pluggy_investments WHERE upper(code)=? OR upper(name)=?",
+        (ticker, ticker)
+    ).fetchall()]
+    # Include investment ids found through their cached transaction ticker.
+    extra_ids = [r[0] for r in con.execute(
+        "SELECT DISTINCT investment_id FROM pluggy_investment_transactions WHERE upper(ticker)=?",
+        (ticker,)
+    ).fetchall()]
+    inv_ids = list(dict.fromkeys(inv_ids + extra_ids + investment_ids))
+    deleted_tx = 0
+    if inv_ids:
+        for start in range(0, len(inv_ids), 400):
+            chunk = inv_ids[start:start+400]
+            marks = ','.join('?' for _ in chunk)
+            deleted_tx += con.execute(
+                f'DELETE FROM pluggy_investment_transactions WHERE investment_id IN ({marks})', chunk
+            ).rowcount
+            con.execute(f'DELETE FROM pluggy_investments WHERE investment_id IN ({marks})', chunk)
+    deleted_tx += con.execute(
+        'DELETE FROM pluggy_investment_transactions WHERE upper(ticker)=?', (ticker,)
+    ).rowcount
+    deleted_events = con.execute(
+        'DELETE FROM pluggy_imported_events WHERE upper(ticker)=?', (ticker,)
+    ).rowcount
+    # Remove any remaining Pluggy transaction-to-operation links for deleted operations.
+    if operation_ids:
+        for start in range(0, len(operation_ids), 500):
+            chunk = operation_ids[start:start+500]
+            marks = ','.join('?' for _ in chunk)
+            con.execute(
+                f"UPDATE pluggy_investment_transactions SET imported_operation_id=NULL, import_state='imported_only' WHERE imported_operation_id IN ({marks})",
+                chunk
+            )
+    return {'pluggy_investments': len(inv_ids), 'pluggy_transactions': int(deleted_tx), 'pluggy_events': int(deleted_events)}
+
+
 @app.route('/api/operacoes/gerenciar', methods=['DELETE'])
 def excluir_operacoes_em_massa():
     con=db()
@@ -1578,6 +1635,8 @@ def excluir_operacoes_em_massa():
     scope=str(payload.get('escopo') or '').lower()
     if scope=='todas':
         ids=[int(r[0]) for r in con.execute('SELECT id FROM operacoes').fetchall()]
+        ticker=''
+        tipo=''
     elif scope=='ativo':
         tipo=str(payload.get('tipo') or '').strip().lower()
         ticker=str(payload.get('ticker') or '').strip().upper()
@@ -1586,20 +1645,31 @@ def excluir_operacoes_em_massa():
         ids=[int(r[0]) for r in con.execute('SELECT id FROM operacoes WHERE lower(tipo)=? AND upper(ticker)=?',(tipo,ticker)).fetchall()]
     else:
         return json_error('Escopo de exclusão inválido.')
-    if not ids:
-        return jsonify(ok=True,excluidos=0)
     try:
+        pluggy_investment_ids = []
+        if ids:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start+500]
+                marks = ','.join('?' for _ in chunk)
+                for row in con.execute(f'SELECT detalhes FROM operacoes WHERE id IN ({marks})', chunk).fetchall():
+                    try:
+                        meta = json.loads(row[0] or '{}')
+                        if meta.get('origem') == 'Pluggy' and meta.get('investment_id'):
+                            pluggy_investment_ids.append(str(meta['investment_id']))
+                    except Exception:
+                        pass
         cleanup_b3_operation_refs(ids)
         for start in range(0,len(ids),500):
             chunk=ids[start:start+500]
             marks=','.join('?' for _ in chunk)
             con.execute(f'DELETE FROM operacoes WHERE id IN ({marks})',chunk)
+        pluggy_removed = cleanup_pluggy_asset_refs(scope, tipo, ticker, ids, pluggy_investment_ids)
         clear_seed_snapshot_when_empty()
         con.commit()
     except Exception:
         con.rollback()
         raise
-    return jsonify(ok=True,excluidos=len(ids))
+    return jsonify(ok=True,excluidos=len(ids),pluggy_removidos=pluggy_removed)
 
 
 @app.route('/api/operacoes/<int:op_id>', methods=['DELETE','PUT'])

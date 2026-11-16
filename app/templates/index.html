@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lonely Wallet | Investimentos</title><link rel="icon" type="image/png" href="/static/lonely-wallet-favicon-v2.0.57.png">
+<html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lonely Wallet | Investimentos</title><link rel="icon" type="image/png" href="/static/lonely-wallet-favicon.png"><link rel="apple-touch-icon" href="/static/lonely-wallet-favicon.png">
 
 <div class="modalback utility-modal-back" id="notesModalBack" onclick="if(event.target===this)closeUtilityModal('notesModalBack')"><div class="modal utility-modal"><div class="modalhead"><h2 id="notesModalTitle">Minhas observações</h2><button class="close" onclick="closeUtilityModal('notesModalBack')">×</button></div><div id="notesModalContent"></div></div></div>
 <div class="modalback utility-modal-back" id="transactionsModalBack" onclick="if(event.target===this)closeUtilityModal('transactionsModalBack')"><div class="modal utility-modal transactions-modal"><div class="modalhead"><h2 id="transactionsModalTitle">Lançamentos do ativo</h2><button class="close" onclick="closeUtilityModal('transactionsModalBack')">×</button></div><div id="transactionsModalContent"></div></div></div>
@@ -4072,7 +4072,7 @@ async function deleteAPIProvider(id){
  catch(error){toast(error.message);}
 }
 
-function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',rentabilidade:'Rentabilidade',lancamentos:'Lançamentos',metas:'Metas',apis:'APIs'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon-v2.0.57.png';}
+function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',rentabilidade:'Rentabilidade',lancamentos:'Lançamentos',metas:'Metas',apis:'APIs'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon.png';}
 function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();if(name==='apis')loadAPIProviders();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
 function renderSpecificFields(type){
  const host=document.getElementById('assetSpecificFields'); if(!host)return;
