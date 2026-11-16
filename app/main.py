@@ -1,4 +1,5 @@
 import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
 from zoneinfo import ZoneInfo
@@ -2325,6 +2326,60 @@ def delete_meta(meta_id):
 
 
 @app.route('/api/carteira')
+
+def _pluggy_total_return(ticker, current_value, dividends=0.0):
+    """Retorno total desde a primeira compra usando o histórico importado da Pluggy."""
+    rows = db().execute(
+        "SELECT movement_type, transaction_date, quantity, unit_value, amount, raw_json "
+        "FROM pluggy_investment_transactions WHERE UPPER(ticker)=? "
+        "ORDER BY transaction_date, transaction_id",
+        (str(ticker or '').upper(),)
+    ).fetchall()
+    if not rows:
+        return None
+    buys = sells = 0.0
+    first_buy = None
+    for row in rows:
+        movement = str(row['movement_type'] or '').upper()
+        amount = abs(float(row['amount'] or 0))
+        qty = abs(float(row['quantity'] or 0))
+        unit = abs(float(row['unit_value'] or 0))
+        if amount <= 0 and qty > 0 and unit > 0:
+            amount = qty * unit
+        try:
+            raw = json.loads(row['raw_json'] or '{}')
+        except (TypeError, ValueError):
+            raw = {}
+        expenses = _pluggy_expenses_total(raw)
+        if movement == 'BUY':
+            buys += amount + expenses
+            if first_buy is None:
+                first_buy = str(row['transaction_date'] or '')[:10] or None
+        elif movement == 'SELL':
+            sells += max(0.0, amount - expenses)
+    if buys <= 0:
+        return None
+    result = float(current_value or 0) + sells + float(dividends or 0) - buys
+    return {'pct': round(result / buys * 100, 2), 'value': round(result, 2),
+            'invested': round(buys, 2), 'first_buy': first_buy}
+
+
+def _prefetch_quotes_parallel(tickers):
+    """Consulta cotações simultaneamente para reduzir o tempo de abertura."""
+    symbols = sorted({str(t or '').strip().upper() for t in tickers if str(t or '').strip()})
+    now = time.time()
+    pending = [s for s in symbols if s not in CACHE or now - CACHE[s][0] >= CACHE_TTL]
+    if not pending:
+        return
+    with ThreadPoolExecutor(max_workers=min(8, len(pending))) as pool:
+        futures = [pool.submit(cotacao, symbol) for symbol in pending]
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception:
+                pass
+
+
 def carteira():
     process_due_operations()
     base_date = snapshot_date_for()
@@ -2379,9 +2434,10 @@ def carteira():
             price = value / qty if qty > 0 else value
             quote_available = fixed_calc_ok
             quote_source = 'Indexador' if fixed_calc_ok else 'Sem indexador'
+        pluggy_return = _pluggy_total_return(ticker, value, dividends) if pluggy_position else None
         invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
         default_name = imported.get('nome') if imported else ticker
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(value-cost,2),'lucro_pct':round((value/cost-1)*100,2) if cost else 0,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')})
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(value-cost,2),'lucro_pct':round((value/cost-1)*100,2) if cost else 0,'pluggy_retorno_pct':pluggy_return['pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['value'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)

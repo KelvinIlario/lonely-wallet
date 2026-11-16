@@ -134,3 +134,10 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Posições com status de retirada total ou ausentes da lista atual são tratadas como encerradas, evitando ressuscitar ativos vendidos no histórico.
 - Classificação de ativos enriquecida com `subType`/`type` do cadastro B3 da brapi, incluindo identificação de FIIs como MXRF11 sem inferir classe apenas pelo sufixo do ticker.
 - Card Destaques da carteira passa a exibir saldo e resultado financeiro das melhores/piores posições e utiliza melhor o espaço disponível.
+
+
+## v3.3.9
+- Pré-carregamento concorrente de cotações para reduzir o tempo de abertura do resumo.
+- Destaques calculam retorno total desde a primeira compra usando movimentações Pluggy (compras, vendas, custos e proventos), com fallback quando não há histórico Pluggy.
+- Percentual do resultado total exibido ao lado do patrimônio, com tooltip em reais.
+- Destaques com cores neutras, seguindo a paleta padrão do projeto.
