@@ -1,3 +1,11 @@
+# Lonely Wallet v2.0.59
+
+## Atualização desta versão
+
+- Corrigida a posição das setas dos filtros em **Histórico Mensal** e **Meus proventos**.
+- As setas agora ficam ancoradas no lado direito dos botões e centralizadas verticalmente, sem depender do tamanho do texto ou do filtro selecionado.
+- Mantidos os estilos dos filtros e a responsividade da página Proventos.
+
 # Lonely Wallet v2.0.56
 
 Aplicação Flask + SQLite para controle pessoal de investimentos, preparada para Docker/ZimaOS.

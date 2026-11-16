@@ -1874,6 +1874,25 @@ body.light-theme .my-provents-toolbar .my-prov-month-nav{background:#f3f5f8!impo
 @media(max-width:900px){.return-investor-chart-panel{min-height:480px}.return-main-chart{min-height:300px}}
 @media(max-width:620px){.return-investor-chart-panel{min-height:440px}.return-main-chart{min-height:270px;padding:8px}.api-grid{grid-template-columns:1fr}.return-investor-filters select{min-width:0;flex:1}}
 
+
+/* v2.0.59 — posicionamento fixo das setas dos filtros de Proventos */
+.earnings-history-toolbar .prov-history-trigger,
+.my-provents-toolbar .prov-history-trigger{
+ position:relative!important;
+ padding-right:36px!important;
+}
+.earnings-history-toolbar .prov-history-trigger>.prov-total-chevron,
+.my-provents-toolbar .prov-history-trigger>.prov-total-chevron{
+ position:absolute!important;
+ top:50%!important;right:12px!important;
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;
+ width:14px!important;height:14px!important;
+ margin:0!important;flex:none!important;
+ line-height:1!important;
+ transform:translateY(-50%)!important;
+ pointer-events:none;
+}
+
 </style></head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
@@ -4453,6 +4472,25 @@ async function confirmB3Import(){
 body.light-theme .prov-history-menu,body.light-theme .my-prov-period-menu,
 body.light-theme .prov-chart-period-menu,body.light-theme .prov-total-menu{
  box-shadow:0 16px 38px rgba(23,32,51,.16)!important;
+}
+
+
+/* v2.0.59 — posicionamento fixo das setas dos filtros de Proventos */
+.earnings-history-toolbar .prov-history-trigger,
+.my-provents-toolbar .prov-history-trigger{
+ position:relative!important;
+ padding-right:36px!important;
+}
+.earnings-history-toolbar .prov-history-trigger>.prov-total-chevron,
+.my-provents-toolbar .prov-history-trigger>.prov-total-chevron{
+ position:absolute!important;
+ top:50%!important;right:12px!important;
+ display:inline-flex!important;align-items:center!important;justify-content:center!important;
+ width:14px!important;height:14px!important;
+ margin:0!important;flex:none!important;
+ line-height:1!important;
+ transform:translateY(-50%)!important;
+ pointer-events:none;
 }
 
 </style>
