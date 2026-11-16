@@ -487,6 +487,18 @@ def _pluggy_asset_type(investment):
         return 'renda_fixa'
     if any(marker in name or marker in code for marker in ('CDB', 'RDB', 'LCI', 'LCA', 'TESOURO', 'DEBENTURE', 'DEBÊNTURE')):
         return 'renda_fixa'
+    # A Pluggy pode retornar type=EQUITY para diferentes classes.
+    # O subtype específico (ex.: REAL_ESTATE_FUND) deve prevalecer.
+    if subtype in ('REAL_ESTATE_FUND', 'REIT', 'FII'):
+        return 'fii'
+    if subtype in ('ETF', 'EXCHANGE_TRADED_FUND'):
+        return 'etf'
+    if subtype in ('BDR', 'BRAZILIAN_DEPOSITARY_RECEIPT'):
+        return 'bdr'
+    if subtype in ('MUTUAL_FUND', 'FUND', 'INVESTMENT_FUND', 'FUND_QUOTA'):
+        return 'fundo'
+    if subtype in ('STOCK', 'SHARE', 'SHARES'):
+        return 'acao'
     if kind in ('EQUITY', 'STOCK', 'SHARE', 'SHARES'):
         return 'acao'
     if kind in ('ETF', 'EXCHANGE_TRADED_FUND'):
@@ -515,13 +527,14 @@ def _pluggy_ticker(investment):
 
 
 def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_text):
-    """Materializa posições atuais de renda fixa da Pluggy no saldo-base da carteira."""
+    """Materializa posições da Pluggy na fotografia da carteira, preservando a classe."""
     if not snapshot_date:
         return 0
     rows = []
+    fixed_count = 0
+    market_count = 0
     for investment in investments:
-        if _pluggy_asset_type(investment) != 'renda_fixa':
-            continue
+        asset_type = _pluggy_asset_type(investment)
         investment_id = str(investment.get('id') or '').strip()
         if not investment_id:
             continue
@@ -529,12 +542,33 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
         principal = float(investment.get('amountOriginal') or investment.get('amountInvested') or balance)
         if balance <= 0 or principal <= 0:
             continue
-        # Identificador interno estável, separado de tickers negociados em bolsa.
-        symbol = 'RF' + re.sub(r'[^A-Z0-9]', '', investment_id.upper())[:18]
-        rows.append((symbol, 'renda_fixa', 1.0, principal, balance, snapshot_date,
-                     str(investment.get('name') or investment.get('subtype') or 'Renda fixa'),
-                     'Pluggy:' + item_id))
-    # Remove somente a fotografia anterior desta conexão, nunca posições B3/manuais.
+
+        if asset_type == 'renda_fixa':
+            # Identificador interno estável: CDBs/LCA não são tickers de bolsa.
+            symbol = 'RF' + re.sub(r'[^A-Z0-9]', '', investment_id.upper())[:18]
+            quantity = 1.0
+            average_price = principal
+            current_price = balance
+            name = str(investment.get('name') or investment.get('subtype') or 'Renda fixa')
+            fixed_count += 1
+        elif asset_type in ('acao', 'fii', 'etf', 'bdr', 'fundo'):
+            # Ativos negociados precisam de código reconhecível para evitar criar
+            # posições com nomes longos ou identificadores bancários como ticker.
+            symbol = _pluggy_ticker(investment)
+            quantity = float(investment.get('quantity') or 0)
+            if not symbol or quantity <= 0:
+                continue
+            average_price = principal / quantity
+            current_price = balance / quantity
+            name = str(investment.get('name') or symbol)
+            market_count += 1
+        else:
+            continue
+
+        rows.append((symbol, asset_type, quantity, average_price, current_price,
+                     snapshot_date, name, 'Pluggy:' + item_id))
+
+    # Substitui apenas a fotografia anterior desta conexão.
     db().execute("DELETE FROM saldos_importados WHERE data_base=? AND origem LIKE ?",
                  (snapshot_date, 'Pluggy:' + item_id))
     if rows:
@@ -545,8 +579,9 @@ def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_
                ON CONFLICT(ticker,data_base) DO UPDATE SET
                  tipo=excluded.tipo,quantidade=excluded.quantidade,
                  preco_medio=excluded.preco_medio,preco_base=excluded.preco_base,
-                 nome=excluded.nome,origem=excluded.origem""", rows)
-    return len(rows)
+                 nome=excluded.nome,origem=excluded.origem
+               WHERE saldos_importados.origem LIKE 'Pluggy:%'""", rows)
+    return fixed_count, market_count
 
 
 def _reconcile_existing_pluggy_b3_duplicates():
@@ -864,10 +899,11 @@ def pluggy_sync():
                     elif state == 'imported_provento': summary['dividends_imported'] += 1
                     elif state == 'provento_duplicado_ignorado': summary['duplicates_ignored'] += 1
             pluggy_snapshot_date = snapshot_date_for() or datetime.now(TZ).date().isoformat()
-            summary.setdefault('fixed_income_positions', 0)
-            summary['fixed_income_positions'] += _pluggy_fixed_income_snapshot_rows(
+            snapshot_fixed, snapshot_market = _pluggy_fixed_income_snapshot_rows(
                 item_id, investments, pluggy_snapshot_date, now_text
             )
+            summary['fixed_income_positions'] = summary.get('fixed_income_positions', 0) + snapshot_fixed
+            summary['market_positions'] = summary.get('market_positions', 0) + snapshot_market
             db().execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
                          (now_text,now_text,item_id))
             db().commit()
