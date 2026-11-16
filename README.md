@@ -94,3 +94,13 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Campos ocultos e seletores múltiplos não são interceptados.
 - Mantida a atualização de opções dinâmicas e os eventos `change` já existentes.
 - Compatibilidade visual com temas escuro e claro.
+
+
+## v2.0.64
+
+### Ajuste visual dos menus de filtros
+- Corrigido o acabamento dos menus expandidos para corresponder ao layout de referência.
+- Contêineres com cantos arredondados, borda discreta e espaçamento interno.
+- Opções com altura uniforme e destaque azul com cantos levemente arredondados.
+- Largura do menu alinhada à largura do respectivo filtro.
+- Aplicado ao componente global de seletores simples, mantendo suporte aos temas escuro e claro.

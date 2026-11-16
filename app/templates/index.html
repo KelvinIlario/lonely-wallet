@@ -4582,6 +4582,7 @@ async function confirmB3Import(){
    menu.style.left=Math.max(4,Math.min(r.left,window.innerWidth-menu.offsetWidth-4))+'px';
    menu.style.top=(r.bottom+1)+'px';
    menu.style.minWidth=r.width+'px';
+   menu.style.width=r.width+'px';
    menu.style.maxHeight=maxHeight+'px';
    if(r.bottom+menu.offsetHeight>window.innerHeight-8 && r.top>menu.offsetHeight){
     menu.style.top=Math.max(4,r.top-menu.offsetHeight-1)+'px';
@@ -4778,5 +4779,31 @@ body.light-theme .lw-select-button{background:#fff!important;color:#202633!impor
 body.light-theme .lw-select-menu{background:#fff;color:#202633;border-color:#c7cfda}
 body.light-theme .lw-select-option{color:#202633}
 body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.active,body.light-theme .lw-select-option[aria-selected="true"]{background:#9ecbff;color:#172033}
+
+
+/* v2.0.64 — acabamento dos menus no padrão de referência */
+.lw-select-menu{
+  padding:8px 9px!important;
+  border:1px solid #3b4658!important;
+  border-radius:10px!important;
+  background:#1d222d!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.38)!important;
+}
+.lw-select-option{
+  min-height:27px!important;
+  padding:5px 10px!important;
+  border-radius:4px!important;
+  line-height:1.25!important;
+}
+.lw-select-option:hover,
+.lw-select-option.active,
+.lw-select-option[aria-selected="true"]{
+  background:#9ecbff!important;
+  color:#172033!important;
+}
+body.light-theme .lw-select-menu{
+  background:#fff!important;
+  border-color:#c7cfda!important;
+}
 
 </style>
