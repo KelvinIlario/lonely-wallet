@@ -1,46 +1,23 @@
-# Lonely Wallet v3.0.2
+# Lonely Wallet v3.0.3
 
-Aplicação Flask + SQLite para controle pessoal de investimentos, posições, rentabilidade e proventos.
+Aplicativo pessoal para acompanhamento de carteira de investimentos.
 
-## Instalação
+## Destaques da versão 3.0.3
 
-- Preserve o volume persistente `/DATA/AppData/lonely-wallet/data` configurado no `docker-compose.yml`.
-- Não exclua o banco SQLite nem o arquivo `.api-credentials.key`, pois eles armazenam os dados da carteira e a chave local usada para criptografar credenciais.
-- A aplicação é publicada na porta `8085` do host.
-- Configure os tokens dos provedores na aba **APIs**. A cobertura depende do plano e do suporte de cada endpoint ao ticker.
+- Controles **Ativar/Desativar** para APIs com credenciais. Desativar preserva o token criptografado; Remover continua sendo uma ação separada.
+- A desativação da brapi também impede o uso de um token configurado por variável de ambiente como fallback.
+- Melhor conciliação de operações Pluggy com lançamentos já importados da B3, considerando ticker, lado, quantidade, proximidade de data e valor financeiro.
+- Na sincronização, reconcilia duplicatas antigas somente quando encontra exatamente uma operação B3 correspondente; a operação Pluggy duplicada é removida e a movimentação é vinculada à operação B3 preservada.
+- Conciliação de proventos com tolerância pequena de data e valor para reduzir duplicações entre B3 e Pluggy.
+- O resumo da sincronização informa quantas duplicatas antigas Pluggy/B3 foram reconciliadas.
+- Ajuste da escala vertical do gráfico consolidado quando só existe o ponto atual, evitando rótulos repetidos por arredondamento.
 
-## Integridade dos dados
+## Dados e atualização
 
-- A sincronização de proventos usa uma chave de evento e uma deduplicação adicional por ticker, data de pagamento e valor total.
-- A integração complementar Alpha Vantage depende de token configurado e da cobertura do endpoint `DIVIDENDS` para o ticker.
-- Fontes que não oferecem datas de pagamento confiáveis não são tratadas como confirmação de provento recebido ou futuro.
+Preserve integralmente o volume persistente `/DATA/AppData/lonely-wallet/data:/data`, incluindo `/data/carteira.db` e `/data/.api-credentials.key`. Não apague nem recrie esses arquivos ao atualizar.
 
+Porta externa recomendada no ZimaOS: `8085`, apontando para a porta interna `8080`. Fuso: `America/Sao_Paulo`.
 
-## v2.0.74
+## Limites de validação
 
-- Corrige o gráfico de rentabilidade para exibir a série histórica mensal da carteira quando "Todos os tipos" estiver selecionado.
-- Permite exibir as séries dos índices selecionados junto à carteira, sem exigir a seleção de uma classe específica.
-- Resume o status da sincronização de proventos na tela principal.
-- Move erros e avisos detalhados dos provedores para uma seção técnica expansível, sem expor uma longa mensagem na página.
-
-
-## v2.0.77
-- Integração pessoal MeuPluggy com cadastro local de itemIds, sincronização de contas, investimentos e transações.
-- Conciliação de compras/vendas de investimentos com lançamentos manuais e B3.
-- Proteção contra duplicidade de proventos por origem, ticker, data e valor.
-
-
-## v3.0.1
-- Separa visualmente a Pluggy em uma área própria de Open Finance, fora das APIs de mercado e indicadores.
-- Exibe diagnóstico resumido das conexões Pluggy: dados recebidos, sincronização sem dados ou aguardando primeira sincronização.
-- A curva de rentabilidade histórica passa a ser exibida quando houver meses calculáveis, mesmo com cobertura parcial, com aviso explícito e identificação dos ativos sem histórico.
-- Mantém o retorno consolidado atual separado da curva histórica parcial.
-
-
-## v3.0.2
-- O gráfico de rentabilidade em “Todos os tipos” agora usa o mesmo retorno consolidado atual exibido no Resumo, evitando comparar a carteira inteira com uma curva histórica parcial de apenas alguns ativos.
-- A comparação com índices fica desativada no modo consolidado enquanto não houver histórico completo; por classe, a série histórica e a comparação permanecem disponíveis.
-- O card Pluggy ocupa toda a largura disponível na seção Open Finance.
-- O diagnóstico distingue item cadastrado ainda não sincronizado de sincronização executada sem dados.
-- Exibe também a quantidade de movimentações de investimento, separada das transações bancárias.
-- A sincronização sem dados deixa de apresentar mensagem de sucesso genérica e informa que a API não retornou registros.
+A versão foi verificada por compilação sintática Python, verificação sintática do JavaScript inline e integridade do ZIP. O ambiente de preparação não possui Flask instalado, portanto não foi possível executar o aplicativo completo nem testar conexões reais com provedores externos. A reconciliação automática remove apenas linhas originadas pela Pluggy com uma única correspondência inequívoca da B3; casos ambíguos permanecem intactos para revisão.

@@ -359,6 +359,13 @@ def _get_api_token(provider):
 
 
 def _brapi_token():
+    # Um token cadastrado e desativado deve prevalecer sobre o fallback do ambiente.
+    try:
+        row = db().execute('SELECT enabled FROM api_credentials WHERE provider=?', ('brapi',)).fetchone()
+        if row is not None and not row['enabled']:
+            return ''
+    except Exception:
+        pass
     return _get_api_token('brapi') or TOKEN
 
 
@@ -488,6 +495,49 @@ def _pluggy_ticker(investment):
     return ''
 
 
+def _reconcile_existing_pluggy_b3_duplicates():
+    """Remove apenas operações criadas pela Pluggy que duplicam uma linha B3 inequívoca."""
+    pluggy_rows = db().execute(
+        "SELECT * FROM operacoes WHERE detalhes LIKE '%Pluggy%' ORDER BY id"
+    ).fetchall()
+    removed = 0
+    for pluggy_op in pluggy_rows:
+        details = str(pluggy_op['detalhes'] or '')
+        if 'Importação B3' in details or 'Importacao B3' in details:
+            continue
+        ticker = str(pluggy_op['ticker'] or '').upper()
+        side = str(pluggy_op['lado'] or '').lower()
+        trade_date = str(pluggy_op['data'] or '')[:10]
+        qty = float(pluggy_op['quantidade'] or 0)
+        amount = qty * float(pluggy_op['preco'] or 0)
+        if not ticker or not trade_date or qty <= 0 or amount <= 0:
+            continue
+        candidates = db().execute(
+            """SELECT * FROM operacoes
+               WHERE id<>? AND UPPER(ticker)=? AND lower(lado)=?
+                 AND detalhes LIKE '%Importação B3%'
+                 AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+                 AND ABS(quantidade-?)<=?
+                 AND ABS((quantidade*preco)-?)<=MAX(1.00,?*0.01)""",
+            (pluggy_op['id'], ticker, side, trade_date, trade_date, qty,
+             max(0.00001, qty * 0.001), amount, amount)
+        ).fetchall()
+        if len(candidates) != 1:
+            continue
+        b3_op = candidates[0]
+        db().execute(
+            """UPDATE pluggy_investment_transactions
+               SET import_state='matched_existing', imported_operation_id=?, updated_at=?
+               WHERE imported_operation_id=?""",
+            (int(b3_op['id']), datetime.now(TZ).isoformat(timespec='seconds'), int(pluggy_op['id']))
+        )
+        db().execute('DELETE FROM operacoes WHERE id=?', (int(pluggy_op['id']),))
+        removed += 1
+    if removed:
+        db().commit()
+    return removed
+
+
 def _pluggy_import_investment_transaction(item_id, investment, movement, now_text):
     external_id = str(movement.get('id') or '').strip()
     if not external_id:
@@ -508,13 +558,23 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
         asset_type = _pluggy_asset_type(investment)
         # Match manual/B3 entries before inserting. A small tolerance handles
         # rounding differences between the broker and the spreadsheet export.
+        # A B3 e a Pluggy podem registrar a mesma execução com pequena diferença
+        # de data (negociação/liquidação) e arredondamento do preço unitário.
+        # Exigimos ticker, lado, quantidade e valor financeiro próximos para evitar
+        # associar operações diferentes do mesmo ativo.
+        amount_for_match = amount if amount > 0 else qty * price
         existing = db().execute(
             """SELECT id FROM operacoes
-               WHERE UPPER(ticker)=? AND lower(lado)=? AND data=?
+               WHERE UPPER(ticker)=? AND lower(lado)=?
+                 AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
                  AND ABS(quantidade-?)<=?
-                 AND ABS(preco-?)<=0.03
-               ORDER BY id LIMIT 1""",
-            (ticker, side, trade_date, qty, max(0.00001, qty * 0.001), price)
+                 AND (
+                   ABS(preco-?)<=0.03 OR
+                   ABS((quantidade*preco)-?)<=MAX(1.00,?*0.01)
+                 )
+               ORDER BY ABS(julianday(data)-julianday(?)), id LIMIT 1""",
+            (ticker, side, trade_date, trade_date, qty, max(0.00001, qty * 0.001),
+             price, amount_for_match, amount_for_match, trade_date)
         ).fetchone()
         if existing:
             imported_operation_id = int(existing['id'])
@@ -556,14 +616,16 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
     text_for_income = (movement_type + ' ' + description).upper()
     if any(marker in text_for_income for marker in income_markers) and ticker and trade_date and amount > 0:
         duplicate = db().execute(
-            """SELECT id FROM proventos WHERE UPPER(ticker)=? AND data=?
-               AND ABS(valor_total-?)<=0.02 LIMIT 1""",
-            (ticker, trade_date, amount)
+            """SELECT id FROM proventos WHERE UPPER(ticker)=?
+               AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+               AND ABS(valor_total-?)<=MAX(0.05,?*0.01) LIMIT 1""",
+            (ticker, trade_date, trade_date, amount, amount)
         ).fetchone()
         api_duplicate = db().execute(
             """SELECT event_key FROM proventos_api WHERE UPPER(ticker)=?
-               AND data_pagamento=? AND ABS(valor_total-?)<=0.02 LIMIT 1""",
-            (ticker, trade_date, amount)
+               AND date(data_pagamento) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+               AND ABS(valor_total-?)<=MAX(0.05,?*0.01) LIMIT 1""",
+            (ticker, trade_date, trade_date, amount, amount)
         ).fetchone()
         if duplicate or api_duplicate:
             state = 'provento_duplicado_ignorado'
@@ -668,10 +730,11 @@ def pluggy_sync():
         return json_error('Adicione ao menos um itemId do MeuPluggy antes de sincronizar.')
     summary = {'items':0,'accounts':0,'investments':0,'transactions':0,
                'investment_transactions':0,'operations_imported':0,'operations_matched':0,
-               'dividends_imported':0,'duplicates_ignored':0,'warnings':[]}
+               'dividends_imported':0,'duplicates_ignored':0,'b3_duplicates_reconciled':0,'warnings':[]}
     now_text = datetime.now(TZ).isoformat(timespec='seconds')
     try:
         _pluggy_api_key()
+        summary['b3_duplicates_reconciled'] = _reconcile_existing_pluggy_b3_duplicates()
         for local_item in items:
             item_id = local_item['item_id']
             item = _pluggy_request('GET', '/items/' + item_id)
@@ -762,7 +825,16 @@ def api_integrations_list():
         row = rows.get(key)
         token = _get_api_token(key) if meta['auth'] and key != 'pluggy' else ''
         pluggy_credentials = _get_pluggy_credentials() if key == 'pluggy' else {}
-        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':bool(pluggy_credentials.get('client_id') and pluggy_credentials.get('client_secret')) if key == 'pluggy' else bool(token), 'enabled':bool(row['enabled']) if row else bool(token or pluggy_credentials), 'masked':('••••••••' + token[-4:]) if token else '', 'client_id_masked':(('••••••••' + pluggy_credentials.get('client_id','')[-4:]) if pluggy_credentials.get('client_id') else ''), 'updated_at':row['updated_at'] if row else None})
+        configured = bool(row) if key == 'pluggy' else bool(row)
+        if row and meta['auth'] and key != 'pluggy' and not token:
+            try: token = _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
+            except Exception: token = ''
+        if row and key == 'pluggy' and not pluggy_credentials:
+            try:
+                packed = _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
+                pluggy_credentials = json.loads(packed)
+            except Exception: pluggy_credentials = {}
+        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':configured, 'enabled':bool(row['enabled']) if row else bool(token or pluggy_credentials), 'masked':('••••••••' + token[-4:]) if token else '', 'client_id_masked':(('••••••••' + pluggy_credentials.get('client_id','')[-4:]) if pluggy_credentials.get('client_id') else ''), 'updated_at':row['updated_at'] if row else None})
     return jsonify({'providers':providers})
 
 
@@ -777,6 +849,16 @@ def api_integrations_save(provider):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True})
     payload = request.get_json(silent=True) or {}
+    if 'enabled' in payload and not any(k in payload for k in ('token','client_id','client_secret')):
+        enabled = 1 if bool(payload.get('enabled')) else 0
+        db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?',
+                     (enabled, datetime.now(TZ).isoformat(timespec='seconds'), provider))
+        db().commit()
+        if provider == 'pluggy' and not enabled:
+            PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
+        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
+        return jsonify({'ok':True,'enabled':bool(enabled),'configured':bool(db().execute('SELECT 1 FROM api_credentials WHERE provider=?',(provider,)).fetchone())})
     if provider == 'pluggy':
         client_id = str(payload.get('client_id') or '').strip()
         client_secret = str(payload.get('client_secret') or '').strip()
