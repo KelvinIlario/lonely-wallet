@@ -3445,12 +3445,12 @@ function setReturnCardBenchmark(cardKey,value){
  updateReturnCardComparisons();
 }
 function toggleReturnSeries(code){
- if(code==='portfolio'||!RETURN_BENCHMARKS.includes(code))return;
+ if(code!=='portfolio'&&!RETURN_BENCHMARKS.includes(code))return;
  if(returnVisibleSeries.has(code))returnVisibleSeries.delete(code);else returnVisibleSeries.add(code);
  renderRentabilidadePage();
- if(!returnIndexSeries(code).length){
+ if(code!=='portfolio'&&!returnIndexSeries(code).length){
   const note=document.getElementById('returnChartNote');
-  if(note)note.textContent=`${code} foi selecionado, mas a fonte não retornou dados históricos para o período. A seleção está ativa e será exibida assim que houver dados disponíveis.`;
+  if(note)note.textContent=`${code} foi selecionado, mas não há série histórica disponível para o período. A seleção continua ativa e será exibida quando a fonte responder.`;
  }
 }
 function returnIndexSeries(code){
@@ -3458,39 +3458,53 @@ function returnIndexSeries(code){
 }
 function benchmarkReturnFor(code,fromKey,toKey){
  const series=returnIndexSeries(code).slice().sort((a,b)=>a.mes.localeCompare(b.mes));
- if(!series.length)return null;
- const eligible=series.filter(x=>x.mes<=toKey),last=eligible[eligible.length-1];
+ if(!series.length||!fromKey||!toKey)return null;
+ const eligible=series.filter(x=>x.mes<=toKey);
+ const last=eligible[eligible.length-1];
+ const previous=series.filter(x=>x.mes<fromKey).slice(-1)[0];
  const first=series.find(x=>x.mes>=fromKey&&x.mes<=toKey);
  if(!first||!last)return null;
- const previous=series.filter(x=>x.mes<first.mes).slice(-1)[0];
+ // Para séries de preços, o fechamento anterior é necessário para calcular o retorno do período.
+ if(!previous&&!['CDI','IPCA'].includes(code))return null;
  const baseFactor=previous?1+Number(previous.valor)/100:1;
  const endFactor=1+Number(last.valor)/100;
- if(!(baseFactor>0))return null;
+ if(!(baseFactor>0)||!Number.isFinite(endFactor))return null;
  return (endFactor/baseFactor-1)*100;
 }
 function updateReturnCardComparisons(){
  const performance=getReturnPerformance(),monthly=returnMonthlyRows(performance);
- if(!monthly.length)return;
- const last=monthly[monthly.length-1];
- const first=monthly[0];
- const totalStart=first.year+'-'+String(first.month).padStart(2,'0');
- const lastKey=last.year+'-'+String(last.month).padStart(2,'0');
- const twelveStartRow=monthly[Math.max(0,monthly.length-12)];
- const twelveStart=twelveStartRow.year+'-'+String(twelveStartRow.month).padStart(2,'0');
- const portfolioTotal=Number(performance.rentabilidade_total??0);
- const portfolio12=performance.rentabilidade_12m===null||performance.rentabilidade_12m===undefined?null:Number(performance.rentabilidade_12m);
- const portfolioMonth=Number(last.monthly);
- const values={total:{start:totalStart,end:lastKey,portfolio:portfolioTotal},'12m':{start:twelveStart,end:lastKey,portfolio:portfolio12},month:{start:lastKey,end:lastKey,portfolio:portfolioMonth}};
+ const now=new Date(),currentKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+ const completed=monthly.filter(row=>(row.year+'-'+String(row.month).padStart(2,'0'))<currentKey);
+ const first=monthly[0]||null,lastCompleted=completed[completed.length-1]||null;
+ const totalStart=first?first.year+'-'+String(first.month).padStart(2,'0'):null;
+ const totalEnd=monthly.length?monthly[monthly.length-1].year+'-'+String(monthly[monthly.length-1].month).padStart(2,'0'):null;
+ const monthKey=lastCompleted?lastCompleted.year+'-'+String(lastCompleted.month).padStart(2,'0'):null;
+ const twelveRows=completed.slice(-12);
+ const twelveContinuous=twelveRows.length===12&&twelveRows.every((row,index)=>index===0||(row.year*12+row.month)===(twelveRows[index-1].year*12+twelveRows[index-1].month+1));
+ const twelveStart=twelveContinuous?twelveRows[0].year+'-'+String(twelveRows[0].month).padStart(2,'0'):null;
+ const twelveEnd=twelveContinuous?twelveRows[11].year+'-'+String(twelveRows[11].month).padStart(2,'0'):null;
+ const twelveFactor=twelveContinuous?twelveRows.reduce((factor,row)=>factor*(1+Number(row.monthly)/100),1):null;
+ const portfolioTotal=performance.rentabilidade_total===null||performance.rentabilidade_total===undefined?null:Number(performance.rentabilidade_total);
+ const portfolio12=twelveFactor===null?null:(twelveFactor-1)*100;
+ const portfolioMonth=lastCompleted?Number(lastCompleted.monthly):null;
+ const values={
+  total:{start:totalStart,end:totalEnd,portfolio:portfolioTotal},
+  '12m':{start:twelveStart,end:twelveEnd,portfolio:portfolio12},
+  month:{start:monthKey,end:monthKey,portfolio:portfolioMonth}
+ };
  for(const key of ['total','12m','month']){
   const select=document.getElementById('returnBenchmark_'+key),status=document.getElementById('returnBenchmarkStatus_'+key);
   if(!select||!status)continue;
   const code=select.value||'CDI',range=values[key];
-  const benchmark=range.portfolio===null?null:benchmarkReturnFor(code,range.start,range.end);
+  const benchmark=range.portfolio===null||!range.start||!range.end?null:benchmarkReturnFor(code,range.start,range.end);
   if(benchmark===null||!Number.isFinite(benchmark)){
-   status.textContent=`${code}: série histórica indisponível para este período.`;
+   const detail=returnBenchmarkData?.meta?.[code]?.last_available;
+   status.textContent=range.portfolio===null
+    ?(key==='12m'?'Ainda não há 12 meses fechados de histórico.':key==='month'?'Não há mês fechado com histórico suficiente.':'Histórico total da carteira indisponível.')
+    :code+': série histórica indisponível para este período'+(detail?' · último dado '+detail:'')+'.';
   }else{
    const delta=range.portfolio-benchmark;
-   status.textContent=`${code}: ${pct(benchmark)} · Carteira ${Math.abs(delta).toFixed(2).replace('.',',')} p.p. ${delta>=0?'acima':'abaixo'}`;
+   status.textContent=code+': '+pct(benchmark)+' · Carteira '+Math.abs(delta).toFixed(2).replace('.',',')+' p.p. '+(delta>=0?'acima':'abaixo');
   }
  }
 }
@@ -3522,22 +3536,32 @@ function renderRentabilidadePage(){
  const monthly=returnMonthlyRows(performance);
  const period=document.getElementById('returnPeriodFilter')?.value||'all';
  const visible=period==='12'?monthly.slice(-12):monthly;
- const last=monthly.length?monthly[monthly.length-1].monthly:null;
+ const now=new Date(),currentKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+ const completed=monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<currentKey);
+ const lastComplete=completed[completed.length-1]||null;
+ const last=lastComplete?Number(lastComplete.monthly):null;
+ const twelveRows=completed.slice(-12);
+ const twelveContinuous=twelveRows.length===12&&twelveRows.every((row,index)=>index===0||(row.year*12+row.month)===(twelveRows[index-1].year*12+twelveRows[index-1].month+1));
+ const twelve=twelveContinuous?(twelveRows.reduce((factor,row)=>factor*(1+Number(row.monthly)/100),1)-1)*100:null;
  const summary=state.resumo||{};
- const total=performance.rentabilidade_total!==undefined&&performance.rentabilidade_total!==null?Number(performance.rentabilidade_total):Number(summary.lucro_pct||0);
- const twelve=performance.rentabilidade_12m!==undefined&&performance.rentabilidade_12m!==null?Number(performance.rentabilidade_12m):null;
+ const total=performance.rentabilidade_total!==undefined&&performance.rentabilidade_total!==null?Number(performance.rentabilidade_total):null;
  const cards=document.getElementById('returnSummaryCards');
  if(cards)cards.innerHTML=`
-  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total>=0?'green':'red'}">${pct(total)} ${total>=0?'↗':'↘'}</strong><small>Resultado financeiro: ${brl(summary.lucro||0)}</small>${returnBenchmarkSelectHTML('total')}</div>
-  <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${twelve===null?'':twelve>=0?'green':'red'}">${twelve===null?'—':`${pct(twelve)} ${twelve>=0?'↗':'↘'}`}</strong><small>${twelve===null?'Não há 12 meses completos de histórico':'Retorno acumulado no período'}</small>${returnBenchmarkSelectHTML('12m')}</div>
-  <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':`${pct(last)} ${last>=0?'↗':'↘'}`}</strong><small>${last===null?'Histórico mensal indisponível':'Retorno do último mês calculado'}</small>${returnBenchmarkSelectHTML('month')}</div>`;
+  <div class="panel return-summary-card"><b>Rentabilidade total</b><span>Rentabilidade</span><strong class="${total===null?'':total>=0?'green':'red'}">${total===null?'—':pct(total)+' '+(total>=0?'↗':'↘')}</strong><small>${performance.resultado_por_saldo_base?'Retorno atual sobre o saldo-base importado':'Resultado financeiro: '+brl(summary.lucro||0)}</small>${returnBenchmarkSelectHTML('total')}</div>
+  <div class="panel return-summary-card"><b>Últimos 12 meses</b><span>Rentabilidade</span><strong class="${twelve===null?'':twelve>=0?'green':'red'}">${twelve===null?'—':pct(twelve)+' '+(twelve>=0?'↗':'↘')}</strong><small>${twelve===null?'Exige 12 meses fechados de histórico':'Retorno composto dos 12 últimos meses fechados'}</small>${returnBenchmarkSelectHTML('12m')}</div>
+  <div class="panel return-summary-card"><b>Último mês</b><span>Rentabilidade</span><strong class="${last===null?'':last>=0?'green':'red'}">${last===null?'—':pct(last)+' '+(last>=0?'↗':'↘')}</strong><small>${lastComplete?'Último mês fechado: '+String(lastComplete.month).padStart(2,'0')+'/'+lastComplete.year:'Histórico mensal indisponível'}</small>${returnBenchmarkSelectHTML('month')}</div>`;
  const labelsX=visible.map(x=>`${String(x.month).padStart(2,'0')}/${String(x.year).slice(-2)}`);
  const visibleFirstKey=visible.length?visible[0].year+'-'+String(visible[0].month).padStart(2,'0'):'';
  const priorPortfolioRow=period==='12'&&visible.length?monthly.filter(x=>(x.year+'-'+String(x.month).padStart(2,'0'))<visibleFirstKey).slice(-1)[0]:null;
  const portfolioBase=priorPortfolioRow?1+priorPortfolioRow.cumulative/100:1;
  const values=visible.map(x=>Number((((1+x.cumulative/100)/portfolioBase-1)*100).toFixed(4)));
  const note=document.getElementById('returnChartNote');
- if(note)note.textContent='Clique nos nomes dos índices para exibir ou ocultar cada série. Se uma linha não aparecer, a fonte ainda não disponibilizou dados históricos para o período selecionado.';
+ if(note){
+  const activeSources=RETURN_BENCHMARKS.filter(code=>returnVisibleSeries.has(code)&&returnBenchmarkData?.meta?.[code]).map(code=>code+': '+returnBenchmarkData.meta[code].source+(returnBenchmarkData.meta[code].last_available?' · até '+returnBenchmarkData.meta[code].last_available:'')+(returnBenchmarkData.meta[code].sample?' · amostra de 30 pregões':''));
+  const ipcaLast=returnBenchmarkData?.meta?.IPCA?.last_available;
+  const ipcaInfo=ipcaLast?' IPCA disponível até '+ipcaLast+'; a competência atual só aparece após divulgação oficial.':'';
+  note.textContent='Clique nos nomes, inclusive Rentabilidade, para exibir ou ocultar cada série. Dados ausentes não são interpolados.'+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
+ }
  // A ausência temporária de dados não deve bloquear a interação da legenda.
  const datasets=[];
  if(returnVisibleSeries.has('portfolio'))datasets.push({label:'Rentabilidade',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
@@ -3554,8 +3578,10 @@ function renderRentabilidadePage(){
  if(legend)legend.querySelectorAll('button[data-series]').forEach(button=>{
   const active=returnVisibleSeries.has(button.dataset.series);
   button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
-  const availableSeries=button.dataset.series==='portfolio'||returnIndexSeries(button.dataset.series).length>0;
-  button.title=availableSeries?'Clique para exibir ou ocultar esta série':'Sem dados históricos disponíveis no momento; clique para tentar exibir quando a fonte responder';
+  const code=button.dataset.series;
+  const availableSeries=code==='portfolio'||returnIndexSeries(code).length>0;
+  const meta=returnBenchmarkData?.meta?.[code];
+  button.title=code==='portfolio'?'Clique para exibir ou ocultar a rentabilidade da carteira':meta?'Fonte: '+meta.source+' · último dado: '+(meta.last_available||'indisponível')+(meta.sample?' · amostra recente':''):availableSeries?'Clique para exibir ou ocultar esta série':'Sem dados históricos disponíveis no momento; clique para exibir quando a fonte responder';
   button.disabled=false;button.setAttribute('aria-disabled','false');
  });
  const yearGroups=new Map();
@@ -3765,7 +3791,8 @@ const API_PROVIDER_FALLBACK=[
  {id:'tesouro',name:'Tesouro Transparente',category:'Brasil · títulos públicos',description:'Dados abertos de taxas e preços diários de títulos do Tesouro Direto e relatórios da dívida pública. Sem token.',auth:false,url:'https://www.tesourotransparente.gov.br/temas/divida-publica-federal/tesouro-direto',docs:'https://www.tesourotransparente.gov.br/ckan/dataset'},
  {id:'cvm',name:'CVM Dados Abertos',category:'Brasil · fundos e demonstrações',description:'Dados públicos de fundos, informes e demonstrações financeiras. Não é uma API de cotação em tempo real; não exige token.',auth:false,url:'https://dados.cvm.gov.br/',docs:'https://dados.cvm.gov.br/'},
  {id:'b3',name:'B3 · APIs oficiais',category:'Brasil · dados oficiais',description:'Posições, movimentações, eventos provisionados e negociação. Exige contratação/licença B2B e autorização do investidor.',auth:false,url:'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/b3-for-developers/',docs:'https://developers.b3.com.br/apis'},
- {id:'yahoo',name:'Yahoo Finance',category:'Global · fonte complementar',description:'Histórico e cotações por endpoints não oficiais. Não há API pública oficial com garantia de disponibilidade ou licença comercial.',auth:false,url:'https://finance.yahoo.com/',docs:'https://finance.yahoo.com/'}
+ {id:'yahoo',name:'Yahoo Finance',category:'Global · fonte complementar',description:'Histórico e cotações por endpoints não oficiais. Não há API pública oficial com garantia de disponibilidade ou licença comercial.',auth:false,url:'https://finance.yahoo.com/',docs:'https://finance.yahoo.com/'},
+ {id:'dadosb3',name:'Dados B3 · Índices históricos',connected:true,category:'Brasil · índices de retorno total',description:'Séries diárias de IBOV, IFIX, SMLL e IDIV, com retorno total. Sem chave, a API libera apenas os últimos 30 pregões; a chave grátis libera a série completa (200 consultas/dia). Serviço independente que organiza dados públicos da B3, não é a API oficial da B3.',auth:true,url:'https://dadosb3.com/chave-gratis?de=api',docs:'https://dadosb3.com/api'}
 ];
 let apiProviders=[];
 async function loadAPIProviders(){

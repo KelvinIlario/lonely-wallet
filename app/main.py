@@ -249,6 +249,7 @@ API_PROVIDERS = {
     'cvm': {'name':'CVM Dados Abertos', 'category':'Brasil · fundos e demonstrações', 'description':'Dados públicos de fundos, informes e demonstrações financeiras. Não é uma API de cotação em tempo real; acesso aos conjuntos públicos não exige token.', 'auth':False, 'url':'https://dados.cvm.gov.br/', 'docs':'https://dados.cvm.gov.br/'},
     'b3': {'name':'B3 · APIs oficiais', 'category':'Brasil · dados oficiais de mercado e investidor', 'description':'Posições, movimentações, eventos provisionados e negociação. Exige contratação/licença e autorização do investidor; a B3 informa que as APIs do catálogo são voltadas a clientes B2B.', 'auth':False, 'url':'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/b3-for-developers/', 'docs':'https://developers.b3.com.br/apis'},
     'yahoo': {'name':'Yahoo Finance', 'category':'Global · fonte complementar', 'description':'Histórico e cotações usados como fonte complementar por endpoints não oficiais. Não há API pública oficial com garantia de disponibilidade ou licença para uso comercial.', 'auth':False, 'url':'https://finance.yahoo.com/', 'docs':'https://finance.yahoo.com/'},
+    'dadosb3': {'name':'Dados B3 · Índices históricos', 'category':'Brasil · índices de retorno total', 'description':'Séries diárias de IBOV, IFIX, SMLL e IDIV, com retorno total. Sem chave, a API libera apenas os últimos 30 pregões; a chave grátis libera a série completa (200 consultas/dia). Serviço independente que organiza dados públicos da B3, não é a API oficial da B3.', 'auth':True, 'url':'https://dadosb3.com/chave-gratis?de=api', 'docs':'https://dadosb3.com/api'},
 }
 
 
@@ -287,7 +288,7 @@ def api_integrations_list():
     for key, meta in API_PROVIDERS.items():
         row = rows.get(key)
         token = _get_api_token(key) if meta['auth'] else ''
-        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb'), 'configured':bool(token), 'enabled':bool(row['enabled']) if row else bool(token), 'masked':('••••••••' + token[-4:]) if token else '', 'updated_at':row['updated_at'] if row else None})
+        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':bool(token), 'enabled':bool(row['enabled']) if row else bool(token), 'masked':('••••••••' + token[-4:]) if token else '', 'updated_at':row['updated_at'] if row else None})
     return jsonify({'providers':providers})
 
 
@@ -297,8 +298,8 @@ def api_integrations_save(provider):
         return jsonify({'error':'Este provedor não aceita token nesta tela.'}), 400
     if request.method == 'DELETE':
         db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); db().commit()
-        if provider in ('brapi','hgbrasil'):
-            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE['data'].clear()
+        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear()
         return jsonify({'ok':True})
     payload = request.get_json(silent=True) or {}
     token = str(payload.get('token') or '').strip()
@@ -309,8 +310,8 @@ def api_integrations_save(provider):
     else:
         db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
     db().commit()
-    if provider in ('brapi','hgbrasil'):
-        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE['data'].clear()
+    if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear()
     return jsonify({'ok':True,'configured':bool(_get_api_token(provider))})
 
 
@@ -334,11 +335,15 @@ def api_integrations_test(provider):
             response = requests.get('https://www.alphavantage.co/query', params={'function':'GLOBAL_QUOTE','symbol':'IBM','apikey':token}, timeout=15)
         elif provider == 'fred':
             response = requests.get('https://api.stlouisfed.org/fred/series', params={'series_id':'GDP','api_key':token,'file_type':'json'}, timeout=15)
+        elif provider == 'dadosb3':
+            response = requests.get('https://dadosb3.com/indices/IFIX/precos', headers={'X-API-Key':token}, timeout=15)
         response.raise_for_status()
         data = response.json()
         if provider == 'twelvedata' and data.get('status') == 'error': raise ValueError(data.get('message') or 'A API retornou erro.')
         if provider == 'alphavantage' and (data.get('Error Message') or data.get('Note') or data.get('Information')): raise ValueError(data.get('Error Message') or data.get('Note') or data.get('Information'))
         if provider == 'hgbrasil' and data.get('valid_key') is False: raise ValueError('A chave foi recusada pela HG Brasil.')
+        if provider == 'dadosb3' and (data.get('amostra') or not isinstance(data.get('serie'), list) or len(data.get('serie') or []) < 2):
+            raise ValueError('A chave ainda não liberou o histórico completo. Verifique a chave e tente novamente.')
         return jsonify({'ok':True,'message':'Conexão autenticada. A cobertura de cada ticker e endpoint ainda depende do plano e do provedor.'})
     except (requests.RequestException, ValueError) as exc:
         message = str(exc)[:240] or 'Não foi possível validar a integração.'
@@ -1920,89 +1925,352 @@ def _benchmark_monthly_brapi(symbol, start_date, end_date, token):
     return [{'mes':key,'valor':round((value/base-1)*100,4)} for key,value in ordered if base>0]
 
 
+
+def _benchmark_monthly_ibge_ipca(start_date, end_date):
+    """Consulta de conferência do IPCA no SIDRA/IBGE (tabela 1737, variável 63)."""
+    start = date.fromisoformat(str(start_date)[:10])
+    end = date.fromisoformat(str(end_date)[:10])
+    first_period = start.year * 100 + start.month
+    last_period = end.year * 100 + end.month
+    response = requests.get(
+        f'https://apisidra.ibge.gov.br/values/t/1737/n1/1/v/63/p/{first_period}-{last_period}',
+        headers={'User-Agent': 'LonelyWallet/2.0.56'},
+        timeout=20
+    )
+    response.raise_for_status()
+    rows = response.json()
+    if not isinstance(rows, list) or len(rows) < 2:
+        return None
+    monthly = {}
+    for row in rows[1:]:
+        try:
+            period = str(row.get('D3C') or row.get('D1C') or '')
+            raw_value = str(row.get('V') or '').strip()
+            if len(period) != 6 or not period.isdigit() or raw_value in ('', '-', '...', 'X'):
+                continue
+            monthly[f'{period[:4]}-{period[4:6]}'] = float(raw_value.replace(',', '.'))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    factor = 1.0
+    output = []
+    for key in sorted(monthly):
+        factor *= 1 + monthly[key] / 100.0
+        output.append({'mes': key, 'valor': round((factor - 1) * 100, 4)})
+    return output or None
+
+
+def _benchmark_monthly_prices(points):
+    """Converte fechamentos diários em fechamento mensal e retorno acumulado."""
+    by_month = {}
+    for point_date, close in points:
+        try:
+            if not isinstance(point_date, date):
+                point_date = date.fromisoformat(str(point_date)[:10])
+            price = float(close)
+            if price > 0:
+                by_month[point_date.strftime('%Y-%m')] = price
+        except (TypeError, ValueError):
+            continue
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    if base <= 0:
+        return None
+    return [{'mes': key, 'valor': round((value / base - 1) * 100, 4)} for key, value in ordered]
+
+
+def _benchmark_monthly_dadosb3(code, start_date, end_date, token=''):
+    """Série de fechamento de índice da API Dados B3; usa a chave no cabeçalho X-API-Key."""
+    params = {
+        'de': date.fromisoformat(str(start_date)[:10]).isoformat(),
+        'ate': date.fromisoformat(str(end_date)[:10]).isoformat()
+    }
+    headers = {'X-API-Key': token} if token else {}
+    response = requests.get(
+        f'https://dadosb3.com/indices/{code}/precos',
+        params=params,
+        headers=headers,
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    rows = payload.get('serie') or []
+    if not isinstance(rows, list) or not rows:
+        return None
+    points = []
+    for row in rows:
+        try:
+            point_date = date.fromisoformat(str(row.get('data') or '')[:10])
+            close = float(row.get('fechamento') or 0)
+            if close > 0:
+                points.append((point_date, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    data = _benchmark_monthly_prices(points)
+    if not data:
+        return None
+    return {
+        'data': data,
+        'sample': bool(payload.get('amostra')),
+        'as_of': payload.get('ate') or data[-1]['mes'],
+        'note': payload.get('nota') or '',
+        'citation': payload.get('fonte') or 'Dados B3'
+    }
+
+
+def _benchmark_monthly_twelvedata(symbol, start_date, end_date, token):
+    """Série mensal ajustada quando o plano Twelve Data oferece o ativo/mercado."""
+    response = requests.get(
+        'https://api.twelvedata.com/time_series',
+        params={'symbol': symbol, 'exchange': 'BVMF', 'interval': '1month',
+                'outputsize': 5000, 'apikey': token},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('status') == 'error' or not isinstance(payload.get('values'), list):
+        return None
+    points = []
+    for row in payload.get('values') or []:
+        try:
+            day = date.fromisoformat(str(row.get('datetime') or '')[:10])
+            close = float(row.get('adjusted_close') or row.get('close') or 0)
+            if close > 0:
+                points.append((day, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return _benchmark_monthly_prices(points)
+
+
+def _benchmark_monthly_alphavantage(symbol, start_date, end_date, token):
+    """Série mensal ajustada da Alpha Vantage; contingência para IVVB11."""
+    response = requests.get(
+        'https://www.alphavantage.co/query',
+        params={'function': 'TIME_SERIES_MONTHLY_ADJUSTED', 'symbol': symbol, 'apikey': token},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
+        return None
+    rows = payload.get('Monthly Adjusted Time Series') or {}
+    points = []
+    for day_text, row in rows.items():
+        try:
+            day = date.fromisoformat(str(day_text)[:10])
+            close = float(row.get('5. adjusted close') or row.get('4. close') or 0)
+            if close > 0:
+                points.append((day, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return _benchmark_monthly_prices(points)
+
+
+def _benchmark_latest_month(points):
+    return points[-1].get('mes') if points else None
+
+
+
 @app.route('/api/benchmarks')
 def api_benchmarks():
-    """Séries mensais de referência. Nenhuma série é simulada quando a fonte não responde."""
+    """Séries mensais com prioridade de fontes e procedência explícita; sem interpolação."""
     today = datetime.now(TZ).date()
     try:
-        start = date.fromisoformat(request.args.get('start', (today - timedelta(days=365 * 5)).isoformat())[:10])
+        requested_start = date.fromisoformat(
+            request.args.get('start', (today - timedelta(days=365 * 5)).isoformat())[:10]
+        )
     except (TypeError, ValueError):
-        start = today - timedelta(days=365 * 5)
-    start = max(start, date(1990, 1, 1))
-    cache_key = start.isoformat()
+        requested_start = today - timedelta(days=365 * 5)
+    requested_start = max(requested_start, date(1990, 1, 1))
+    # Busca meses anteriores para calcular o retorno do primeiro mês selecionado.
+    start = max(requested_start - timedelta(days=75), date(1990, 1, 1))
+    end = today
+    cache_key = requested_start.isoformat()
     cached = BENCHMARK_CACHE.get(cache_key)
     if cached and time.time() - cached['time'] < BENCHMARK_CACHE_TTL:
         return jsonify(cached['data'])
 
-    end = today
-    # Alguns índices da B3 possuem símbolos alternativos no Yahoo Finance.
-    # Tentamos cada alternativa em sequência, sem fabricar séries quando nenhuma responde.
-    index_symbols = {
+    series = {}
+    source_map = {}
+    metadata = {}
+    validation = {}
+    unavailable = []
+
+    # CDI/IPCA oficiais do BCB. O IPCA é mensal e só possui competências já divulgadas.
+    try:
+        cdi_data = _benchmark_monthly_bcb('CDI', start, end)
+    except (requests.RequestException, ValueError, TypeError):
+        cdi_data = None
+    if cdi_data:
+        series['CDI'] = cdi_data
+        source_map['CDI'] = 'Banco Central do Brasil · SGS 12'
+        metadata['CDI'] = {'source': source_map['CDI'], 'last_available': _benchmark_latest_month(cdi_data), 'observations': len(cdi_data)}
+    else:
+        unavailable.append('CDI')
+
+    try:
+        ipca_bcb = _benchmark_monthly_bcb('IPCA', start, end)
+    except (requests.RequestException, ValueError, TypeError):
+        ipca_bcb = None
+    try:
+        ipca_ibge = _benchmark_monthly_ibge_ipca(start, end)
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        ipca_ibge = None
+    if ipca_bcb:
+        series['IPCA'] = ipca_bcb
+        source_map['IPCA'] = 'Banco Central do Brasil · SGS 433'
+    elif ipca_ibge:
+        series['IPCA'] = ipca_ibge
+        source_map['IPCA'] = 'IBGE · SIDRA tabela 1737, variável 63'
+    else:
+        unavailable.append('IPCA')
+    if series.get('IPCA'):
+        metadata['IPCA'] = {
+            'source': source_map['IPCA'],
+            'last_available': _benchmark_latest_month(series['IPCA']),
+            'observations': len(series['IPCA']),
+            'note': 'O mês corrente só aparece depois da divulgação oficial do IPCA.'
+        }
+    if ipca_bcb and ipca_ibge:
+        bcb_map = {item['mes']: float(item['valor']) for item in ipca_bcb}
+        ibge_map = {item['mes']: float(item['valor']) for item in ipca_ibge}
+        overlap = sorted(set(bcb_map).intersection(ibge_map))
+        if overlap:
+            last_overlap = overlap[-1]
+            difference = abs(bcb_map[last_overlap] - ibge_map[last_overlap])
+            validation['IPCA'] = {
+                'status': 'conferido' if difference <= 0.02 else 'divergencia',
+                'mes': last_overlap,
+                'diferenca_pontos_percentuais': round(difference, 4),
+                'sources': ['BCB SGS 433', 'IBGE SIDRA 1737/63']
+            }
+
+    dadosb3_token = _get_api_token('dadosb3')
+    hg_token = _get_api_token('hgbrasil')
+    brapi_token = _brapi_token()
+    twelve_token = _get_api_token('twelvedata')
+    alpha_token = _get_api_token('alphavantage')
+
+    yahoo_symbols = {
         'IBOV': ['^BVSP', 'IBOV.SA'],
         'IFIX': ['IFIX.SA', '^IFIX'],
         'SMLL': ['SMLL.SA', '^SMLL'],
         'IDIV': ['IDIV.SA', '^IDIV'],
         'IVVB11': ['IVVB11.SA']
     }
-    series = {}
-    source_map = {}
-    unavailable = []
-    # CDI/IPCA são consultados diretamente nas séries oficiais do BCB.
-    for code in ('CDI', 'IPCA'):
-        try:
-            data = _benchmark_monthly_bcb(code, start, end)
-            if data:
-                series[code] = data
-            else:
-                unavailable.append(code)
-        except (requests.RequestException, ValueError, TypeError):
-            unavailable.append(code)
+    brapi_symbols = {
+        'IBOV': ['^BVSP', 'IBOV'],
+        'IFIX': ['IFIX', '^IFIX'],
+        'SMLL': ['SMLL', '^SMLL'],
+        'IDIV': ['IDIV', '^IDIV']
+    }
+    hg_symbols = {'IBOV': 'BVSP', 'IFIX': 'IFIX'}
 
-    hg_token = _get_api_token('hgbrasil')
-    brapi_token = _brapi_token()
-    hg_symbols = {'IBOV':'BVSP','IFIX':'IFIX'}
-    for code, symbols in index_symbols.items():
-        data = None
-        # HG Brasil possui endpoint histórico documentado para BVSP e IFIX.
-        if hg_token and code in hg_symbols:
+    for code in ('IBOV', 'IFIX', 'SMLL', 'IDIV', 'IVVB11'):
+        candidates = []
+        sample_candidate = None
+
+        # Dados B3: índice de retorno total, fonte prioritária para os índices nacionais.
+        if code in ('IBOV', 'IFIX', 'SMLL', 'IDIV'):
+            try:
+                result = _benchmark_monthly_dadosb3(code, start, end, dadosb3_token)
+                if result:
+                    candidate = {
+                        'data': result['data'],
+                        'source': 'Dados B3 · fechamento de índice de retorno total (dados públicos da B3)',
+                        'sample': result['sample'],
+                        'note': result.get('note') or '',
+                        'citation': result.get('citation') or 'Dados B3'
+                    }
+                    if result['sample']:
+                        sample_candidate = candidate
+                    else:
+                        candidates.append(candidate)
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                pass
+
+        # HG Brasil oferece histórico para IBOV e IFIX; a cobertura depende do plano.
+        if code in hg_symbols and hg_token:
             try:
                 data = _benchmark_monthly_hg(hg_symbols[code], start, end, hg_token)
                 if data:
-                    series[code] = data
-                    result_source = 'HG Brasil · histórico mensal'
+                    candidates.append({'data': data, 'source': 'HG Brasil · histórico mensal', 'sample': False})
             except (requests.RequestException, ValueError, TypeError, KeyError):
-                data = None
-        # O endpoint histórico da brapi pode complementar o Ibovespa quando houver cobertura no plano.
-        if not data and brapi_token and code == 'IBOV':
-            try:
-                data = _benchmark_monthly_brapi('^BVSP', start, end, brapi_token)
-                if data:
-                    series[code] = data
-                    result_source = 'brapi · histórico mensal (^BVSP)'
-            except (requests.RequestException, ValueError, TypeError, KeyError):
-                data = None
-        if not data:
-            for symbol in symbols:
+                pass
+
+        # brapi: tenta os códigos cobertos pelo plano; não se presume cobertura.
+        if brapi_token and code in brapi_symbols:
+            for symbol in brapi_symbols[code]:
                 try:
-                    data = _benchmark_monthly_from_yahoo(symbol, start, end)
+                    data = _benchmark_monthly_brapi(symbol, start, end, brapi_token)
                     if data:
-                        series[code] = data
-                        result_source = f"Yahoo Finance ({symbol})"
+                        candidates.append({'data': data, 'source': f'brapi · histórico mensal ({symbol})', 'sample': False})
                         break
                 except (requests.RequestException, ValueError, TypeError, KeyError):
                     continue
-        if data:
-            # Preserve the actual provider selected for this series.
-            source_map[code] = result_source
+
+        # IVVB11 é um ETF, não um índice. Provedores globais só entram como contingência.
+        if code == 'IVVB11' and twelve_token:
+            try:
+                data = _benchmark_monthly_twelvedata('IVVB11', start, end, twelve_token)
+                if data:
+                    candidates.append({'data': data, 'source': 'Twelve Data · IVVB11 ajustado (BVMF, se coberto)', 'sample': False})
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                pass
+        if code == 'IVVB11' and alpha_token:
+            for symbol in ('IVVB11.SAO', 'IVVB11.SA'):
+                try:
+                    data = _benchmark_monthly_alphavantage(symbol, start, end, alpha_token)
+                    if data:
+                        candidates.append({'data': data, 'source': f'Alpha Vantage · {symbol} ajustado', 'sample': False})
+                        break
+                except (requests.RequestException, ValueError, TypeError, KeyError):
+                    continue
+
+        # Yahoo Finance permanece como contingência não oficial para cobrir períodos maiores.
+        for symbol in yahoo_symbols.get(code, []):
+            try:
+                data = _benchmark_monthly_from_yahoo(symbol, start, end)
+                if data:
+                    candidates.append({'data': data, 'source': f'Yahoo Finance · {symbol} (complementar)', 'sample': False})
+                    break
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                continue
+
+        # Amostra pública Dados B3 é último recurso; sua limitação será informada na interface.
+        if sample_candidate:
+            candidates.append(sample_candidate)
+
+        if candidates:
+            chosen = candidates[0]
+            series[code] = chosen['data']
+            source_map[code] = chosen['source']
+            metadata[code] = {
+                'source': chosen['source'],
+                'last_available': _benchmark_latest_month(chosen['data']),
+                'observations': len(chosen['data']),
+                'sample': bool(chosen.get('sample')),
+                'other_sources_available': [item['source'] for item in candidates[1:]],
+                'note': chosen.get('note') or ''
+            }
         else:
             unavailable.append(code)
 
     result = {
         'series': series,
         'unavailable': unavailable,
-        'source': {'CDI': 'Banco Central do Brasil (SGS 12)', 'IPCA': 'Banco Central do Brasil (SGS 433)', **source_map},
-        'start': start.isoformat(),
-        'end': end.isoformat()
+        'source': source_map,
+        'meta': metadata,
+        'validation': validation,
+        'start': requested_start.isoformat(),
+        'end': end.isoformat(),
+        'updated_at': datetime.now(TZ).isoformat(timespec='seconds'),
+        'notes': {
+            'IPCA': 'O IPCA é mensal. A competência só aparece depois da divulgação oficial; não se estima o mês corrente.',
+            'indices': 'Para IBOV, IFIX, SMLL e IDIV, Dados B3 é priorizado quando a série completa está disponível. Fontes alternativas são identificadas e não são misturadas por média.',
+            'IVVB11': 'IVVB11 é um ETF, não um índice. Usa fechamento ajustado quando o provedor oferece esse campo.'
+        }
     }
     BENCHMARK_CACHE[cache_key] = {'time': time.time(), 'data': result}
     return jsonify(result)

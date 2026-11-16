@@ -1,4 +1,4 @@
-# Lonely Wallet v2.0.55
+# Lonely Wallet v2.0.56
 
 Aplicação Flask + SQLite para controle pessoal de investimentos, preparada para Docker/ZimaOS.
 
@@ -14,3 +14,14 @@ Aplicação Flask + SQLite para controle pessoal de investimentos, preparada par
 ## Instalação
 
 Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `/DATA/AppData/lonely-wallet/data`, pois ele contém o banco e a chave local de criptografia das credenciais.
+
+## Correções da versão 2.0.56
+
+- A legenda permite ocultar e reexibir também a linha **Rentabilidade**.
+- CDI continua vindo do SGS 12 do Banco Central; IPCA usa SGS 433 e conferência independente pelo SIDRA/IBGE quando disponível.
+- A competência atual do IPCA não é preenchida antes da divulgação oficial.
+- Adicionada integração opcional **Dados B3** para séries de retorno total de IBOV, IFIX, SMLL e IDIV. Sem chave, a fonte pode devolver apenas 30 pregões; com a chave gratuita, a série completa fica disponível conforme a cota do provedor.
+- HG Brasil, brapi e Yahoo Finance permanecem como fontes alternativas, com a fonte escolhida e a última competência expostas ao usuário. Não se faz média entre séries de metodologias diferentes.
+- Os cards de último mês e últimos 12 meses passam a usar meses fechados; os 12 meses são compostos a partir dos retornos mensais.
+- A comparação com índices usa um mês anterior de referência quando disponível e não apresenta comparação sem base suficiente.
+- Corrigida a invalidação do cache de benchmarks ao salvar ou remover credenciais.
