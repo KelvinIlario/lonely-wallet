@@ -82,3 +82,15 @@ Preserve o volume persistente configurado em `docker-compose.yml`. Não exclua `
 - Chevron fino, centralizado verticalmente e alinhado à direita nos filtros fechados.
 - Mantida a integração com os eventos de alteração existentes e com opções carregadas dinamicamente.
 - Suporte aos temas escuro e claro.
+
+
+## v2.0.63
+
+### Padronização completa dos filtros e seletores
+- Ampliada a personalização para todos os campos `select` simples visíveis do projeto, sem depender de uma lista fixa de IDs.
+- Incluídos filtros de Resumo, Proventos, Patrimônio, Rentabilidade, Lançamentos, benchmarks e seletores de formulários.
+- Todos os menus expandidos usam a mesma lista escura retangular, sem caixas de seleção, com item ativo destacado em azul.
+- Todos os campos fechados usam chevron fino, centralizado verticalmente e alinhado à direita.
+- Campos ocultos e seletores múltiplos não são interceptados.
+- Mantida a atualização de opções dinâmicas e os eventos `change` já existentes.
+- Compatibilidade visual com temas escuro e claro.

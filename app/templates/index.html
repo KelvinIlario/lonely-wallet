@@ -1917,8 +1917,8 @@ body.light-theme .prov-history-menu .native-dropdown-option{color:#202633!import
 body.light-theme .prov-history-menu .native-dropdown-option:hover,body.light-theme .prov-history-menu .native-dropdown-option.active,body.light-theme .prov-history-menu .native-dropdown-option[aria-selected="true"]{background:#9ecbff!important;color:#172033!important}
 
 
-/* v2.0.62 — aparência uniforme dos dropdowns expandidos */
-.lw-select-wrap{position:relative;display:inline-flex;vertical-align:middle;flex:0 0 auto;max-width:100%}
+/* v2.0.63 — dropdown único para todos os selects simples do projeto */
+.lw-select-wrap{position:relative;display:inline-flex;vertical-align:middle;flex:0 0 auto;max-width:100%;min-width:0}
 .lw-select-native-source{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;opacity:0!important;pointer-events:none!important;margin:0!important}
 .lw-select-button{
  box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;
@@ -4485,7 +4485,7 @@ async function confirmB3Import(){
 
 /* v2.0.62 — dropdowns customizados para todos os filtros do projeto */
 (function(){
- const selector='#aportePeriod,#aporteType,#allocationType,#provTypeFilter,#provAssetFilter,#patrimonyPeriod,#patrimonyType,#returnPeriodFilter,#returnTypeFilter,#launchGranularity,#launchPeriod,#launchType,select[id^="returnBenchmark_"]';
+ const selector='select:not([multiple]):not([data-native-select])';
  let openMenu=null;
  const proto=HTMLSelectElement.prototype;
  const valueDescriptor=Object.getOwnPropertyDescriptor(proto,'value');
@@ -4513,7 +4513,7 @@ async function confirmB3Import(){
   openMenu=null;
  }
  function enhance(select){
-  if(!select || select.dataset.lwCustomSelect==='1' || select.classList.contains('hidden') || select.disabled)return;
+  if(!select || select.dataset.lwCustomSelect==='1' || select.classList.contains('hidden') || select.disabled || select.multiple || select.closest('[hidden]'))return;
   const rect=select.getBoundingClientRect();
   if(!rect.width || !rect.height)return;
   const style=getComputedStyle(select);
@@ -4521,7 +4521,7 @@ async function confirmB3Import(){
   wrap.className='lw-select-wrap';
   wrap.style.width=rect.width+'px';
   wrap.style.height=rect.height+'px';
-  wrap.style.minWidth=style.minWidth!=='0px'?style.minWidth:'0';
+  wrap.style.minWidth=(style.minWidth!=='0px' && style.minWidth!=='auto')?style.minWidth:'0';
   select.parentNode.insertBefore(wrap,select);
   wrap.appendChild(select);
   select.dataset.lwCustomSelect='1';
