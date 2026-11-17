@@ -254,3 +254,10 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Criada a página **Configurações** ao lado de APIs.
 - Adicionado seletor de idioma (Português Brasil, English e Español), com preferência salva localmente.
 - Adicionado catálogo de oito cores de destaque (Oceano, Lavanda, Esmeralda, Âmbar, Rosa, Rubi, Ciano e Dourado), com aplicação imediata e preferência salva.
+
+
+## v3.3.28 · Ajustes de interface e auditoria de proventos
+- Removida a página Configurações, incluindo os seletores de idioma e catálogo de cores.
+- Corrigido o hover da coluna Variação: ao passar o mouse na linha, a célula acompanha a mesma cor de realce das demais colunas, sem retângulo escuro isolado.
+- Ajustada a identificação de proventos da Pluggy: o tipo documentado `INTEREST` continua reconhecido como distribuição; a inferência por descrição agora só é usada quando o tipo vier vazio, `UNKNOWN` ou `OTHER`, evitando classificar TAX, TRANSFER ou AMORTIZATION como renda.
+- Mantido o volume `/data` e a estrutura dos registros existentes.

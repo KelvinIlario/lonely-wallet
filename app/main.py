@@ -845,8 +845,13 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
     # explicitly identifies a dividend/JCP/rendimento event.
     income_markers = ('DIVIDEND', 'INTEREST', 'INTEREST_ON_EQUITY', 'JCP', 'RENDIMENTO', 'DISTRIBUTION', 'INCOME')
     text_for_income = (movement_type + ' ' + str(movement.get('movementType') or '') + ' ' + description).upper()
+    # Pluggy documents INTEREST as the investment-transaction type for
+    # dividend/JCP/FII rent/coupon distributions. Do not infer income from
+    # TAX, TRANSFER or AMORTIZATION descriptions, which can contain similar words.
     is_income_movement = movement_type in ('INTEREST', 'DIVIDEND', 'INTEREST_ON_EQUITY', 'JCP', 'DISTRIBUTION', 'INCOME')
-    is_income_description = movement_type not in ('BUY', 'SELL') and any(marker in text_for_income for marker in income_markers)
+    is_income_description = movement_type in ('', 'UNKNOWN', 'OTHER') and any(
+        marker in text_for_income for marker in income_markers
+    )
     if (is_income_movement or is_income_description) and ticker and trade_date and amount > 0:
         already_imported = db().execute(
             'SELECT external_id FROM pluggy_imported_events WHERE external_id=?', (external_id,)
