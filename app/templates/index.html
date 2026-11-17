@@ -94,14 +94,17 @@
 .asset-category.collapsed .asset-category-body{display:none}
 .asset-category .data th{font-size:11px}
 .asset-category .data td{font-size:12px}
-#loadingScreen{position:fixed;inset:0 0 auto 0;z-index:1000;height:3px;background:transparent;display:block;overflow:hidden;pointer-events:none;transition:opacity .2s ease,visibility .2s ease}
-#loadingScreen:after{content:"";display:block;width:34%;height:100%;background:linear-gradient(90deg,transparent,var(--blue),var(--gold),transparent);animation:loadingBar 1.15s ease-in-out infinite}
+#loadingScreen{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;background:rgba(20,22,29,.98);backdrop-filter:blur(12px);opacity:1;visibility:visible;transition:opacity .22s ease,visibility .22s ease}
+#loadingScreen:before{content:"";position:absolute;top:0;left:0;width:100%;height:3px;background:linear-gradient(90deg,transparent,var(--blue),var(--gold),transparent);background-size:200% 100%;animation:loadingBar 1.35s linear infinite}
 #loadingScreen.done{opacity:0;visibility:hidden;pointer-events:none}
-#loadingScreen .loading-logo,#loadingScreen .loading-spinner,#loadingScreen .loading-label{display:none!important}
-@keyframes loadingBar{from{transform:translateX(-110%)}to{transform:translateX(310%)}}
-.loading-logo{width:150px;height:150px;object-fit:contain;border-radius:30px;box-shadow:0 15px 60px #0008;animation:logoPulse 1.5s ease-in-out infinite}
-.loading-spinner{width:28px;height:28px;border:3px solid #394252;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite}
-.loading-label{font-size:13px;color:#aeb7c5;letter-spacing:.4px}
+#loadingScreen .loading-logo{width:112px;height:112px;object-fit:contain;border-radius:22px;box-shadow:0 15px 60px #0008;animation:logoPulse 1.8s ease-in-out infinite}
+#loadingScreen .loading-spinner{width:30px;height:30px;border:3px solid #394252;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite}
+#loadingScreen .loading-label{font-size:14px;color:#d6dce6;letter-spacing:.2px;text-align:center}
+#loadingScreen .loading-detail{font-size:12px;color:var(--muted);text-align:center;max-width:360px;line-height:1.5}
+#loadingScreen .loading-retry{display:none;margin-top:4px;padding:10px 18px;border:1px solid var(--blue);border-radius:8px;background:#2478d4;color:white;font-weight:600}
+#loadingScreen.failed .loading-spinner{display:none}
+#loadingScreen.failed .loading-retry{display:inline-flex}
+@keyframes loadingBar{0%{background-position:100% 0}100%{background-position:-100% 0}}
 @keyframes spin{to{transform:rotate(360deg)}}@keyframes logoPulse{50%{transform:scale(1.035);filter:brightness(1.12)}}
 @media(max-width:700px){.asset-category-head{grid-template-columns:minmax(110px,1fr) repeat(2,minmax(65px,.6fr)) 24px;gap:7px;padding:12px}.asset-category-head .asset-category-metric:nth-of-type(4){display:none}.asset-category-title{font-size:13px}.asset-category-metric{font-size:10px}.asset-category-metric b{font-size:12px}}
 
@@ -2023,7 +2026,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <div class="modalback utility-modal-back" id="transactionsModalBack" onclick="if(event.target===this)closeUtilityModal('transactionsModalBack')"><div class="modal utility-modal transactions-modal"><div class="modalhead"><h2 id="transactionsModalTitle">Lançamentos do ativo</h2><button class="close" onclick="closeUtilityModal('transactionsModalBack')">×</button></div><div id="transactionsModalContent"></div></div></div>
 <div class="modalback utility-modal-back" id="columnsModalBack" onclick="if(event.target===this)closeUtilityModal('columnsModalBack')"><div class="modal utility-modal columns-modal"><div class="modalhead"><div><h2>Editar colunas</h2><div class="sub">Adicione ou remova as colunas que deseja visualizar na tabela.</div></div><button class="close" onclick="closeUtilityModal('columnsModalBack')">×</button></div><div id="columnsModalContent" class="columns-modal-content"></div><div class="columns-modal-footer"><button class="text-button" onclick="restorePositionColumns()">Restaurar padrão</button><button class="primary" onclick="savePositionColumns()">Salvar</button></div></div></div>
 
-<div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
+<div id="loadingScreen" role="status" aria-live="polite"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner" aria-hidden="true"></div><div class="loading-label" id="loadingLabel">Carregando sua carteira…</div><div class="loading-detail" id="loadingDetail">Estamos buscando seus investimentos e preparando os gráficos. Isso pode levar alguns instantes.</div><button class="loading-retry" id="loadingRetry" type="button" onclick="retryInitialWalletLoad()">Tentar novamente</button></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
@@ -2199,6 +2202,16 @@ let summaryExpandedAssetGroups={};
 let summaryDraggedCategory="";
 let distributionItems=[];const distributionColors=['#4b91f5','#7df0b2','#ffdc65','#ff7181','#54d5ef','#bd9af4','#e8a56b','#6fc4a8','#b9c3d3'];
 let refreshInFlight=null,mutationRefreshTimer=null,refreshAgain=false;
+let initialWalletLoaded=false;
+function setInitialWalletLoading(phase='loading',message=''){
+ const screen=document.getElementById('loadingScreen');if(!screen||initialWalletLoaded)return;
+ screen.classList.remove('done','failed');
+ const label=document.getElementById('loadingLabel'),detail=document.getElementById('loadingDetail');
+ if(phase==='failed'){screen.classList.add('failed');if(label)label.textContent='Não foi possível carregar sua carteira';if(detail)detail.textContent=message||'Verifique a conexão com o servidor e tente novamente. Seus dados não foram apagados.';}
+ else{if(label)label.textContent='Carregando sua carteira…';if(detail)detail.textContent='Buscando seus investimentos e preparando os gráficos. Isso pode levar alguns instantes.';}
+}
+function finishInitialWalletLoading(){initialWalletLoaded=true;const screen=document.getElementById('loadingScreen');if(screen){screen.classList.remove('failed');screen.classList.add('done');}}
+function retryInitialWalletLoad(){setInitialWalletLoading();refresh();}
 function scheduleMutationRefresh(){
  if(mutationRefreshTimer)clearTimeout(mutationRefreshTimer);
  mutationRefreshTimer=setTimeout(()=>{
@@ -2218,7 +2231,7 @@ async function api(url,opts={}){
  if(['POST','PUT','PATCH','DELETE'].includes(method)&&!opts.skipAutoRefresh)scheduleMutationRefresh();
  return d;
 }
-function chart(id,type,data,options={}){if(!document.getElementById(id))return;if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),{type,data,options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#b8c1ce',boxWidth:9,font:{size:11}}}},scales:type==='bar'?{x:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}},y:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}}}:{},...options}})}
+function chart(id,type,data,options={}){if(!window.Chart||!document.getElementById(id))return;if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),{type,data,options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#b8c1ce',boxWidth:9,font:{size:11}}}},scales:type==='bar'?{x:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}},y:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}}}:{},...options}})}
 function stat(label,value,sub='',color=''){return `<div class="card stat"><div class="statlabel">${label}</div><div class="statvalue ${color}">${value}</div><div class="mini">${sub}</div></div>`}
 function rowEmpty(cols,msg='Nenhum registro encontrado.'){return `<tr><td colspan="${cols}" class="empty">${msg}</td></tr>`}
 async function refresh(){
@@ -2227,13 +2240,15 @@ async function refresh(){
  refreshInFlight=(async()=>{
   try{
    const dashboardAttempts=4;let dashboardError=null;
+   if(!initialWalletLoaded)setInitialWalletLoading();
    for(let attempt=0;attempt<dashboardAttempts;attempt++){
     try{state=await api('/api/dashboard');dashboardError=null;break;}
-    catch(error){dashboardError=error;if(attempt<dashboardAttempts-1){await new Promise(resolve=>setTimeout(resolve,650*Math.pow(2,attempt)));}}
+    catch(error){dashboardError=error;if(attempt<dashboardAttempts-1){await new Promise(resolve=>setTimeout(resolve,[250,500,900][attempt]||900));}}
    }
    if(dashboardError)throw dashboardError;
    render();
    applyPositionColumnPrefs();
+   if(!initialWalletLoaded)finishInitialWalletLoading();
    const updated=document.getElementById('updated');
    if(updated)updated.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
    const irpfPage=document.getElementById('page-irpf');
@@ -2241,10 +2256,10 @@ async function refresh(){
    if(irpfPage&&!irpfPage.classList.contains('hidden'))await loadIRPF();
    if(darfPage&&!darfPage.classList.contains('hidden'))await loadDARFs();
    return state;
-  }catch(e){toast(`Não foi possível carregar a carteira: ${e.message}`);return null;}
-  finally{
-   const loader=document.getElementById('loadingScreen');
-   if(loader)loader.classList.add('done');
+  }catch(e){
+   if(!initialWalletLoaded)setInitialWalletLoading('failed',`${e.message||'Falha de comunicação com o servidor.'} Você pode tentar novamente sem perder seus dados.`);
+   else toast(`Não foi possível atualizar a carteira: ${e.message}`);
+   return null;
   }
  })();
  try{return await refreshInFlight;}
@@ -5050,7 +5065,8 @@ async function autoSyncPluggyOnPageLoad(){
 }
 
 updateDocumentIdentity('resumo');
-refresh();loadDistribution();autoSyncPluggyOnPageLoad();
+// Prioriza a resposta principal do dashboard antes de iniciar tarefas secundárias.
+refresh().then(result=>{if(result){loadDistribution();autoSyncPluggyOnPageLoad();}});
 
 // Preferências locais: tema claro/escuro e ocultação de valores.
 function applyTheme(light){
