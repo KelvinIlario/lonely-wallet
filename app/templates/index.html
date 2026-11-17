@@ -455,7 +455,7 @@ body.light-theme .value-hint::after{box-shadow:0 10px 30px #26344a20}
 .return-main-chart{height:330px}
 .launch-consolidation-chart{height:360px}
 .launch-consolidation-chart canvas{cursor:pointer}
-.launch-distribution-layout{display:grid;grid-template-columns:minmax(280px,1.15fr) minmax(220px,.85fr);gap:22px;align-items:center;padding:12px 4px 4px}
+.launch-distribution-switch{display:flex;justify-content:center;align-items:center;gap:6px;margin:10px auto 2px;width:max-content;max-width:100%;flex-wrap:wrap}.launch-dist-switch-spacer{width:8px}.launch-distribution-layout{display:grid;grid-template-columns:minmax(280px,1.15fr) minmax(220px,.85fr);gap:22px;align-items:center;padding:12px 4px 4px}
 .launch-distribution-chart{height:390px;min-width:0}
 .launch-distribution-legend{min-width:0;max-height:390px;overflow:auto}
 .launch-distribution-total{display:flex;justify-content:space-between;align-items:center;padding:8px 4px 14px;border-bottom:1px solid var(--line);margin-bottom:8px}
@@ -2117,7 +2117,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
-<div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Ativos negociados no período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>\n<div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
+<div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>\n<div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
 <div class="modalback" id="appConfirmBack" onclick="if(event.target===this)resolveAppConfirm(false)"><div class="modal" style="width:min(460px,100%)"><div class="modalhead"><h2 id="appConfirmTitle">Confirmar ação</h2><button class="close" onclick="resolveAppConfirm(false)">×</button></div><p id="appConfirmMessage" class="mini" style="font-size:13px;line-height:1.6;color:var(--text)"></p><div class="modalactions"><button class="ghost" type="button" onclick="resolveAppConfirm(false)">Cancelar</button><button class="danger" id="appConfirmAccept" type="button" onclick="resolveAppConfirm(true)">Confirmar exclusão</button></div></div></div>
 <div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="notice b3-fixed-income-notice"><b>Atenção:</b> ativos de renda fixa não são importados pela B3. Cadastre esses investimentos manualmente pela opção <b>Adicionar lançamento</b>.</div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
 <div class="modalback" id="provDistributionBack" onclick="if(event.target===this)closeProvDistributionModal()"><div class="modal prov-distribution-modal"><div class="modalhead"><h2 id="provDistributionTitle">Distribuição de proventos em 12 meses</h2><button class="close" onclick="closeProvDistributionModal()">×</button></div><div class="prov-distribution-content"><div><div class="prov-distribution-switch segmented"><button type="button" id="provDistAssetTab" class="active" onclick="setProvDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="provDistTypeTab" onclick="setProvDistributionMode('tipo')">◉ Por Tipo</button></div><div class="prov-distribution-chart"><canvas id="provDistributionDetailChart"></canvas></div></div><div class="prov-distribution-side"><div class="prov-distribution-total"><span>Total</span><strong id="provDistributionTotal" class="green">R$ 0,00</strong></div><div id="provDistributionDetailList" class="prov-distribution-list"></div></div></div></div></div>
@@ -3672,12 +3672,28 @@ function syncLaunchTypeFilter(){
  select.value=opts.some(([v])=>v===previous)?previous:'todos';
 }
 let launchDistributionChart=null;
+let launchDistributionState={periodKey:'',granularity:'mensal',operations:[],side:'compra',mode:'ativo'};
 function closeLaunchDistribution(){
  const back=document.getElementById('launchDistributionBack');
  if(back)back.style.display='none';
  if(launchDistributionChart){launchDistributionChart.destroy();launchDistributionChart=null;}
 }
-function openLaunchDistribution(periodKey,side,granularity,operations){
+function setLaunchDistributionMode(mode){
+ launchDistributionState.mode=mode;
+ document.getElementById('launchDistAssetTab')?.classList.toggle('active',mode==='ativo');
+ document.getElementById('launchDistTypeTab')?.classList.toggle('active',mode==='tipo');
+ document.getElementById('launchDistBuyTab')?.classList.toggle('active',launchDistributionState.side==='compra');
+ document.getElementById('launchDistSellTab')?.classList.toggle('active',launchDistributionState.side==='venda');
+ renderLaunchDistribution();
+}
+function setLaunchDistributionSide(side){
+ launchDistributionState.side=side;
+ document.getElementById('launchDistBuyTab')?.classList.toggle('active',side==='compra');
+ document.getElementById('launchDistSellTab')?.classList.toggle('active',side==='venda');
+ renderLaunchDistribution();
+}
+function renderLaunchDistribution(){
+ const {periodKey,granularity,operations,side,mode}=launchDistributionState;
  const matches=operations.filter(op=>{
   const d=new Date(String(op._date||'')+'T12:00:00');
   let key;
@@ -3689,31 +3705,38 @@ function openLaunchDistribution(periodKey,side,granularity,operations){
  const grouped=new Map();
  matches.forEach(op=>{
   const ticker=String(op.ticker||'Ativo sem identificação').trim()||'Ativo sem identificação';
+  const kind=String(op.tipo||'Outros').trim()||'Outros';
+  const name=mode==='tipo'?kind:ticker;
   const amount=Number(op.quantidade||0)*Number(op.preco||0)+(side==='compra'?Number(op.custos||0):-Number(op.custos||0));
   const value=Math.max(0,amount);
-  if(!grouped.has(ticker))grouped.set(ticker,0);
-  grouped.set(ticker,grouped.get(ticker)+value);
+  if(!grouped.has(name))grouped.set(name,0);
+  grouped.set(name,grouped.get(name)+value);
  });
  const entries=[...grouped.entries()].filter(([,value])=>value>0).sort((a,b)=>b[1]-a[1]);
  const total=entries.reduce((sum,item)=>sum+item[1],0);
  const fmt=k=>granularity==='anual'?k:granularity==='trimestral'?`${k.slice(0,4)} · ${k.slice(5)}`:`${k.slice(5,7)}/${k.slice(0,4)}`;
  const title=document.getElementById('launchDistributionTitle');
  const subtitle=document.getElementById('launchDistributionSubtitle');
- if(title)title.textContent=`Distribuição de ${side==='compra'?'compras':'vendas'} em ${fmt(periodKey)}`;
- if(subtitle)subtitle.textContent=`${entries.length} ativo(s) · incluindo renda fixa`;
+ if(title)title.textContent=`Distribuição de aportes em ${fmt(periodKey)}`;
+ if(subtitle)subtitle.textContent=`${side==='compra'?'Compras':'Vendas'} · ${mode==='ativo'?'Por Ativo':'Por Tipo'} · ${entries.length} categoria(s)`;
  const totalEl=document.getElementById('launchDistributionTotal');
- if(totalEl)totalEl.textContent=brl(total);
+ if(totalEl){totalEl.textContent=brl(total);totalEl.style.color=side==='venda'?'#ef6680':'#00d4a0';}
  const rows=document.getElementById('launchDistributionRows');
  const colors=getDistinctChartColors(entries.length);
- if(rows)rows.innerHTML=entries.length?entries.map(([name,value],i)=>`<div class="launch-distribution-row"><div class="launch-distribution-name"><i style="background:${colors[i]}"></i><span title="${escapeHTML(name)}">${escapeHTML(name)}</span></div><b style="color:${side==='venda'?'#ef6680':'#00d4a0'}">${pct(total?value/total*100:0)}</b></div>`).join(''):'<div class="empty">Não há operações deste tipo no período selecionado.</div>';
- const back=document.getElementById('launchDistributionBack');
- if(back)back.style.display='flex';
+ if(rows)rows.innerHTML=entries.length?entries.map(([name,value],i)=>`<div class="launch-distribution-row"><div class="launch-distribution-name"><i style="background:${colors[i]}"></i><span title="${escapeHTML(name)}">${escapeHTML(name)}</span></div><b>${pct(total?value/total*100:0)}</b></div>`).join(''):'<div class="empty">Não há operações deste tipo no período selecionado.</div>';
  const canvas=document.getElementById('launchDistributionChart');
  if(launchDistributionChart){launchDistributionChart.destroy();launchDistributionChart=null;}
  if(canvas&&entries.length){
   launchDistributionChart=new Chart(canvas,{type:'doughnut',data:{labels:entries.map(x=>x[0]),datasets:[{data:entries.map(x=>Number(x[1].toFixed(2))),backgroundColor:colors,borderWidth:0,hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'42%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)} · ${pct(total?(ctx.raw||0)/total*100:0)}`}}}}});
  }
 }
+function openLaunchDistribution(periodKey,side,granularity,operations){
+ launchDistributionState={periodKey,granularity,operations,side:side||'compra',mode:'ativo'};
+ const back=document.getElementById('launchDistributionBack');
+ if(back)back.style.display='flex';
+ setLaunchDistributionMode('ativo');
+}
+
 function renderLaunchConsolidation(){
  const granularity=document.getElementById('launchGranularity')?.value||'mensal';
  const period=document.getElementById('launchPeriod')?.value||'24';
@@ -3742,11 +3765,24 @@ function renderLaunchConsolidation(){
  chart('launchConsolidationChart','bar',{labels,datasets:[
   {label:'Compras',data:buys,backgroundColor:'#31b77e',borderRadius:4,grouped:false,barPercentage:.72,categoryPercentage:.72},
   {label:'Vendas',data:sells.map(value=>-value),backgroundColor:'#ef6680',borderRadius:4,grouped:false,barPercentage:.72,categoryPercentage:.72}
- ]},{onClick:(event,elements)=>{
-  if(!elements||!elements.length)return;
-  const hit=elements[0],periodKey=keys[hit.index],side=hit.datasetIndex===0?'compra':'venda';
-  if(periodKey)openLaunchDistribution(periodKey,side,granularity,valid);
- },plugins:{legend:{labels:{color:'#b8c1ce'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(Math.abs(Number(ctx.raw)||0))}`}}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(Math.abs(v)).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
+ ]},{
+  onClick:(event,elements)=>{
+   if(!elements||!elements.length)return;
+   const hit=elements[0],periodKey=keys[hit.index],side=hit.datasetIndex===1?'venda':'compra';
+   if(periodKey)openLaunchDistribution(periodKey,side,granularity,valid);
+  },
+  interaction:{mode:'index',intersect:false},
+  plugins:{
+   legend:{labels:{color:'#b8c1ce'}},
+   tooltip:{mode:'index',intersect:false,callbacks:{
+    label:ctx=>`${ctx.dataset.label}: ${brl(Math.abs(Number(ctx.raw)||0))}`
+   }}
+  },
+  scales:{
+   x:{ticks:{color:'#8f99a8'},grid:{display:false}},
+   y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(Math.abs(v)).toLocaleString('pt-BR')},grid:{color:'#303541'}}
+  }
+ });
  const totalBuys=buys.reduce((a,b)=>a+b,0),totalSells=sells.reduce((a,b)=>a+b,0);
  const totalEl=document.getElementById('launchConsolidationTotal');
  if(totalEl)totalEl.textContent=`Compras ${brl(totalBuys)} · Vendas ${brl(totalSells)} · Líquido ${brl(totalBuys-totalSells)}`;

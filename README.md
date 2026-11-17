@@ -329,3 +329,16 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Compras são exibidas acima do eixo zero, em verde, e Vendas abaixo do eixo zero, em rosa.
 - Removido o agrupamento de colunas lado a lado.
 - Mantidos os filtros, detalhamento por clique e totais financeiros, com valores de vendas apresentados como positivos nos resumos e tooltips.
+
+
+## v3.3.50
+
+### Consolidação de aportes
+- Tooltip mensal passa a apresentar simultaneamente os valores de Compras e Vendas ao posicionar o cursor sobre a região do mês.
+- A interação do gráfico considera o índice mensal, facilitando o acesso mesmo quando uma das operações tem valor muito pequeno.
+- Ao clicar em uma coluna, é aberta a distribuição do mês selecionado em gráfico de rosca.
+
+### Distribuição mensal
+- Adicionados seletores Por Ativo e Por Tipo.
+- Adicionados seletores Compra e Venda, permitindo alternar a operação sem fechar a janela.
+- Total, legenda e gráfico são atualizados conforme os filtros selecionados.
