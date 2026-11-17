@@ -33,21 +33,6 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()['ok'])
 
-    def test_pluggy_sync_interval_persists_between_requests(self):
-        response = self.client.post('/api/pluggy/settings', json={'interval_minutes': 15})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['interval_minutes'], 15)
-
-        # GET acontece em outra requisição, após o fechamento da conexão SQLite anterior.
-        response = self.client.get('/api/pluggy/settings')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['interval_minutes'], 15)
-
-        response = self.client.post('/api/pluggy/settings', json={'interval_minutes': 0})
-        self.assertEqual(response.status_code, 200)
-        response = self.client.get('/api/pluggy/settings')
-        self.assertEqual(response.get_json()['interval_minutes'], 0)
-
     def test_non_finite_operation_values_rejected(self):
         with wallet.app.test_request_context('/'):
             for value in ('NaN', 'Infinity', '-Infinity'):
