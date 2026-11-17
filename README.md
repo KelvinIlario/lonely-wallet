@@ -1,4 +1,4 @@
-# Lonely Wallet v4.1.8
+# Lonely Wallet v4.1.9
 
 ## Objetivo desta versão
 Versão de manutenção baseada no pacote v4.1.6 enviado pelo usuário. Preserva a estrutura da aplicação, os bancos existentes e o volume `/data`.
@@ -27,7 +27,7 @@ Versão de manutenção baseada no pacote v4.1.6 enviado pelo usuário. Preserva
 - Adicionado endpoint `/api/health` para verificar a disponibilidade dos bancos.
 - Adicionado healthcheck ao Docker Compose.
 - Adicionada a opção Docker `no-new-privileges`.
-- Atualizada a referência visual do ícone para v4.1.8.
+- Atualizada a referência visual do ícone para v4.1.9.
 - Removido `__pycache__` do pacote para evitar distribuir bytecode de outra versão do Python.
 - Delimitada a faixa de versões de `cryptography` para evitar atualizações incompatíveis inesperadas.
 
@@ -57,9 +57,23 @@ Se utilizar proxy reverso com HTTPS, configure `SESSION_COOKIE_SECURE: "true"` n
 ## Release notes
 - Consulte as notas de lançamento desta versão na seção acima. Não é necessário adicionar um arquivo separado de release notes ao ZIP.
 
-## v4.1.8
+## v4.1.9
 
 - Removido o atalho redundante de Segurança da conta ao lado do botão de privacidade.
 - Acesso à segurança mantido exclusivamente pela aba Segurança na navegação principal.
 - Removida a função JavaScript que atendia somente ao atalho removido.
 - Verificadas sintaxe Python, sintaxe JavaScript inline e leitura do Docker Compose.
+
+
+## v4.1.9 · Interface, diagnóstico e cotação
+
+- Padronizados os elementos visuais dos ícones de navegação.
+- Melhorada a navegação horizontal e os controles da página Segurança em telas pequenas.
+- A página APIs diferencia a última consulta de cotação da alteração da credencial; a data só aparece quando há registro no cache desta sessão.
+- Adicionada a página Diagnóstico com verificações rápidas dos bancos SQLite e visão do cache local de cotações.
+- Adicionada indicação de cotação possivelmente desatualizada após 15 minutos, sem afirmar que a fonte externa está indisponível.
+- O diagnóstico é somente leitura e não força chamadas externas.
+
+### Limitações do diagnóstico
+
+As datas de consulta de cotação e o cache são mantidos em memória. Reiniciar o container limpa esse histórico de sessão. A ausência de registro não significa falha da API. O diagnóstico executa `PRAGMA quick_check` nos bancos e não substitui um backup.
