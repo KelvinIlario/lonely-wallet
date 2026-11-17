@@ -4573,12 +4573,14 @@ def api_benchmarks():
 
 @app.route('/api/dashboard')
 def dashboard():
-    # A sincronização é automática, mas protegida por cache de 1 hora. O botão da
-    # página Proventos permite forçar uma atualização quando o usuário desejar.
-    portfolio_before_sync = carteira().json
-    sync_status = sync_brapi_proventos(force=False, quote_items=portfolio_before_sync.get('itens', []), active_items=portfolio_before_sync.get('itens', []))
-    # Recalcula o resumo para que proventos pagos sincronizados agora já apareçam.
+    # A abertura do painel não deve aguardar consultas externas de proventos.
+    # A sincronização continua disponível pela ação explícita na página Proventos.
+    # Monta a carteira uma única vez para evitar repetir cálculos e consultas de cotação.
     portfolio = carteira().json
+    sync_status = {
+        'ok': True,
+        'mensagem': 'Sincronização automática adiada para não bloquear o carregamento. Use Atualizar na página Proventos.'
+    }
     ops = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id").fetchall()]
     scheduled = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='agendada' ORDER BY data_execucao,id").fetchall()]
     active_tickers = {str(item.get('ticker') or '').upper() for item in portfolio.get('itens', []) if item.get('ticker')}
