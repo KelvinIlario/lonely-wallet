@@ -1450,8 +1450,7 @@ def api_integrations_list():
                 packed = _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
                 pluggy_credentials = json.loads(packed)
             except Exception: pluggy_credentials = {}
-        quote_updates = [entry[1].get('_fetchedAt') for entry in CACHE.values() if (entry[1].get('quoteProvider') or '').lower().replace(' ', '') == key.lower().replace(' ', '') and entry[1].get('_fetchedAt')]
-        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':configured, 'enabled':bool(row['enabled']) if row else bool(token or pluggy_credentials), 'masked':('••••••••' + token[-4:]) if token else '', 'client_id_masked':(('••••••••' + pluggy_credentials.get('client_id','')[-4:]) if pluggy_credentials.get('client_id') else ''), 'updated_at':row['updated_at'] if row else None, 'last_quote_at':max(quote_updates) if quote_updates else None})
+        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':configured, 'enabled':bool(row['enabled']) if row else bool(token or pluggy_credentials), 'masked':('••••••••' + token[-4:]) if token else '', 'client_id_masked':(('••••••••' + pluggy_credentials.get('client_id','')[-4:]) if pluggy_credentials.get('client_id') else ''), 'updated_at':row['updated_at'] if row else None})
     return jsonify({'providers':providers})
 
 
@@ -1722,8 +1721,6 @@ def cotacao(ticker):
             data = {**data, **fallback}
 
     data = _enrich_quote_fundamentals(ticker, data)
-    if data:
-        data['_fetchedAt'] = datetime.now(TZ).isoformat(timespec='seconds')
     CACHE[ticker] = (now, data)
     return data
 
@@ -2141,36 +2138,12 @@ def valid_operation(data):
         return None,'Confira ativo, tipo, quantidade, preço, custos e data da operação.'
 
 
-@app.route('/api/diagnostico', methods=['GET'])
-def diagnostico():
-    """Diagnóstico local e somente leitura, sem disparar consultas externas."""
-    checks = []
-    for label, path in (('Banco de ativos', DB_PATH), ('Banco de credenciais', TOKEN_DB_PATH)):
-        try:
-            con = sqlite3.connect(path, timeout=3)
-            result = con.execute('PRAGMA quick_check').fetchone()[0]
-            con.close()
-            checks.append({'name': label, 'ok': result == 'ok', 'detail': 'Integridade OK' if result == 'ok' else str(result)})
-        except Exception as exc:
-            checks.append({'name': label, 'ok': False, 'detail': str(exc)[:180]})
-    cached = []
-    for ticker, entry in list(CACHE.items()):
-        try:
-            fetched = entry[1].get('_fetchedAt')
-            provider = entry[1].get('quoteProvider') or 'Fonte não identificada'
-            cached.append({'ticker': ticker, 'provider': provider, 'updated_at': fetched, 'age_seconds': max(0, int(time.time()-entry[0]))})
-        except Exception:
-            continue
-    cached.sort(key=lambda item: item['age_seconds'])
-    return jsonify(ok=all(item['ok'] for item in checks), checks=checks, cache_ttl_seconds=CACHE_TTL, cached_quotes=cached, cached_quote_count=len(cached), generated_at=datetime.now(TZ).isoformat(timespec='seconds'))
-
-
 @app.route('/api/health', methods=['GET'])
 def health():
     try:
         db().execute('SELECT 1').fetchone()
         token_db().execute('SELECT 1').fetchone()
-        return jsonify(ok=True, status='healthy', version='4.1.9'), 200
+        return jsonify(ok=True, status='healthy', version='4.1.8'), 200
     except Exception:
         app.logger.exception('Healthcheck failed')
         return jsonify(ok=False, status='unhealthy'), 503
@@ -2859,7 +2832,7 @@ def carteira():
         variation_pct = pluggy_return['variation_pct'] if pluggy_return else (round(variation_value/cost*100,2) if cost else 0)
         total_return_value = pluggy_return['total_value'] if pluggy_return else (variation_value + (0.0 if kind=='renda_fixa' else dividends))
         profitability_pct = pluggy_return['total_pct'] if pluggy_return else (round(total_return_value/cost*100,2) if cost else 0)
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'cotacao_atualizada_em':quote.get('_fetchedAt'),'cotacao_desatualizada':bool(quote.get('_fetchedAt') and (time.time()-datetime.fromisoformat(quote['_fetchedAt']).timestamp())>900),'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)
