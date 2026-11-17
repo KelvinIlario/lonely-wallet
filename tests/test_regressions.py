@@ -1,4 +1,4 @@
-"""Regression tests for Lonely Wallet 4.2.0 security and financial fixes."""
+"""Regression tests for Lonely Wallet 4.2.x security and financial fixes."""
 import os
 import tempfile
 import unittest

@@ -3,6 +3,7 @@
 import argparse
 import os
 import sqlite3
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -34,6 +35,17 @@ def main() -> int:
     destination.mkdir(parents=True, exist_ok=False, mode=0o700)
     for name in ('ativos.db', 'carteira.db', 'tokens.db'):
         backup_database(data_dir / name, destination / name)
+    # O cache não é banco SQLite: copie-o preservando o arquivo e valide o JSON.
+    quote_cache = data_dir / 'quotes_last_valid.json'
+    if quote_cache.exists():
+        import json
+        with quote_cache.open('r', encoding='utf-8') as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict):
+            raise RuntimeError('Cache de cotações inválido: esperado um objeto JSON.')
+        target = destination / 'quotes_last_valid.json'
+        shutil.copy2(quote_cache, target)
+        os.chmod(target, 0o600)
     if args.include_keys:
         secret_dir = destination / 'secrets'
         secret_dir.mkdir(mode=0o700)
