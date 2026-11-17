@@ -3578,13 +3578,31 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         series_12m.append({'mes': row['mes'], 'valor': round((rolling_factor - 1.0) * 100, 4),
                            'ganho_prejuizo_mes': round(float(row.get('resultado') or 0), 2)})
 
+    cumulative_dividends = 0.0
+    dividend_months = {}
+    for (ticker, month_key), amount in dividend_by_ticker_month.items():
+        dividend_months[month_key] = dividend_months.get(month_key, 0.0) + float(amount or 0)
+    roi_total_series = []
+    for point in portfolio_series:
+        cumulative_dividends += dividend_months.get(point['mes'], 0.0)
+        invested = float(point.get('aplicado') or 0)
+        gain = float(point.get('ganho') or 0) + cumulative_dividends
+        if invested > 1e-8:
+            roi_total_series.append({
+                'mes': point['mes'],
+                'valor': round(gain / invested * 100, 4),
+                'ganho_prejuizo_mes': round(gain, 2)
+            })
+    roi_total = roi_total_series[-1]['valor'] if roi_total_series else None
+
     return {
         **empty,
         'series_12m': series_12m,
         'series_total': series_total,
+        'series_roi_total': roi_total_series,
         'series_patrimonio': portfolio_series,
-        'rentabilidade_12m': round((rolling_factor - 1.0) * 100, 2) if len(monthly_returns) >= 12 else None,
-        'rentabilidade_total': round((total_factor - 1.0) * 100, 2),
+        'rentabilidade_12m': round((rolling_factor - 1.0) * 100, 2) if monthly_returns else None,
+        'rentabilidade_total': round(roi_total, 2) if roi_total is not None else None,
         'meses_disponiveis': len(monthly_returns),
         'primeiro_mes': monthly_returns[0]['mes'],
         'historico_completo': len(monthly_returns) >= 12 and not missing_symbols and not snapshot_date,
