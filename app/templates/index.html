@@ -3525,7 +3525,7 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
    displayColors:true,boxPadding:5,
    callbacks:{
     title:items=>{const row=visibleHistory[items?.[0]?.dataIndex||0];return row?row.mes.slice(5,7)+'/'+row.mes.slice(2,4):'';},
-    beforeBody:items=>{const row=visibleHistory[items?.[0]?.dataIndex||0];if(!row)return [];const gain=Number(row.ganho||0);return [`Patrimônio: ${brl(Number(row.patrimonio||0))}`,`Ganho/Prejuízo: ${gain>=0?'+':''}${brl(gain)}`];},
+    beforeBody:items=>{const row=visibleHistory[items?.[0]?.dataIndex||0];if(!row)return [];return [`Patrimônio: ${brl(Number(row.patrimonio||0))}`];},
     label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw||0)}`
    }
   }},scales:{x:{stacked:true,ticks:{color:'#8f99a8'},grid:{display:false}},y:{stacked:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
