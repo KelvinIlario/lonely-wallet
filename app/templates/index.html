@@ -3697,7 +3697,7 @@ const RETURN_BENCHMARKS = ['CDI','IPCA','IFIX','IBOV','SMLL','IDIV','IVVB11'];
 const RETURN_BENCHMARK_COLORS = {CDI:'#f5bd45',IPCA:'#78c56b',IFIX:'#b0a0e8',IBOV:'#ed6b75',SMLL:'#e2a16b',IDIV:'#48b9ae',IVVB11:'#5bb8d8'};
 let returnBenchmarkData = null;
 let returnBenchmarkPromise = null;
-let returnVisibleSeries = new Set(['portfolio',...RETURN_BENCHMARKS]);
+let returnVisibleSeries = new Set(['portfolio']);
 let returnBenchmarkRequestKey = '';
 
 function returnBenchmarkSelectHTML(cardKey){
@@ -3774,15 +3774,14 @@ function updateReturnCardComparisons(){
   }
  }
 }
-async function loadReturnBenchmarks(startKey){
- const key=startKey||'';
+async function loadReturnBenchmarks(){
+ const key='full-history';
  if(returnBenchmarkData&&returnBenchmarkRequestKey===key)return returnBenchmarkData;
  if(returnBenchmarkPromise&&returnBenchmarkRequestKey===key)return returnBenchmarkPromise;
  returnBenchmarkRequestKey=key;
  returnBenchmarkPromise=(async()=>{
   try{
-   const url='/api/benchmarks'+(key?'?start='+encodeURIComponent(key+'-01'):'');
-   const response=await fetch(url,{cache:'no-store'});
+   const response=await fetch('/api/benchmarks?start=1990-01-01',{cache:'no-store'});
    if(!response.ok)throw new Error('Não foi possível consultar os índices.');
    returnBenchmarkData=await response.json();
   }catch(error){returnBenchmarkData={series:{},unavailable:RETURN_BENCHMARKS.slice()};}
@@ -3908,12 +3907,8 @@ function renderRentabilidadePage(){
  const tableNote=document.getElementById('returnTableNote');
  if(tableNote)tableNote.textContent=typeSelect.value==='todos'?'Retornos mensais calculados a partir dos ativos com histórico de preços disponível; o indicador total considera o resultado consolidado de toda a carteira.':'Retornos mensais da classe selecionada.';
  updateReturnCardComparisons();
- const startKey=monthly.length?monthly[0].year+'-'+String(monthly[0].month).padStart(2,'0'):
-  (chartRows.length?String(chartRows[0].mes):'');
  if(!returnBenchmarkData&&!returnBenchmarkPromise){
-  loadReturnBenchmarks(startKey||'').then(()=>{if(document.getElementById('page-rentabilidade')&&!document.getElementById('page-rentabilidade').classList.contains('hidden'))renderRentabilidadePage();});
- }else if(startKey&&returnBenchmarkRequestKey!==startKey&&!returnBenchmarkPromise){
-  loadReturnBenchmarks(startKey).then(()=>{if(document.getElementById('page-rentabilidade')&&!document.getElementById('page-rentabilidade').classList.contains('hidden'))renderRentabilidadePage();});
+  loadReturnBenchmarks().then(()=>{if(document.getElementById('page-rentabilidade')&&!document.getElementById('page-rentabilidade').classList.contains('hidden'))renderRentabilidadePage();});
  }
 }
 

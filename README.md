@@ -223,3 +223,10 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Proventos recebidos limitados aos registros vinculados às importações Pluggy e B3.
 - Lançamentos manuais e eventos de outras APIs deixam de compor os totais de proventos recebidos.
 - Mantida a exclusão de pagamentos futuros da apuração de recebimentos.
+
+
+## v3.3.24 · Histórico completo de rentabilidade
+- A legenda do gráfico inicia somente com **Rentabilidade** selecionada.
+- CDI, IPCA, IFIX, IBOV, SMLL, IDIV e IVVB11 ficam disponíveis para ativação individual pelo usuário.
+- A consulta de benchmarks passa a solicitar o histórico completo disponível desde 1990, independentemente da data da primeira operação da carteira.
+- O histórico de cada série continua limitado à disponibilidade real da respectiva fonte; não são criados pontos artificiais.

@@ -3853,13 +3853,9 @@ def _benchmark_latest_month(points):
 def api_benchmarks():
     """Séries mensais com prioridade de fontes e procedência explícita; sem interpolação."""
     today = datetime.now(TZ).date()
-    try:
-        requested_start = date.fromisoformat(
-            request.args.get('start', (today - timedelta(days=365 * 5)).isoformat())[:10]
-        )
-    except (TypeError, ValueError):
-        requested_start = today - timedelta(days=365 * 5)
-    requested_start = max(requested_start, date(1990, 1, 1))
+    # A página de Rentabilidade precisa disponibilizar o histórico integral de cada
+    # benchmark, independentemente da data da primeira operação da carteira.
+    requested_start = date(1990, 1, 1)
     # Busca meses anteriores para calcular o retorno do primeiro mês selecionado.
     start = max(requested_start - timedelta(days=75), date(1990, 1, 1))
     end = today
