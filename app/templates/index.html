@@ -3990,13 +3990,27 @@ function renderReturnSparklines(series12m,seriesTotal,totalFallback){
 }
 
 function renderConsolidatedReturnSparklines(value){
- const performance=state.rentabilidade_historica||{};
- const valid=rows=>Array.isArray(rows)?rows.filter(point=>point&&/^\d{4}-\d{2}$/.test(String(point.mes||''))&&Number.isFinite(Number(point.valor))):[];
- // A linha Total usa a mesma série agregada por classe do gráfico Evolução do Patrimônio.
- const totalSeries=getAllTypesPortfolioHistory().rows.filter(row=>Number(row.aplicado)>0).map(row=>({
-  mes:row.mes,valor:Number((Number(row.ganho||0)/Number(row.aplicado||1)*100).toFixed(4))
+ // Reutiliza exatamente a série mensal consolidada exibida no gráfico Evolução do Patrimônio.
+ // O retorno de cada fechamento é o ganho/perda de capital dividido pelo capital aplicado.
+ const history=getAllTypesPortfolioHistory().rows
+  .filter(row=>row&&/^\d{4}-\d{2}$/.test(String(row.mes||''))&&Number(row.aplicado)>0)
+  .sort((a,b)=>a.mes.localeCompare(b.mes));
+ const totalSeries=history.map(row=>({
+  mes:row.mes,
+  valor:Number((Number(row.ganho||0)/Number(row.aplicado||0)*100).toFixed(4))
  }));
- const twelveMonths=valid(performance.series_12m).slice(-12);
+ // A série de 12 meses parte do primeiro fechamento disponível na janela e mostra
+ // a variação da rentabilidade consolidada ao longo dos fechamentos seguintes.
+ const twelveBase=totalSeries.length>12?Number(totalSeries[totalSeries.length-13].valor||0):Number(totalSeries[0]?.valor||0);
+ const twelveMonths=totalSeries.slice(-12).map(row=>({
+  mes:row.mes,valor:Number((row.valor-twelveBase).toFixed(4))
+ }));
+ const last12=twelveMonths.length?twelveMonths[twelveMonths.length-1].valor:null;
+ const lastTotal=totalSeries.length?totalSeries[totalSeries.length-1].valor:null;
+ const twelveValue=document.querySelector('#return12mChart')?.parentElement?.querySelector('b');
+ const totalValue=document.querySelector('#returnTotalChart')?.parentElement?.querySelector('b');
+ if(twelveValue){twelveValue.textContent=last12===null?'Indisponível':pct(last12);twelveValue.className=last12===null?'':last12>=0?'green':'red';}
+ if(totalValue){totalValue.textContent=lastTotal===null?'Indisponível':pct(lastTotal);totalValue.className=lastTotal===null?'':lastTotal>=0?'green':'red';}
  renderReturnSparklines(twelveMonths,totalSeries,null);
 }
 

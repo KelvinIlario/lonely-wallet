@@ -278,3 +278,10 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Os indicadores Últimos 12 meses e Total usam os respectivos campos calculados pelo backend. O período de 12 meses fica indisponível quando não há 12 meses calculáveis, evitando apresentar um percentual incompleto como se fosse anual.
 - O gráfico Evolução do Patrimônio usa tooltip escuro com o mês, Patrimônio, Valor aplicado e Ganho de Capital ao passar sobre cada barra.
 - A explicação do card foi atualizada para descrever a ponderação temporal dos aportes e retiradas e o tratamento de proventos sem dupla contagem.
+
+## v3.3.41
+- Os sparklines de rentabilidade do Resumo passam a reutilizar a série mensal consolidada do gráfico Evolução do Patrimônio (Todos os tipos).
+- O indicador Total apresenta ganho/perda de capital dividido pelo capital aplicado em cada fechamento mensal.
+- O indicador Últimos 12 meses apresenta a variação dessa rentabilidade consolidada ao longo da janela de 12 fechamentos.
+- Os valores percentuais exibidos nos cards são atualizados a partir das mesmas séries desenhadas.
+- Proventos permanecem fora do cálculo.
