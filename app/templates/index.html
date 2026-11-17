@@ -3824,12 +3824,15 @@ function renderRentabilidadePage(){
  // Em Todos os tipos, o gráfico mostra o mesmo retorno atual do Resumo; a série mensal parcial
  // permanece disponível na tabela e nas visualizações por classe, sem ser rotulada como total.
  const historicalCapital=Array.isArray(performance.series_patrimonio)?performance.series_patrimonio:[];
+ const portfolioRows=historicalCapital.filter(row=>row&&/^\\d{4}-\\d{2}$/.test(String(row.mes||'')));
+ const cumulativeRows=Array.isArray(performance.series_total)?performance.series_total.filter(row=>row&&/^\\d{4}-\\d{2}$/.test(String(row.mes||''))):[];
  const chartRows=allTypesSelected
-  ?historicalCapital.filter(row=>row&&/^\\d{4}-\\d{2}$/.test(String(row.mes||'')))
+  ?(portfolioRows.length>1?portfolioRows:cumulativeRows)
   :visible.map(row=>({mes:row.year+'-'+String(row.month).padStart(2,'0'),retorno:row.cumulative}));
- const labelsX=chartRows.length?chartRows.map(row=>String(row.mes).slice(5,7)+'/'+String(row.mes).slice(2,4)):['Atual'];
  const values=allTypesSelected
-  ?chartRows.map(row=>Number((Number(row.aplicado||0)>0?(Number(row.ganho||0)/Number(row.aplicado||0))*100:0).toFixed(4)))
+  ?chartRows.map(row=>portfolioRows.length>1
+    ?Number((Number(row.aplicado||0)>0?(Number(row.ganho||0)/Number(row.aplicado||0))*100:0).toFixed(4))
+    :Number(row.valor||0))
   :chartRows.map(row=>Number(row.retorno||0));
  const note=document.getElementById('returnChartNote');
  if(note){
@@ -3840,30 +3843,42 @@ function renderRentabilidadePage(){
   const coveredAssets=Number(performance.ativos_com_historico||0),assetTotal=Number(performance.total_ativos||0);
   const coverageText=(assetTotal?` Cobertura de histórico: ${coveredAssets}/${assetTotal} ativos.`:'')+(missingAssets.length?' Sem histórico: '+missingAssets.join(', ')+'.':'');
   note.textContent=allTypesSelected
-   ?'Evolução desde o primeiro mês com histórico disponível até o período atual. Cada ponto representa lucro ou prejuízo acumulado em relação ao capital líquido aplicado naquele mês. '+coverageText
+   ?(chartRows.length?'A linha da carteira utiliza movimentações Pluggy/B3 e preços históricos disponíveis. Os índices são exibidos independentemente da cobertura histórica dos ativos. ':'Ainda não há histórico de preços suficiente para a carteira. Os índices são exibidos conforme a disponibilidade das fontes. ')+coverageText
    :'Série histórica da classe selecionada, calculada somente com os ativos que possuem histórico disponível. Dados ausentes não são interpolados.'+coverageText+ipcaInfo+(activeSources.length?' Fontes: '+activeSources.join(' | '):'');
  }
  // A ausência temporária de dados não deve bloquear a interação da legenda.
  const datasets=[];
- if(returnVisibleSeries.has('portfolio'))datasets.push({label:allTypesSelected?'Rentabilidade consolidada atual':'Rentabilidade da classe',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
+ const benchmarkMonthSet=new Set();
+ RETURN_BENCHMARKS.forEach(code=>returnIndexSeries(code).forEach(point=>{
+  if(point&&/^\\d{4}-\\d{2}$/.test(String(point.mes||'')))benchmarkMonthSet.add(String(point.mes));
+ }));
+ const portfolioMonthSet=new Set(chartRows.map(row=>String(row.mes)));
+ const chartMonths=allTypesSelected
+  ?[...new Set([...benchmarkMonthSet,...portfolioMonthSet])].sort()
+  :visible.map(x=>x.year+'-'+String(x.month).padStart(2,'0'));
+ const chartLabels=chartMonths.length?chartMonths.map(key=>key.slice(5,7)+'/'+key.slice(2,4)):['Atual'];
+ if(returnVisibleSeries.has('portfolio')){
+  const portfolioMap=new Map(chartRows.map((row,index)=>[String(row.mes),values[index]]));
+  const portfolioData=chartMonths.map(key=>portfolioMap.has(key)?portfolioMap.get(key):null);
+  datasets.push({label:allTypesSelected?'Rentabilidade da carteira':'Rentabilidade da classe',data:portfolioData,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:false,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
+ }
  RETURN_BENCHMARKS.forEach(code=>{
   if(!returnVisibleSeries.has(code))return;
   const series=returnIndexSeries(code);
   if(!series.length)return;
   const map=new Map(series.map(x=>[x.mes,Number(x.valor)]));
-  const chartMonths=allTypesSelected?chartRows.map(row=>String(row.mes)):visible.map(x=>x.year+'-'+String(x.month).padStart(2,'0'));
-  const firstKey=chartMonths[0]||'';
+  const firstKey=chartMonths.find(key=>map.has(key))||'';
   const priorIndex=series.filter(x=>x.mes<firstKey).slice(-1)[0];
   const firstIndex=map.get(firstKey);
   const indexBase=priorIndex?1+Number(priorIndex.valor)/100:(Number.isFinite(firstIndex)?1+firstIndex/100:1);
   const data=chartMonths.map(key=>map.has(key)?Number((((1+map.get(key)/100)/indexBase-1)*100).toFixed(4)):null);
   if(data.some(x=>x!==null))datasets.push({label:code,data,borderColor:RETURN_BENCHMARK_COLORS[code],backgroundColor:'transparent',fill:false,tension:.18,pointRadius:2,pointHoverRadius:4,borderWidth:2,spanGaps:false});
  });
- const singleConsolidatedPoint=allTypesSelected&&values.length===1;
+ const singleConsolidatedPoint=allTypesSelected&&chartMonths.length===1&&values.length===1;
  const singleValue=singleConsolidatedPoint?values[0]:null;
  const yAxis=singleConsolidatedPoint?{min:Math.floor((singleValue-1)*2)/2,max:Math.ceil((singleValue+1)*2)/2,ticks:{stepSize:.5,precision:1,color:'#aab3c2',callback:v=>`${Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})}%`},grid:{color:'#383e49'}}:{ticks:{color:'#aab3c2',callback:v=>`${Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})}%`},grid:{color:'#383e49'}};
  if(singleConsolidatedPoint&&datasets[0]){datasets[0].pointRadius=6;datasets[0].pointHoverRadius=8;datasets[0].fill=false;datasets[0].tension=0;}
- chart('returnPerformanceChart','line',{labels:labelsX,datasets},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${pct(ctx.raw)}`}}},interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#aab3c2',maxRotation:0,autoSkip:true},grid:{display:false}},y:yAxis}});
+ chart('returnPerformanceChart','line',{labels:chartLabels,datasets},{plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${pct(ctx.raw)}`}}},interaction:{mode:'index',intersect:false},scales:{x:{ticks:{color:'#aab3c2',maxRotation:0,autoSkip:true},grid:{display:false}},y:yAxis}});
  const chartTitle=document.querySelector('.return-investor-head h2');
  if(chartTitle)chartTitle.textContent=allTypesSelected?'Rentabilidade consolidada da carteira':'Rentabilidade da classe comparada com índices';
  const legend=document.getElementById('returnChartLegend');

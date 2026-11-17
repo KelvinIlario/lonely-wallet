@@ -22,6 +22,14 @@ Compilação Python, sintaxe dos scripts JavaScript e integridade do ZIP verific
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
 
+## v3.3.23
+
+- Corrige o gráfico de Rentabilidade para que os índices CDI, IPCA, IFIX, IBOV, SMLL, IDIV e IVVB11 sejam plotados mesmo quando a carteira ainda não possui uma série histórica mensal completa.
+- A linha da carteira utiliza primeiro a série histórica patrimonial; quando ela não está disponível, utiliza a série acumulada calculada a partir das operações importadas e dos preços históricos disponíveis.
+- O eixo temporal passa a considerar a união dos meses disponíveis nos índices e na carteira, em vez de depender exclusivamente dos meses da carteira. Isso evita um gráfico vazio com apenas o rótulo “Atual”.
+- Operações Pluggy importadas continuam compondo os fluxos de investimento usados no cálculo; a série da carteira só é desenhada nos meses com dados efetivos, sem inventar cotações ou retornos.
+- A nota do gráfico esclarece a disponibilidade do histórico e a cobertura dos ativos.
+
 ## v3.3.15
 
 - Pluggy passa a sincronizar exclusivamente investimentos e movimentações de investimento. A consulta a contas e transações bancárias foi removida.
