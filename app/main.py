@@ -1,0 +1,5138 @@
+import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil, secrets, hmac, math
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
+from datetime import date, datetime, time as clock_time, timedelta
+from zoneinfo import ZoneInfo
+import requests
+from cryptography.fernet import Fernet, InvalidToken
+from openpyxl import load_workbook, Workbook
+from flask import Flask, g, jsonify, render_template, request, send_file, session, redirect, url_for
+
+app = Flask(__name__)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '0').lower() in ('1', 'true', 'yes'), PERMANENT_SESSION_LIFETIME=timedelta(minutes=30), MAX_CONTENT_LENGTH=16 * 1024 * 1024)
+# Dados da carteira ficam em um banco próprio; segredos de APIs ficam em tokens.db.
+DB_PATH = os.environ.get('ASSETS_DB_PATH', '/data/ativos.db')
+LEGACY_DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
+TOKEN_DB_PATH = os.environ.get('TOKEN_DB_PATH', '/data/tokens.db')
+TOKEN = os.environ.get('BRAPI_TOKEN') or os.environ.get('BRAPI_API_KEY', '')
+API_KEY_FILE = os.environ.get('API_KEYS_KEY_FILE', '/data/.api-credentials.key')
+TZ = ZoneInfo('America/Sao_Paulo')
+MARKET_OPEN = clock_time(10, 0)
+MARKET_CLOSE = clock_time(17, 55)
+CACHE, CACHE_TTL = {}, 300
+QUOTE_HISTORY_PATH = os.environ.get('QUOTE_HISTORY_PATH', '/data/quotes_last_valid.json')
+QUOTE_HISTORY_LOCK = threading.RLock()
+PORTFOLIO_HISTORY_CACHE, PORTFOLIO_HISTORY_TTL = {}, 1800
+PORTFOLIO_HISTORY_EMPTY_TTL = 120
+PROVENTOS_SYNC_CACHE = {'time': 0, 'result': None, 'signature': None}
+PROVENTOS_SYNC_TTL = 3600
+SGS_CACHE = {}
+SGS_CACHE_TTL = 12 * 3600
+BENCHMARK_CACHE = {'time': 0, 'data': {}}
+BENCHMARK_CACHE_TTL = 6 * 3600
+
+
+
+
+@app.after_request
+def security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    # Política de base compatível com os handlers inline legados e Chart.js CDN.
+    # A remoção de 'unsafe-inline' depende da migração dos 100+ handlers inline.
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; "
+        "font-src 'self' data: https:; connect-src 'self' https:; upgrade-insecure-requests"
+    )
+    return response
+
+
+def db():
+    if 'db' not in g:
+        g.db = sqlite3.connect(DB_PATH, timeout=15)
+        g.db.execute('PRAGMA busy_timeout=15000')
+        g.db.execute('PRAGMA journal_mode=WAL')
+        g.db.execute('PRAGMA synchronous=NORMAL')
+        g.db.row_factory = sqlite3.Row
+        g.db.execute('PRAGMA foreign_keys=ON')
+    return g.db
+
+
+def token_db():
+    if 'token_db' not in g:
+        os.makedirs(os.path.dirname(TOKEN_DB_PATH) or '.', exist_ok=True)
+        g.token_db = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+        g.token_db.execute('PRAGMA busy_timeout=15000')
+        g.token_db.row_factory = sqlite3.Row
+    return g.token_db
+
+
+@app.teardown_appcontext
+def close_db(_):
+    con = g.pop('db', None)
+    if con:
+        con.close()
+    secrets = g.pop('token_db', None)
+    if secrets:
+        secrets.close()
+
+
+def prepare_database_files():
+    os.makedirs(os.path.dirname(DB_PATH) or '.', exist_ok=True)
+    if os.path.abspath(DB_PATH) != os.path.abspath(LEGACY_DB_PATH) and not os.path.exists(DB_PATH) and os.path.exists(LEGACY_DB_PATH):
+        shutil.copy2(LEGACY_DB_PATH, DB_PATH)
+    os.makedirs(os.path.dirname(TOKEN_DB_PATH) or '.', exist_ok=True)
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.execute('PRAGMA busy_timeout=15000')
+    con.execute('''CREATE TABLE IF NOT EXISTS app_auth (
+        id INTEGER PRIMARY KEY CHECK(id=1), pin_salt TEXT NOT NULL, pin_hash TEXT NOT NULL,
+        failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1
+    )''')
+    auth_cols = {row[1] for row in con.execute('PRAGMA table_info(app_auth)').fetchall()}
+    if 'enabled' not in auth_cols: con.execute('ALTER TABLE app_auth ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1')
+    con.execute('''CREATE TABLE IF NOT EXISTS auth_attempts (
+        client_ip TEXT PRIMARY KEY, failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+    )''')
+    con.execute('''CREATE TABLE IF NOT EXISTS api_credentials (
+        provider TEXT PRIMARY KEY, token_encrypted TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+    )''')
+    con.commit()
+    con.close()
+
+
+def migrate_api_credentials():
+    if not os.path.exists(DB_PATH):
+        return
+    assets = sqlite3.connect(DB_PATH)
+    assets.row_factory = sqlite3.Row
+    try:
+        exists = assets.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_credentials'").fetchone()
+        if not exists:
+            return
+        rows = assets.execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()
+        if rows:
+            secrets = sqlite3.connect(TOKEN_DB_PATH)
+            secrets.executemany(
+                'INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) '
+                'ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted, '
+                'enabled=excluded.enabled,updated_at=excluded.updated_at',
+                [(r['provider'],r['token_encrypted'],r['enabled'],r['updated_at']) for r in rows]
+            )
+            secrets.commit()
+            secrets.close()
+        assets.execute('DELETE FROM api_credentials')
+        assets.commit()
+    finally:
+        assets.close()
+
+
+def init_db():
+    os.makedirs(os.path.dirname(DB_PATH) or '.', exist_ok=True)
+    con = sqlite3.connect(DB_PATH, timeout=15)
+    con.execute('PRAGMA busy_timeout=15000')
+    con.execute('PRAGMA journal_mode=WAL')
+    con.execute('PRAGMA synchronous=NORMAL')
+    con.executescript('''
+    CREATE TABLE IF NOT EXISTS operacoes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT NOT NULL,
+      tipo TEXT NOT NULL, lado TEXT NOT NULL, quantidade REAL NOT NULL,
+      preco REAL NOT NULL, data TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS proventos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT NOT NULL,
+      valor_total REAL NOT NULL, data TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS metas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL,
+      objetivo REAL NOT NULL, aporte REAL DEFAULT 0, tipo TEXT DEFAULT 'patrimonio',
+      categoria TEXT DEFAULT '', ticker TEXT DEFAULT '', variacao_anual REAL DEFAULT 0, classes TEXT DEFAULT '[]'
+    );
+    CREATE TABLE IF NOT EXISTS distribuicao_alvo (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL,
+      percentual REAL NOT NULL DEFAULT 0,
+      ordem INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS irpf_lancamentos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      grupo TEXT NOT NULL CHECK(grupo IN ('isento','exclusiva')),
+      natureza TEXT NOT NULL,
+      fonte_pagadora TEXT NOT NULL,
+      documento TEXT DEFAULT '',
+      valor REAL NOT NULL CHECK(valor >= 0),
+      data TEXT NOT NULL,
+      observacoes TEXT DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS darfs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      competencia TEXT NOT NULL,
+      codigo TEXT NOT NULL,
+      valor REAL NOT NULL CHECK(valor >= 0),
+      vencimento TEXT NOT NULL,
+      pago_em TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pendente' CHECK(status IN ('pendente','pago')),
+      observacoes TEXT DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS saldos_importados (
+      ticker TEXT NOT NULL,
+      tipo TEXT NOT NULL,
+      quantidade REAL NOT NULL DEFAULT 0,
+      preco_medio REAL NOT NULL DEFAULT 0,
+      preco_base REAL NOT NULL DEFAULT 0,
+      data_base TEXT NOT NULL,
+      nome TEXT NOT NULL DEFAULT '',
+      origem TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (ticker, data_base)
+    );
+    CREATE INDEX IF NOT EXISTS idx_saldos_importados_data ON saldos_importados(data_base);
+    CREATE TABLE IF NOT EXISTS proventos_api (
+      event_key TEXT PRIMARY KEY,
+      ticker TEXT NOT NULL,
+      tipo_ativo TEXT NOT NULL DEFAULT 'outros',
+      tipo_evento TEXT NOT NULL DEFAULT 'Provento',
+      data_aprovacao TEXT DEFAULT '',
+      data_com TEXT NOT NULL,
+      data_ex TEXT DEFAULT '',
+      data_pagamento TEXT NOT NULL,
+      valor_por_ativo REAL NOT NULL DEFAULT 0,
+      quantidade REAL NOT NULL DEFAULT 0,
+      valor_total REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'A receber',
+      remarks TEXT DEFAULT '',
+      sincronizado_em TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_proventos_api_ticker_pagamento ON proventos_api(ticker,data_pagamento);
+    CREATE TABLE IF NOT EXISTS integracao_estado (
+      chave TEXT PRIMARY KEY,
+      valor TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS b3_importados (
+      fingerprint TEXT PRIMARY KEY,
+      categoria TEXT NOT NULL,
+      importado_em TEXT NOT NULL, lote_id TEXT, registro_id INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS b3_import_lotes (
+      id TEXT PRIMARY KEY, arquivo TEXT NOT NULL DEFAULT '', importado_em TEXT NOT NULL,
+      operacoes INTEGER NOT NULL DEFAULT 0, proventos INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '');
+    CREATE TABLE IF NOT EXISTS pluggy_items (
+      item_id TEXT PRIMARY KEY,
+      label TEXT NOT NULL DEFAULT '',
+      connector_name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT '',
+      consent_expires_at TEXT DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      last_synced_at TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pluggy_accounts (
+      account_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      account_type TEXT NOT NULL DEFAULT '',
+      subtype TEXT NOT NULL DEFAULT '',
+      number TEXT NOT NULL DEFAULT '',
+      balance REAL NOT NULL DEFAULT 0,
+      currency_code TEXT NOT NULL DEFAULT 'BRL',
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_accounts_item ON pluggy_accounts(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_investments (
+      investment_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      code TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL DEFAULT '',
+      investment_type TEXT NOT NULL DEFAULT '',
+      subtype TEXT NOT NULL DEFAULT '',
+      quantity REAL NOT NULL DEFAULT 0,
+      amount_original REAL NOT NULL DEFAULT 0,
+      balance REAL NOT NULL DEFAULT 0,
+      unit_value REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT '',
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_investments_item ON pluggy_investments(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_position_snapshots (
+      item_id TEXT NOT NULL,
+      investment_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      asset_type TEXT NOT NULL DEFAULT 'outros',
+      quantity REAL NOT NULL DEFAULT 0,
+      amount_original REAL NOT NULL DEFAULT 0,
+      balance REAL NOT NULL DEFAULT 0,
+      snapshot_at TEXT NOT NULL,
+      PRIMARY KEY(item_id,investment_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_position_snapshots_ticker ON pluggy_position_snapshots(ticker);
+    CREATE TABLE IF NOT EXISTS pluggy_transactions (
+      transaction_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      transaction_date TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      direction TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT '',
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_transactions_item ON pluggy_transactions(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_investment_transactions (
+      transaction_id TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      investment_id TEXT NOT NULL,
+      ticker TEXT NOT NULL DEFAULT '',
+      transaction_date TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      movement_type TEXT NOT NULL DEFAULT '',
+      quantity REAL NOT NULL DEFAULT 0,
+      unit_value REAL NOT NULL DEFAULT 0,
+      amount REAL NOT NULL DEFAULT 0,
+      import_state TEXT NOT NULL DEFAULT 'imported_only',
+      imported_operation_id INTEGER,
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pluggy_invtx_item ON pluggy_investment_transactions(item_id);
+    CREATE TABLE IF NOT EXISTS pluggy_imported_events (
+      external_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      ticker TEXT NOT NULL DEFAULT '',
+      event_date TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      target_id INTEGER,
+      import_state TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    ''')
+    # Preserve all Pluggy history and account cache across restarts and upgrades.
+    goal_columns = [row[1] for row in con.execute('PRAGMA table_info(metas)').fetchall()]
+    for name, definition in [('categoria', "TEXT DEFAULT ''"), ('ticker', "TEXT DEFAULT ''"), ('variacao_anual', 'REAL DEFAULT 0'), ('classes', "TEXT DEFAULT '[]'")]:
+        if name not in goal_columns:
+            con.execute(f'ALTER TABLE metas ADD COLUMN {name} {definition}')
+    columns = [row[1] for row in con.execute('PRAGMA table_info(operacoes)').fetchall()]
+    if 'custos' not in columns:
+        con.execute('ALTER TABLE operacoes ADD COLUMN custos REAL NOT NULL DEFAULT 0')
+    for name, definition in [('status', "TEXT NOT NULL DEFAULT 'executada'"), ('data_registro', 'TEXT'), ('data_execucao', 'TEXT'), ('detalhes', "TEXT NOT NULL DEFAULT '{}'")]:
+        if name not in columns:
+            con.execute(f'ALTER TABLE operacoes ADD COLUMN {name} {definition}')
+    con.execute("UPDATE operacoes SET data_registro=COALESCE(data_registro,data), data_execucao=COALESCE(data_execucao,data||'T10:00:00-03:00') WHERE data_registro IS NULL OR data_execucao IS NULL")
+    count = con.execute('SELECT COUNT(*) FROM distribuicao_alvo').fetchone()[0]
+    if count == 0:
+        defaults = [
+            ('Renda Fixa', 40, 1), ('Ações', 20, 2), ('FIIs', 20, 3),
+            ('ETFs', 10, 4), ('ETFs Internacionais', 10, 5)
+        ]
+        con.executemany('INSERT INTO distribuicao_alvo(nome,percentual,ordem) VALUES(?,?,?)', defaults)
+
+    # Saldo-base capturado em 31/10/2026. Esta fotografia foi importada para
+    # reconciliar a posição do usuário, mas não é um lançamento. Ela só pode
+    # existir enquanto houver operações na carteira. Na versão 45, se o usuário
+    # apagar todas as operações, removemos essa fotografia uma única vez e
+    # gravamos o estado para que ela nunca seja recriada em reinicializações.
+    snapshot_origin = 'Posição final informada pelo usuário (captura de 31/10/2026)'
+    snapshot_date = '2026-10-31'
+    snapshot_state_key = 'snapshot_20261031_lifecycle_v45'
+    snapshot_rows = [
+        ('PETR4','acao',43,40.22,52.66,'Petrobras PN'),
+        ('VALE3','acao',23,85.62,62.09,'Vale ON'),
+        ('BBDC4','acao',67,18.23,13.86,'Bradesco PN'),
+        ('BBAS3','acao',53,22.90,16.45,'Banco do Brasil ON'),
+        ('SANB4','acao',38,14.16,11.96,'Santander PN'),
+        ('BBSE3','acao',7,34.55,41.24,'BB Seguridade ON'),
+        ('WEGE3','acao',2,42.88,48.39,'WEG ON'),
+        ('KLBN4','acao',23,3.70,3.40,'Klabin PN'),
+        ('HGLG11','fii',6,152.95,149.47,'Pátria Logística FII'),
+        ('RBRR11','fii',13,69.81,65.01,'RBR Rendimento High Grade FII'),
+        ('MXRF11','fii',92,9.60,8.90,'Maxi Renda FII'),
+        ('HGRU11','fii',7,116.48,114.00,'Pátria Renda Urbana FII'),
+        ('BTLG11','fii',8,99.91,98.10,'BTG Pactual Logística FII'),
+        ('XPML11','fii',8,106.40,96.80,'XP Malls FII'),
+        ('CPTS11','fii',109,7.86,7.00,'Capitânia Securities II FII'),
+        ('KNRI11','fii',5,156.90,150.50,'Kinea Renda Imobiliária FII'),
+        ('VGIR11','fii',81,9.64,8.92,'Valora RE III FII'),
+        ('VISC11','fii',5,104.10,99.40,'Vinci Shopping Centers FII'),
+        ('KNSC11','fii',11,9.04,8.78,'Kinea Securities FII'),
+        ('HGCR11','fii',1,93.23,92.98,'Patria Crédito Imobiliário FII'),
+        # Renda fixa: uma aplicação por registro. O saldo é exato; o custo foi
+        # reconstituído pelo saldo e pela rentabilidade exibidos na captura.
+        ('CDB_NUBANK_120_CDI','renda_fixa',1,19991.77,21695.07,'CDB - Nubank - Pós-Fixado - 120% CDI'),
+        ('LCA_BANCO_ORIGINAL_93_CDI','renda_fixa',1,7995.83,8499.57,'LCA - Banco Original - Pós-Fixado - 93% CDI'),
+        ('CDB_NUBANK_100_CDI','renda_fixa',1,1999.96,2009.16,'CDB - Nubank - Pós-Fixado - 100% CDI'),
+        ('CDB_MERCADO_PAGO_120_CDI','renda_fixa',1,114.69,125.05,'CDB - Mercado Pago - Pós-Fixado - 120% CDI')
+    ]
+    lifecycle = con.execute(
+        'SELECT valor FROM integracao_estado WHERE chave=?', (snapshot_state_key,)
+    ).fetchone()
+    operations_count = int(con.execute('SELECT COUNT(*) FROM operacoes').fetchone()[0])
+    existing_snapshot_count = int(con.execute(
+        'SELECT COUNT(*) FROM saldos_importados WHERE data_base=? AND origem=?',
+        (snapshot_date, snapshot_origin)
+    ).fetchone()[0])
+
+    # Migração de carteiras v44: se todos os lançamentos já foram apagados,
+    # o saldo-base fixo antigo não pode continuar aparecendo como patrimônio.
+    if lifecycle is None:
+        if existing_snapshot_count and operations_count == 0:
+            con.execute(
+                'DELETE FROM saldos_importados WHERE data_base=? AND origem=?',
+                (snapshot_date, snapshot_origin)
+            )
+            lifecycle_value = 'reset_empty'
+        elif existing_snapshot_count:
+            lifecycle_value = 'active'
+        elif operations_count > 0:
+            # Não recriar posições históricas fixas em uma carteira nova/limpa.
+            lifecycle_value = 'empty'
+        else:
+            # Instalação vazia: não plantar posições pré-cadastradas.
+            lifecycle_value = 'empty'
+        con.execute(
+            'INSERT INTO integracao_estado(chave,valor) VALUES(?,?)',
+            (snapshot_state_key, lifecycle_value)
+        )
+    elif operations_count == 0 and lifecycle[0] == 'active':
+        con.execute(
+            'DELETE FROM saldos_importados WHERE data_base=? AND origem=?',
+            (snapshot_date, snapshot_origin)
+        )
+        con.execute(
+            'UPDATE integracao_estado SET valor=? WHERE chave=?',
+            ('reset_empty', snapshot_state_key)
+        )
+
+    # Instalação limpa: não importar capturas nem inserir operações/proventos de demonstração.
+    # Os registros já existentes em um banco persistente são preservados.
+
+    b3cols = {row[1] for row in con.execute('PRAGMA table_info(b3_importados)').fetchall()}
+    if 'lote_id' not in b3cols: con.execute('ALTER TABLE b3_importados ADD COLUMN lote_id TEXT')
+    if 'registro_id' not in b3cols: con.execute('ALTER TABLE b3_importados ADD COLUMN registro_id INTEGER')
+    con.commit(); con.close()
+
+
+prepare_database_files()
+init_db()
+migrate_api_credentials()
+
+# Persist the Flask signing key in the mounted data directory so container recreation
+# does not invalidate the PIN setup or expose a predictable development secret.
+def load_session_secret():
+    path = os.environ.get('SESSION_SECRET_FILE', '/data/.lonely-wallet-session.key')
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    if not os.path.exists(path):
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='ascii') as f:
+            f.write(secrets.token_urlsafe(48))
+        os.chmod(tmp, 0o600)
+        try:
+            os.replace(tmp, path)
+        except FileNotFoundError:
+            pass
+    with open(path, 'r', encoding='ascii') as f:
+        return f.read().strip()
+
+app.secret_key = load_session_secret()
+
+# A new boot identifier is generated on every application process start.
+# Sessions created by a previous process are rejected after a Docker restart.
+BOOT_ID = os.environ.get('LONELY_WALLET_BOOT_ID') or secrets.token_urlsafe(24)
+IDLE_TIMEOUT_SECONDS = 30 * 60
+
+
+def auth_record():
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.row_factory = sqlite3.Row
+    try:
+        return con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+    finally:
+        con.close()
+
+
+def pin_digest(pin, salt):
+    return hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), bytes.fromhex(salt), 310000).hex()
+
+
+def _auth_client_ip():
+    # Usa o IP observado pelo Flask; não confia em X-Forwarded-For sem proxy confiável configurado.
+    return str(request.remote_addr or 'unknown')[:64]
+
+
+def _auth_failure(con, row=None, now=None):
+    now = time.time() if now is None else now
+    ip = _auth_client_ip()
+    current = con.execute('SELECT failed_attempts,updated_at FROM auth_attempts WHERE client_ip=?', (ip,)).fetchone()
+    attempts = 0
+    if current:
+        try:
+            age = (datetime.now(TZ) - datetime.fromisoformat(str(current['updated_at']))).total_seconds()
+        except Exception:
+            age = 10**9
+        attempts = int(current['failed_attempts'] or 0) if age <= 900 else 0
+    attempts += 1
+    locked_until = now + 300 if attempts >= 5 else 0
+    con.execute("""INSERT INTO auth_attempts(client_ip,failed_attempts,locked_until,updated_at) VALUES(?,?,?,?)
+        ON CONFLICT(client_ip) DO UPDATE SET failed_attempts=excluded.failed_attempts,
+        locked_until=excluded.locked_until,updated_at=excluded.updated_at""",
+        (ip, 0 if locked_until else attempts, locked_until, datetime.now(TZ).isoformat()))
+    # Limpa o contador legado global para que uma origem não bloqueie todos os usuários.
+    con.execute('UPDATE app_auth SET failed_attempts=0,locked_until=0 WHERE id=1')
+    con.commit()
+    return locked_until
+
+
+def _auth_lock_response(row=None, now=None, con=None):
+    now = time.time() if now is None else now
+    if con is not None:
+        state = con.execute('SELECT locked_until FROM auth_attempts WHERE client_ip=?', (_auth_client_ip(),)).fetchone()
+        locked_until = float(state[0] or 0) if state else 0
+    else:
+        locked_until = 0
+    if locked_until > now:
+        wait = max(1, int(locked_until - now))
+        return jsonify(ok=False, error=f'Muitas tentativas deste endereço. Aguarde {wait} segundos.'), 429
+    return None
+
+
+def _auth_reset_client(con):
+    con.execute('DELETE FROM auth_attempts WHERE client_ip=?', (_auth_client_ip(),))
+
+
+def _origin_is_same_host():
+    origin = request.headers.get('Origin')
+    if not origin:
+        return True  # Clientes não-browser podem não enviar Origin; SameSite continua ativo.
+    from urllib.parse import urlparse
+    try:
+        return urlparse(origin).netloc.lower() == request.host.lower()
+    except Exception:
+        return False
+
+
+@app.before_request
+def require_pin_authentication():
+    # Verifica origem também nos endpoints públicos de autenticação para reduzir CSRF.
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and not _origin_is_same_host():
+        return jsonify(ok=False, error='Origem da requisição não autorizada.'), 403
+    if request.endpoint in ('auth_status', 'auth_setup', 'auth_login', 'auth_disable', 'health', 'static') or request.path.startswith('/static/'):
+        return None
+    record = auth_record()
+    if not record or not record['enabled'] or not record['pin_hash']:
+        return None
+
+    now = time.time()
+    authenticated = bool(session.get('authenticated'))
+    same_process = session.get('boot_id') == BOOT_ID
+    last_activity = float(session.get('last_activity') or 0)
+    within_idle_limit = last_activity > 0 and (now - last_activity) <= IDLE_TIMEOUT_SECONDS
+
+    if authenticated and (not same_process or not within_idle_limit):
+        session.clear()
+        authenticated = False
+
+    if not authenticated:
+        if request.path == '/' or not request.path.startswith('/api/'):
+            return render_template('auth.html')
+        return jsonify(ok=False, error='Autenticação necessária.', auth_required=True), 401
+
+    # Sliding inactivity timeout: activity renews the 30-minute idle window.
+    session['last_activity'] = now
+    session['boot_id'] = BOOT_ID
+    session.permanent = True
+
+    return None
+
+
+@app.route('/api/auth/status')
+def auth_status():
+    row = auth_record()
+    configured = bool(row and row['pin_hash'])
+    enabled = bool(row and row['enabled'] and configured)
+    return jsonify(configured=configured, enabled=enabled, authenticated=bool(session.get('authenticated')), idle_timeout_minutes=30)
+
+
+@app.route('/api/auth/setup', methods=['POST'])
+def auth_setup():
+    payload = request.get_json(silent=True) or {}
+    pin = str(payload.get('pin') or '')
+    confirm = str(payload.get('confirm') or '')
+    existing = auth_record()
+    if existing is not None and existing['pin_hash'] and existing['enabled']:
+        return jsonify(ok=False, error='O PIN já está ativo. Use a opção de alteração.'), 409
+    if not re.fullmatch(r'\d{6,12}', pin) or pin != confirm:
+        return jsonify(ok=False, error='Use um PIN de 6 a 12 números e confirme corretamente.'), 400
+    salt = secrets.token_bytes(16).hex()
+    digest = pin_digest(pin, salt)
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    try:
+        if existing is None:
+            con.execute('INSERT INTO app_auth(id,pin_salt,pin_hash,updated_at,enabled) VALUES(1,?,?,?,1)', (salt, digest, datetime.now(TZ).isoformat()))
+        else:
+            con.execute('UPDATE app_auth SET pin_salt=?,pin_hash=?,updated_at=?,enabled=1,failed_attempts=0,locked_until=0 WHERE id=1', (salt, digest, datetime.now(TZ).isoformat()))
+        con.commit()
+    except sqlite3.IntegrityError:
+        return jsonify(ok=False, error='O PIN já foi configurado.'), 409
+    finally:
+        con.close()
+    session.clear(); session['authenticated'] = True; session['boot_id'] = BOOT_ID; session['last_activity'] = time.time(); session.permanent = True
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/disable', methods=['POST'])
+def auth_disable():
+    payload = request.get_json(silent=True) or {}
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute('BEGIN IMMEDIATE')
+        row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+        if row and row['pin_hash']:
+            lock_response = _auth_lock_response(row, con=con)
+            if lock_response:
+                return lock_response
+            current = str(payload.get('pin') or '')
+            candidate = pin_digest(current, row['pin_salt']) if re.fullmatch(r"\d{6,12}", current) else ''
+            if not hmac.compare_digest(candidate, row['pin_hash']):
+                locked_until = _auth_failure(con, row)
+                if locked_until:
+                    return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
+                return jsonify(ok=False, error='PIN incorreto. Não foi possível desativar a proteção.'), 401
+            _auth_reset_client(con)
+            con.execute('UPDATE app_auth SET enabled=0,failed_attempts=0,locked_until=0,updated_at=? WHERE id=1',
+                        (datetime.now(TZ).isoformat(),))
+            con.commit()
+        else:
+            con.execute("INSERT OR REPLACE INTO app_auth(id,pin_salt,pin_hash,failed_attempts,locked_until,updated_at,enabled) VALUES(1,'','',0,0,?,0)",
+                        (datetime.now(TZ).isoformat(),))
+            con.commit()
+    finally:
+        con.close()
+    if not session.get('authenticated'):
+        session.clear()
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    payload = request.get_json(silent=True) or {}
+    pin = str(payload.get('pin') or '')
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute('BEGIN IMMEDIATE')
+        row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+        if not row:
+            return jsonify(ok=False, setup_required=True, error='Configure seu PIN de acesso.'), 409
+        now = time.time()
+        lock_response = _auth_lock_response(row, now, con)
+        if lock_response:
+            return lock_response
+        candidate = pin_digest(pin, row['pin_salt']) if re.fullmatch(r'\d{6,12}', pin) else ''
+        if not hmac.compare_digest(candidate, row['pin_hash']):
+            lock_until = _auth_failure(con, row, now)
+            if lock_until:
+                return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
+            return jsonify(ok=False, error='PIN incorreto.'), 401
+        _auth_reset_client(con)
+        con.execute('UPDATE app_auth SET failed_attempts=0,locked_until=0 WHERE id=1')
+        con.commit()
+    finally:
+        con.close()
+    session.clear(); session['authenticated'] = True; session['boot_id'] = BOOT_ID; session['last_activity'] = time.time(); session.permanent = True
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    session.clear()
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/change-pin', methods=['POST'])
+def auth_change_pin():
+    payload = request.get_json(silent=True) or {}
+    current, new_pin = str(payload.get('current') or ''), str(payload.get('new') or '')
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15); con.row_factory = sqlite3.Row
+    try:
+        con.execute('BEGIN IMMEDIATE')
+        row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+        if not row:
+            return jsonify(ok=False, error='PIN não configurado.'), 409
+        lock_response = _auth_lock_response(row, con=con)
+        if lock_response:
+            return lock_response
+        candidate = pin_digest(current, row['pin_salt']) if re.fullmatch(r'\d{6,12}', current) else ''
+        if not hmac.compare_digest(candidate, row['pin_hash']):
+            locked_until = _auth_failure(con, row)
+            if locked_until:
+                return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
+            return jsonify(ok=False, error='PIN atual incorreto.'), 401
+        if not re.fullmatch(r'\d{6,12}', new_pin):
+            return jsonify(ok=False, error='O novo PIN deve ter de 6 a 12 números.'), 400
+        _auth_reset_client(con)
+        salt = secrets.token_bytes(16).hex()
+        con.execute('UPDATE app_auth SET pin_salt=?,pin_hash=?,failed_attempts=0,locked_until=0,updated_at=? WHERE id=1',
+                    (salt, pin_digest(new_pin, salt), datetime.now(TZ).isoformat()))
+        con.commit()
+    finally:
+        con.close()
+    return jsonify(ok=True)
+
+API_PROVIDERS = {
+    'pluggy': {'name':'Pluggy', 'category':'Open Finance · contas e investimentos', 'description':'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.', 'auth':True, 'credential_type':'client_id_secret', 'url':'https://dashboard.pluggy.ai/', 'docs':'https://docs.pluggy.ai/'},
+    'brapi': {'name':'brapi', 'category':'Brasil · cotações e histórico', 'description':'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. A cobertura e os limites dependem do plano.', 'auth':True, 'url':'https://brapi.dev/dashboard', 'docs':'https://brapi.dev/docs'},
+    'hgbrasil': {'name':'HG Brasil', 'category':'Brasil · mercado e indicadores', 'description':'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano contratado.', 'auth':True, 'url':'https://console.hgbrasil.com/', 'docs':'https://console.hgbrasil.com/documentation/finance'},
+    'twelvedata': {'name':'Twelve Data', 'category':'Global · cotações e séries', 'description':'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura da B3 e os créditos do plano.', 'auth':True, 'url':'https://twelvedata.com/account', 'docs':'https://twelvedata.com/docs'},
+    'alphavantage': {'name':'Alpha Vantage', 'category':'Global · cotações e fundamentos', 'description':'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. A cobertura de tickers brasileiros varia por endpoint.', 'auth':True, 'url':'https://www.alphavantage.co/support/#api-key', 'docs':'https://www.alphavantage.co/documentation/'},
+    'fred': {'name':'FRED', 'category':'Macroeconomia internacional', 'description':'Séries macroeconômicas e indicadores econômicos internacionais. Não substitui dados de preços de ativos da B3.', 'auth':True, 'url':'https://fred.stlouisfed.org/docs/api/api_key.html', 'docs':'https://fred.stlouisfed.org/docs/api/fred/'},
+    'bcb': {'name':'Banco Central · SGS', 'category':'Brasil · fonte oficial', 'description':'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.', 'auth':False, 'url':'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais', 'docs':'https://www.bcb.gov.br/gestao_site/webservices.asp'},
+    'ibge': {'name':'IBGE · SIDRA', 'category':'Brasil · estatísticas e inflação', 'description':'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.', 'auth':False, 'url':'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3', 'docs':'https://apisidra.ibge.gov.br/'},
+    'tesouro': {'name':'Tesouro Transparente', 'category':'Brasil · títulos públicos', 'description':'Dados abertos de taxas e preços diários de títulos do Tesouro Direto, além de relatórios e séries da dívida pública. Sem token.', 'auth':False, 'url':'https://www.tesourotransparente.gov.br/temas/divida-publica-federal/tesouro-direto', 'docs':'https://www.tesourotransparente.gov.br/ckan/dataset'},
+    'cvm': {'name':'CVM Dados Abertos', 'category':'Brasil · fundos e demonstrações', 'description':'Dados públicos de fundos, informes e demonstrações financeiras. Não é uma API de cotação em tempo real; acesso aos conjuntos públicos não exige token.', 'auth':False, 'url':'https://dados.cvm.gov.br/', 'docs':'https://dados.cvm.gov.br/'},
+    'b3': {'name':'B3 · APIs oficiais', 'category':'Brasil · dados oficiais de mercado e investidor', 'description':'Posições, movimentações, eventos provisionados e negociação. Exige contratação/licença e autorização do investidor; a B3 informa que as APIs do catálogo são voltadas a clientes B2B.', 'auth':False, 'url':'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/b3-for-developers/', 'docs':'https://developers.b3.com.br/apis'},
+    'yahoo': {'name':'Yahoo Finance', 'category':'Global · fonte complementar', 'description':'Histórico e cotações usados como fonte complementar por endpoints não oficiais. Não há API pública oficial com garantia de disponibilidade ou licença para uso comercial.', 'auth':False, 'url':'https://finance.yahoo.com/', 'docs':'https://finance.yahoo.com/'},
+    'dadosb3': {'name':'Dados B3 · Índices históricos', 'category':'Brasil · índices de retorno total', 'description':'Séries diárias de IBOV, IFIX, SMLL e IDIV, com retorno total. Sem chave, a API libera apenas os últimos 30 pregões; a chave grátis libera a série completa (200 consultas/dia). Serviço independente que organiza dados públicos da B3, não é a API oficial da B3.', 'auth':True, 'url':'https://dadosb3.com/chave-gratis?de=api', 'docs':'https://dadosb3.com/api'},
+}
+
+
+def _api_fernet():
+    key_path = API_KEY_FILE
+    os.makedirs(os.path.dirname(key_path) or '.', exist_ok=True)
+    if not os.path.exists(key_path):
+        key = Fernet.generate_key()
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(key)
+    with open(key_path, 'rb') as handle:
+        return Fernet(handle.read().strip())
+
+
+def _get_api_token(provider):
+    try:
+        row = token_db().execute('SELECT token_encrypted,enabled FROM api_credentials WHERE provider=?', (provider,)).fetchone()
+        if row and row['enabled']:
+            return _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
+    except (InvalidToken, OSError, ValueError):
+        return ''
+    if provider == 'brapi':
+        return TOKEN
+    return ''
+
+
+def _brapi_token():
+    # Um token cadastrado e desativado deve prevalecer sobre o fallback do ambiente.
+    try:
+        row = token_db().execute('SELECT enabled FROM api_credentials WHERE provider=?', ('brapi',)).fetchone()
+        if row is not None and not row['enabled']:
+            return ''
+    except Exception:
+        pass
+    return _get_api_token('brapi') or TOKEN
+
+
+def _get_pluggy_credentials():
+    raw = _get_api_token('pluggy')
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+        return {'client_id':str(value.get('client_id') or ''),'client_secret':str(value.get('client_secret') or '')}
+    except (ValueError, TypeError):
+        return {}
+
+
+
+# Pluggy personal-use integration (Meu Pluggy).
+# The personal/free flow does not expose GET /v2/items. Keep itemIds locally:
+# the user copies each itemId from the Pluggy Dashboard Demo page.
+PLUGGY_AUTH_CACHE = {'api_key': '', 'expires_at': 0}
+
+
+def _pluggy_api_key(force=False):
+    now = time.time()
+    if not force and PLUGGY_AUTH_CACHE.get('api_key') and PLUGGY_AUTH_CACHE.get('expires_at', 0) > now + 60:
+        return PLUGGY_AUTH_CACHE['api_key']
+    credentials = _get_pluggy_credentials()
+    if not credentials.get('client_id') or not credentials.get('client_secret'):
+        raise ValueError('Cadastre Client ID e Client Secret da Pluggy.')
+    response = requests.post(
+        'https://api.pluggy.ai/auth',
+        json={'clientId': credentials['client_id'], 'clientSecret': credentials['client_secret']},
+        timeout=25
+    )
+    response.raise_for_status()
+    api_key = str((response.json() or {}).get('apiKey') or '')
+    if not api_key:
+        raise ValueError('A Pluggy não retornou uma API Key.')
+    PLUGGY_AUTH_CACHE.update(api_key=api_key, expires_at=now + 6900)
+    return api_key
+
+
+def _pluggy_request(method, path, params=None, force_auth=False):
+    url = 'https://api.pluggy.ai' + path
+    key = _pluggy_api_key(force=force_auth)
+    response = requests.request(method, url, headers={'X-API-KEY': key, 'Accept': 'application/json'}, params=params, timeout=35)
+    if response.status_code == 401 and not force_auth:
+        key = _pluggy_api_key(force=True)
+        response = requests.request(method, url, headers={'X-API-KEY': key, 'Accept': 'application/json'}, params=params, timeout=35)
+    response.raise_for_status()
+    return response.json() if response.content else {}
+
+
+def _pluggy_results(path, params=None):
+    params = dict(params or {})
+    params.setdefault('pageSize', 500)
+    page = 1
+    output = []
+    while page <= 100:
+        current = dict(params)
+        current['page'] = page
+        data = _pluggy_request('GET', path, params=current)
+        rows = data.get('results') or []
+        output.extend(rows)
+        total_pages = int(data.get('totalPages') or 1)
+        if page >= total_pages or not rows:
+            break
+        page += 1
+    return output
+
+
+def _pluggy_date(value):
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    try:
+        return datetime.fromisoformat(raw.replace('Z', '+00:00')).astimezone(TZ).date().isoformat()
+    except Exception:
+        try:
+            return date.fromisoformat(raw[:10]).isoformat()
+        except Exception:
+            return ''
+
+
+def _pluggy_asset_type(investment):
+    """Normaliza os tipos/subtipos da Pluggy sem converter produtos em ações."""
+    kind = str(investment.get('type') or '').strip().upper().replace('-', '_').replace(' ', '_')
+    subtype = str(investment.get('subtype') or '').strip().upper().replace('-', '_').replace(' ', '_')
+    name = str(investment.get('name') or '').upper()
+    code = str(investment.get('code') or '').upper()
+    fixed_markers = ('FIXED_INCOME', 'CDB', 'RDB', 'LCI', 'LCA', 'LC', 'CRI', 'CRA',
+                     'DEBENTURE', 'DEBÊNTURE', 'TESOURO', 'TREASURY', 'LFT', 'LTN',
+                     'NTN', 'LF', 'POUPANCA', 'POUPANÇA')
+    if any(marker in kind or marker in subtype for marker in fixed_markers):
+        return 'renda_fixa'
+    if any(marker in name or marker in code for marker in ('CDB', 'RDB', 'LCI', 'LCA', 'TESOURO', 'DEBENTURE', 'DEBÊNTURE')):
+        return 'renda_fixa'
+    # A Pluggy pode retornar type=EQUITY para diferentes classes.
+    # O subtype específico (ex.: REAL_ESTATE_FUND) deve prevalecer.
+    if subtype in ('REAL_ESTATE_FUND', 'REIT', 'FII'):
+        return 'fii'
+    if subtype in ('ETF', 'EXCHANGE_TRADED_FUND'):
+        return 'etf'
+    if subtype in ('BDR', 'BRAZILIAN_DEPOSITARY_RECEIPT'):
+        return 'bdr'
+    if subtype in ('MUTUAL_FUND', 'FUND', 'INVESTMENT_FUND', 'FUND_QUOTA'):
+        return 'fundo'
+    if subtype in ('STOCK', 'SHARE', 'SHARES'):
+        return 'acao'
+    if kind in ('EQUITY', 'STOCK', 'SHARE', 'SHARES'):
+        return 'acao'
+    if kind in ('ETF', 'EXCHANGE_TRADED_FUND'):
+        return 'etf'
+    if kind in ('MUTUAL_FUND', 'FUND', 'INVESTMENT_FUND', 'FUND_QUOTA'):
+        return 'fundo'
+    if kind in ('REAL_ESTATE_FUND', 'REIT', 'FII'):
+        return 'fii'
+    if kind in ('BDR', 'BRAZILIAN_DEPOSITARY_RECEIPT'):
+        return 'bdr'
+    if kind == 'COE' or subtype == 'COE':
+        return 'outros'
+    if kind in ('SECURITY', 'BOND'):
+        return 'renda_fixa' if any(x in subtype for x in ('BOND','TREASURY','FIXED')) else 'outros'
+    return 'outros'
+
+
+def _pluggy_ticker(investment):
+    candidates = [investment.get('code'), investment.get('ticker'), investment.get('symbol'), investment.get('name')]
+    for candidate in candidates:
+        value = str(candidate or '').strip().upper()
+        # Only map unambiguous exchange-style tickers into the stock ledger.
+        if re.fullmatch(r'[A-Z]{4}[0-9]{1,2}', value):
+            return value
+    return ''
+
+
+_ASSET_CLASS_CACHE = {}
+_ASSET_CLASS_CACHE_TTL = 24 * 60 * 60
+
+
+def _refine_pluggy_asset_type(investment):
+    """Classifica pelo subtipo Pluggy e valida com o cadastro de ativos da brapi."""
+    kind = _pluggy_asset_type(investment)
+    ticker = _pluggy_ticker(investment)
+    if not ticker:
+        return kind
+    now = time.time()
+    cached = _ASSET_CLASS_CACHE.get(ticker)
+    if cached and now - cached[0] < _ASSET_CLASS_CACHE_TTL:
+        return cached[1]
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
+    resolved = kind
+    try:
+        response = requests.get('https://brapi.dev/api/quote/list',
+            params={'search': ticker, 'limit': 50}, headers=headers, timeout=10)
+        response.raise_for_status()
+        stocks = response.json().get('stocks') or []
+        match = next((row for row in stocks if str(row.get('stock') or row.get('symbol') or '').upper() == ticker), None)
+        if match:
+            subtype = str(match.get('subType') or '').strip().lower().replace('_', '-')
+            market_type = str(match.get('type') or '').strip().lower()
+            mapping = {'fii':'fii','etf':'etf','bdr':'bdr','stock':'acao','unit':'acao',
+                       'fi-infra':'fundo','fi-agro':'fundo','fidc':'fundo','fip':'fundo'}
+            if subtype in mapping: resolved = mapping[subtype]
+            elif market_type == 'bdr': resolved = 'bdr'
+            elif market_type == 'fund': resolved = 'fundo'
+            elif market_type == 'stock': resolved = 'acao'
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        pass
+    _ASSET_CLASS_CACHE[ticker] = (now, resolved)
+    return resolved
+
+
+def _pluggy_expenses_total(movement):
+    expenses = movement.get('expenses')
+    if not isinstance(expenses, dict): return 0.0
+    total = 0.0
+    for value in expenses.values():
+        try: total += abs(float(value or 0))
+        except (TypeError, ValueError): pass
+    return round(total, 2)
+
+
+def _pluggy_average_purchase_price(ticker):
+    """Calcula preço médio ponderado com compras/vendas efetivamente importadas."""
+    rows = db().execute(
+        "SELECT movement_type,quantity,unit_value,amount,raw_json FROM pluggy_investment_transactions "
+        "WHERE UPPER(ticker)=? ORDER BY transaction_date,transaction_id", (str(ticker).upper(),)
+    ).fetchall()
+    quantity = cost = 0.0
+    found_buy = False
+    for row in rows:
+        movement = str(row['movement_type'] or '').upper()
+        qty = abs(float(row['quantity'] or 0))
+        if qty <= 0: continue
+        price = abs(float(row['unit_value'] or 0))
+        if price <= 0: price = abs(float(row['amount'] or 0)) / qty
+        if movement == 'BUY':
+            try: raw = json.loads(row['raw_json'] or '{}')
+            except (TypeError, ValueError): raw = {}
+            # Preço médio ponderado: soma dos valores de compra dividida
+            # pela quantidade de cotas, sem incorporar proventos ou taxas.
+            quantity += qty
+            cost += qty * price
+            found_buy = True
+        elif movement == 'SELL' and quantity > 0:
+            sold = min(qty, quantity)
+            average = cost / quantity
+            quantity -= sold
+            cost = max(0.0, cost - sold * average)
+    return (cost / quantity) if found_buy and quantity > 1e-8 else None
+
+
+def _pluggy_fixed_income_snapshot_rows(item_id, investments, snapshot_date, now_text):
+    """Converte posições sincronizadas em lançamentos por classe.
+
+    Renda fixa só entra quando a Pluggy fornece os dados contratuais mínimos.
+    Posições incompletas são ignoradas para não criar um ativo sem indexador/taxa.
+    """
+    if not snapshot_date:
+        return 0, 0, 0
+    fixed_count = market_count = skipped_fixed = 0
+    origin_tag = 'PluggySnapshot:' + item_id
+    # Recria somente os lançamentos-snapshot desta conexão, sem tocar nos manuais.
+    previous_snapshots = [dict(row) for row in db().execute(
+        'SELECT * FROM pluggy_position_snapshots WHERE item_id=?', (item_id,)
+    ).fetchall()]
+    current_investment_ids = {str(row.get('id') or '') for row in investments}
+    db().execute("DELETE FROM operacoes WHERE detalhes LIKE ?", ('%' + origin_tag + '%',))
+    db().execute('DELETE FROM pluggy_position_snapshots WHERE item_id=?', (item_id,))
+    for investment in investments:
+        asset_type = _refine_pluggy_asset_type(investment)
+        investment_id = str(investment.get('id') or '').strip()
+        if not investment_id:
+            continue
+        balance = float(investment.get('balance') or investment.get('amount') or investment.get('value') or 0)
+        principal = float(investment.get('amountOriginal') or investment.get('amountInvested') or balance)
+        details = investment.get('details') if isinstance(investment.get('details'), dict) else {}
+        if asset_type == 'renda_fixa':
+            if balance <= 0 or principal <= 0:
+                continue
+            indexer = str(investment.get('indexer') or investment.get('indexerName') or details.get('indexer') or details.get('indexerName') or '').strip().upper()
+            rate = investment.get('rate') or investment.get('percentage') or details.get('rate') or details.get('percentage')
+            maturity = _pluggy_date(investment.get('maturityDate') or investment.get('dueDate') or details.get('maturityDate') or details.get('dueDate'))
+            # Sem indexador e taxa não há cálculo confiável de evolução do título.
+            if not indexer or rate in (None, ''):
+                skipped_fixed += 1
+                continue
+            try:
+                rate = float(str(rate).replace(',', '.'))
+            except (TypeError, ValueError):
+                skipped_fixed += 1
+                continue
+            symbol = 'RF' + re.sub(r'[^A-Z0-9]', '', investment_id.upper())[:18]
+            quantity, price = 1.0, principal
+            name = str(investment.get('name') or investment.get('subtype') or 'Renda fixa')
+            contract = {'origem': 'Pluggy', 'pluggy_snapshot': origin_tag, 'investment_id': investment_id,
+                        'nome': name, 'indexador': indexer, 'taxa': rate, 'vencimento': maturity,
+                        'saldo_atual': balance, 'subtipo': investment.get('subtype') or ''}
+            fixed_count += 1
+        elif asset_type in ('acao', 'fii', 'etf', 'bdr', 'fundo', 'stocks', 'internacional', 'cripto', 'reit'):
+            # Snapshot autoritativo inclusive com quantidade zero para posições encerradas.
+            symbol = _pluggy_ticker(investment)
+            quantity = max(0.0, float(investment.get('quantity') or 0))
+            status = str(investment.get('status') or '').upper()
+            if status in ('RETIRADA_TOTAL', 'TOTAL_WITHDRAWAL', 'CLOSED', 'INACTIVE'):
+                quantity = 0.0
+            if symbol:
+                db().execute(
+                    "INSERT OR REPLACE INTO pluggy_position_snapshots "
+                    "(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) "
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                    (item_id, investment_id, symbol, asset_type, quantity, principal, balance, now_text)
+                )
+                market_count += 1
+            continue
+        else:
+            status = str(investment.get('status') or '').upper()
+            symbol = _pluggy_ticker(investment)
+            if status in ('RETIRADA_TOTAL', 'TOTAL_WITHDRAWAL', 'CLOSED', 'INACTIVE') and symbol:
+                db().execute(
+                    "INSERT OR REPLACE INTO pluggy_position_snapshots "
+                    "(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) "
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                    (item_id, investment_id, symbol, asset_type, 0.0, 0.0, 0.0, now_text)
+                )
+                market_count += 1
+            continue
+        db().execute(
+            """INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,
+               data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (symbol, asset_type, 'compra', quantity, price, snapshot_date, 0.0, 'executada',
+             snapshot_date, snapshot_date + 'T10:00:00-03:00', json.dumps(contract, ensure_ascii=False))
+        )
+    # Se uma posição deixou de constar na lista atual da corretora, ela não pode
+    # reaparecer por compras antigas: grava uma posição encerrada para aquele id.
+    for old in previous_snapshots:
+        if old['investment_id'] not in current_investment_ids:
+            db().execute(
+                "INSERT OR REPLACE INTO pluggy_position_snapshots "
+                "(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (item_id, old['investment_id'], old['ticker'], old['asset_type'], 0.0, 0.0, 0.0, now_text)
+            )
+    return fixed_count, market_count, skipped_fixed
+
+
+def _reconcile_existing_pluggy_b3_duplicates():
+    """Remove apenas operações criadas pela Pluggy que duplicam uma linha B3 inequívoca."""
+    pluggy_rows = db().execute(
+        "SELECT * FROM operacoes WHERE detalhes LIKE '%Pluggy%' ORDER BY id"
+    ).fetchall()
+    removed = 0
+    for pluggy_op in pluggy_rows:
+        details = str(pluggy_op['detalhes'] or '')
+        if 'Importação B3' in details or 'Importacao B3' in details:
+            continue
+        ticker = str(pluggy_op['ticker'] or '').upper()
+        side = str(pluggy_op['lado'] or '').lower()
+        trade_date = str(pluggy_op['data'] or '')[:10]
+        qty = float(pluggy_op['quantidade'] or 0)
+        amount = qty * float(pluggy_op['preco'] or 0)
+        if not ticker or not trade_date or qty <= 0 or amount <= 0:
+            continue
+        candidates = db().execute(
+            """SELECT * FROM operacoes
+               WHERE id<>? AND UPPER(ticker)=? AND lower(lado)=?
+                 AND detalhes LIKE '%Importação B3%'
+                 AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+                 AND ABS(quantidade-?)<=?
+                 AND ABS((quantidade*preco)-?)<=MAX(1.00,?*0.01)""",
+            (pluggy_op['id'], ticker, side, trade_date, trade_date, qty,
+             max(0.00001, qty * 0.001), amount, amount)
+        ).fetchall()
+        if len(candidates) != 1:
+            continue
+        b3_op = candidates[0]
+        db().execute(
+            """UPDATE pluggy_investment_transactions
+               SET import_state='matched_existing', imported_operation_id=?, updated_at=?
+               WHERE imported_operation_id=?""",
+            (int(b3_op['id']), datetime.now(TZ).isoformat(timespec='seconds'), int(pluggy_op['id']))
+        )
+        db().execute('DELETE FROM operacoes WHERE id=?', (int(pluggy_op['id']),))
+        removed += 1
+    if removed:
+        db().commit()
+    return removed
+
+
+def _pluggy_import_investment_transaction(item_id, investment, movement, now_text):
+    external_id = str(movement.get('id') or '').strip()
+    if not external_id:
+        return 'sem_id'
+    ticker = _pluggy_ticker(investment)
+    trade_date = _pluggy_date(movement.get('tradeDate') or movement.get('date'))
+    movement_type = str(movement.get('type') or '').upper()
+    qty = abs(float(movement.get('quantity') or 0))
+    unit_value = abs(float(movement.get('value') or 0))
+    amount = abs(float(movement.get('amount') or movement.get('netAmount') or (qty * unit_value)))
+    description = str(movement.get('description') or movement_type)
+    state = 'imported_only'
+    imported_operation_id = None
+
+    if movement_type in ('BUY', 'SELL') and ticker and trade_date and qty > 0:
+        side = 'compra' if movement_type == 'BUY' else 'venda'
+        price = unit_value if unit_value > 0 else (amount / qty if qty else 0)
+        asset_type = _refine_pluggy_asset_type(investment)
+        costs = _pluggy_expenses_total(movement)
+        # Match manual/B3 entries before inserting. A small tolerance handles
+        # rounding differences between the broker and the spreadsheet export.
+        # A B3 e a Pluggy podem registrar a mesma execução com pequena diferença
+        # de data (negociação/liquidação) e arredondamento do preço unitário.
+        # Exigimos ticker, lado, quantidade e valor financeiro próximos para evitar
+        # associar operações diferentes do mesmo ativo.
+        amount_for_match = amount if amount > 0 else qty * price
+        existing = db().execute(
+            """SELECT id FROM operacoes
+               WHERE UPPER(ticker)=? AND lower(lado)=?
+                 AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+                 AND ABS(quantidade-?)<=?
+                 AND (
+                   ABS(preco-?)<=0.03 OR
+                   ABS((quantidade*preco)-?)<=MAX(1.00,?*0.01)
+                 )
+               ORDER BY ABS(julianday(data)-julianday(?)), id LIMIT 1""",
+            (ticker, side, trade_date, trade_date, qty, max(0.00001, qty * 0.001),
+             price, amount_for_match, amount_for_match, trade_date)
+        ).fetchone()
+        if existing:
+            imported_operation_id = int(existing['id'])
+            state = 'matched_existing'
+        else:
+            # Importa o histórico completo, inclusive anterior ao saldo-base.
+            # A posição atual permanece autoritativa no snapshot da Pluggy.
+            cursor = db().execute(
+                """INSERT INTO operacoes
+                   (ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (ticker, asset_type, side, qty, price, trade_date, costs, 'executada',
+                 trade_date, trade_date + 'T10:00:00-03:00',
+                 json.dumps({'origem':'Pluggy','pluggy_transaction_id':external_id,'item_id':item_id,
+                             'descricao':description,'valor_bruto':amount,
+                             'valor_liquido':float(movement.get('netAmount') or amount),
+                             'corretagem_despesas':costs,'numero_nota':movement.get('brokerageNumber')}, ensure_ascii=False))
+            )
+            imported_operation_id = int(cursor.lastrowid)
+            state = 'imported_operation'
+
+    # Income is only imported as a provento when the investment transaction
+    # explicitly identifies a dividend/JCP/rendimento event.
+    income_markers = ('DIVIDEND', 'INTEREST', 'INTEREST_ON_EQUITY', 'JCP', 'RENDIMENTO', 'DISTRIBUTION', 'INCOME')
+    text_for_income = (movement_type + ' ' + str(movement.get('movementType') or '') + ' ' + description).upper()
+    # Pluggy documents INTEREST as the investment-transaction type for
+    # dividend/JCP/FII rent/coupon distributions. Do not infer income from
+    # TAX, TRANSFER or AMORTIZATION descriptions, which can contain similar words.
+    is_income_movement = movement_type in ('INTEREST', 'DIVIDEND', 'INTEREST_ON_EQUITY', 'JCP', 'DISTRIBUTION', 'INCOME')
+    is_income_description = movement_type in ('', 'UNKNOWN', 'OTHER') and any(
+        marker in text_for_income for marker in income_markers
+    )
+    if (is_income_movement or is_income_description) and ticker and trade_date and amount > 0:
+        already_imported = db().execute(
+            'SELECT external_id FROM pluggy_imported_events WHERE external_id=?', (external_id,)
+        ).fetchone()
+        duplicate = db().execute(
+            """SELECT id FROM proventos WHERE UPPER(ticker)=?
+               AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+               AND ABS(valor_total-?)<=MAX(0.05,?*0.01) LIMIT 1""",
+            (ticker, trade_date, trade_date, amount, amount)
+        ).fetchone()
+        api_duplicate = db().execute(
+            """SELECT event_key FROM proventos_api WHERE UPPER(ticker)=?
+               AND date(data_pagamento) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
+               AND ABS(valor_total-?)<=MAX(0.05,?*0.01) LIMIT 1""",
+            (ticker, trade_date, trade_date, amount, amount)
+        ).fetchone()
+        if already_imported or duplicate or api_duplicate:
+            state = 'provento_duplicado_ignorado'
+        else:
+            cursor = db().execute(
+                'INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)',
+                (ticker, amount, trade_date)
+            )
+            db().execute(
+                """INSERT OR IGNORE INTO pluggy_imported_events
+                   (external_id,event_type,ticker,event_date,amount,target_id,import_state,created_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (external_id, 'provento', ticker, trade_date, amount, int(cursor.lastrowid), 'imported', now_text)
+            )
+            state = 'imported_provento'
+
+    db().execute(
+        """INSERT INTO pluggy_investment_transactions
+           (transaction_id,item_id,investment_id,ticker,transaction_date,description,movement_type,
+            quantity,unit_value,amount,import_state,imported_operation_id,raw_json,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(transaction_id) DO UPDATE SET
+             item_id=excluded.item_id, investment_id=excluded.investment_id, ticker=excluded.ticker,
+             transaction_date=excluded.transaction_date, description=excluded.description,
+             movement_type=excluded.movement_type, quantity=excluded.quantity, unit_value=excluded.unit_value,
+             amount=excluded.amount, import_state=CASE
+               WHEN pluggy_investment_transactions.import_state IN ('imported_operation','imported_provento','matched_existing','provento_duplicado_ignorado')
+               THEN pluggy_investment_transactions.import_state ELSE excluded.import_state END,
+             imported_operation_id=COALESCE(pluggy_investment_transactions.imported_operation_id,excluded.imported_operation_id),
+             raw_json=excluded.raw_json, updated_at=excluded.updated_at""",
+        (external_id, item_id, str(investment.get('id') or ''), ticker, trade_date, description,
+         movement_type, qty, unit_value, amount, state, imported_operation_id,
+         json.dumps(movement, ensure_ascii=False), now_text)
+    )
+    return state
+
+
+
+def _pluggy_sync_interval():
+    row = db().execute("SELECT value FROM app_settings WHERE key='pluggy_sync_interval'").fetchone()
+    try:
+        value = int(row['value']) if row else 30
+    except (TypeError, ValueError):
+        value = 30
+    return value if value in (0, 15, 30, 60, 240, 720, 1440) else 30
+
+
+@app.route('/api/pluggy/settings', methods=['GET', 'POST'])
+def pluggy_settings():
+    if request.method == 'GET':
+        return jsonify(interval_minutes=_pluggy_sync_interval())
+    payload = request.get_json(silent=True) or {}
+    try:
+        interval = int(payload.get('interval_minutes', 30))
+    except (TypeError, ValueError):
+        return json_error('Intervalo inválido.')
+    if interval not in (0, 15, 30, 60, 240, 720, 1440):
+        return json_error('Escolha um intervalo disponível.')
+    db().execute("INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(interval),))
+    db().commit()
+    return jsonify(ok=True, interval_minutes=interval)
+
+
+@app.route('/api/pluggy/state', methods=['GET'])
+def pluggy_state():
+    items = db().execute(
+        """SELECT i.*,
+           (SELECT COUNT(*) FROM pluggy_investments v WHERE v.item_id=i.item_id) AS investments_count,
+           (SELECT COUNT(*) FROM pluggy_investment_transactions vtx WHERE vtx.item_id=i.item_id) AS investment_transactions_count
+           FROM pluggy_items i WHERE i.active=1 ORDER BY i.created_at"""
+    ).fetchall()
+    investments = db().execute(
+        """SELECT investment_id,item_id,code,name,investment_type,subtype,quantity,
+                  amount_original,balance,unit_value,status,updated_at
+           FROM pluggy_investments ORDER BY name LIMIT 250"""
+    ).fetchall()
+    return jsonify(items=[dict(row) for row in items], investments=[dict(row) for row in investments])
+
+
+@app.route('/api/pluggy/items', methods=['POST'])
+def pluggy_add_item():
+    payload = request.get_json(silent=True) or {}
+    item_id = str(payload.get('item_id') or '').strip()
+    label = str(payload.get('label') or '').strip()[:100]
+    if not re.fullmatch(r'[0-9a-fA-F-]{20,50}', item_id):
+        return json_error('Informe um itemId válido copiado do Dashboard da Pluggy.')
+    try:
+        item = _pluggy_request('GET', '/items/' + item_id)
+        connector = item.get('connector') or {}
+        connector_name = str(connector.get('name') or item.get('connectorName') or 'MeuPluggy')
+        status = str(item.get('status') or 'UNKNOWN')
+        consent_expires = str(item.get('consentExpiresAt') or '')
+        now_text = datetime.now(TZ).isoformat(timespec='seconds')
+        db().execute(
+            """INSERT INTO pluggy_items(item_id,label,connector_name,status,consent_expires_at,active,created_at,updated_at)
+               VALUES(?,?,?,?,?,1,?,?)
+               ON CONFLICT(item_id) DO UPDATE SET label=excluded.label,
+               connector_name=excluded.connector_name,status=excluded.status,
+               consent_expires_at=excluded.consent_expires_at,active=1,updated_at=excluded.updated_at""",
+            (item_id, label or connector_name, connector_name, status, consent_expires, now_text, now_text)
+        )
+        db().commit()
+        return jsonify(ok=True, item={'item_id':item_id,'label':label or connector_name,'connector_name':connector_name,'status':status})
+    except requests.HTTPError as exc:
+        code = exc.response.status_code if exc.response is not None else 502
+        detail = ''
+        try: detail = (exc.response.json() or {}).get('message') or (exc.response.json() or {}).get('code') or ''
+        except Exception: pass
+        return json_error('Não foi possível validar o itemId na Pluggy. HTTP %s %s' % (code, str(detail)[:140]), 400)
+    except Exception as exc:
+        return json_error('Falha ao validar conexão Pluggy: ' + str(exc)[:180], 400)
+
+
+@app.route('/api/pluggy/items/<item_id>/clear', methods=['POST'])
+def pluggy_clear_item_data(item_id):
+    """Apaga os dados importados de uma conexão, preservando a conexão e credenciais."""
+    con = db()
+    item = con.execute('SELECT item_id,label FROM pluggy_items WHERE item_id=? AND active=1', (item_id,)).fetchone()
+    if not item:
+        return json_error('Conexão Pluggy não encontrada ou inativa.', 404)
+    try:
+        # IDs das movimentações pertencentes exclusivamente a esta conexão.
+        external_ids = [r[0] for r in con.execute(
+            'SELECT transaction_id FROM pluggy_investment_transactions WHERE item_id=?', (item_id,)
+        ).fetchall()]
+        event_ids = set(external_ids)
+        event_rows = []
+        if external_ids:
+            for start in range(0, len(external_ids), 400):
+                chunk = external_ids[start:start+400]
+                marks = ','.join('?' for _ in chunk)
+                event_rows.extend(con.execute(
+                    f"SELECT external_id,event_type,target_id FROM pluggy_imported_events WHERE external_id IN ({marks})", chunk
+                ).fetchall())
+        provento_ids = [int(r['target_id']) for r in event_rows
+                        if r['event_type'] == 'provento' and r['target_id'] is not None]
+
+        # Remove operações efetivamente criadas pela conexão e snapshots dela.
+        # Operações apenas conciliadas com lançamentos B3/manuais são preservadas.
+        operation_ids = []
+        rows = con.execute('SELECT id,detalhes FROM operacoes').fetchall()
+        for row in rows:
+            try:
+                meta = json.loads(row['detalhes'] or '{}')
+            except (TypeError, ValueError):
+                meta = {}
+            if meta.get('origem') == 'Pluggy' and meta.get('item_id') == item_id:
+                operation_ids.append(int(row['id']))
+            elif meta.get('pluggy_snapshot') == 'PluggySnapshot:' + item_id:
+                operation_ids.append(int(row['id']))
+        for start in range(0, len(operation_ids), 500):
+            chunk = operation_ids[start:start+500]
+            marks = ','.join('?' for _ in chunk)
+            con.execute(f'DELETE FROM operacoes WHERE id IN ({marks})', chunk)
+
+        deleted_proventos = 0
+        for start in range(0, len(provento_ids), 500):
+            chunk = provento_ids[start:start+500]
+            marks = ','.join('?' for _ in chunk)
+            deleted_proventos += con.execute(f'DELETE FROM proventos WHERE id IN ({marks})', chunk).rowcount
+        for start in range(0, len(external_ids), 400):
+            chunk = external_ids[start:start+400]
+            marks = ','.join('?' for _ in chunk)
+            con.execute(f'DELETE FROM pluggy_imported_events WHERE external_id IN ({marks})', chunk)
+
+        deleted = {}
+        for table in ('pluggy_position_snapshots','pluggy_investment_transactions','pluggy_investments',
+                      'pluggy_transactions','pluggy_accounts'):
+            deleted[table] = con.execute(f'DELETE FROM {table} WHERE item_id=?', (item_id,)).rowcount
+        con.execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
+                    ('', datetime.now(TZ).isoformat(timespec='seconds'), item_id))
+        con.commit()
+        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear()
+        PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
+        return jsonify(ok=True, connection=item['label'], deleted={**deleted,
+                       'operacoes':len(operation_ids),'proventos':deleted_proventos,
+                       'eventos':len(event_rows)})
+    except Exception:
+        con.rollback()
+        raise
+
+
+@app.route('/api/pluggy/items/<item_id>', methods=['DELETE'])
+def pluggy_remove_item(item_id):
+    db().execute('UPDATE pluggy_items SET active=0,updated_at=? WHERE item_id=?',
+                 (datetime.now(TZ).isoformat(timespec='seconds'), item_id))
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/pluggy/sync', methods=['POST'])
+def pluggy_sync():
+    all_items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
+    if not all_items:
+        return json_error('Adicione ao menos um itemId do MeuPluggy antes de sincronizar.')
+    payload = request.get_json(silent=True) or {}
+    force_sync = bool(payload.get('force'))
+    sync_interval_minutes = _pluggy_sync_interval()
+    now = datetime.now(TZ)
+    items = []
+    skipped_recent = 0
+    for local_item in all_items:
+        last_text = str(local_item['last_synced_at'] or '').strip()
+        try:
+            last_sync = datetime.fromisoformat(last_text) if last_text else None
+            if last_sync and last_sync.tzinfo is None:
+                last_sync = last_sync.replace(tzinfo=TZ)
+        except (TypeError, ValueError):
+            last_sync = None
+        if not force_sync and last_sync and (now - last_sync).total_seconds() < sync_interval_minutes * 60:
+            skipped_recent += 1
+            continue
+        items.append(local_item)
+    if not items:
+        return jsonify(ok=True, skipped_recent=skipped_recent, interval_minutes=sync_interval_minutes,
+                       message='Sincronização recente. Nenhuma consulta à Pluggy foi necessária.')
+    summary = {'items':0,'investments':0,
+               'investment_transactions':0,'operations_imported':0,'operations_matched':0,
+               'dividends_imported':0,'duplicates_ignored':0,'b3_duplicates_reconciled':0,
+               'skipped_recent':skipped_recent,'interval_minutes':sync_interval_minutes,'warnings':[]}
+    now_text = datetime.now(TZ).isoformat(timespec='seconds')
+    try:
+        _pluggy_api_key()
+        summary['b3_duplicates_reconciled'] = _reconcile_existing_pluggy_b3_duplicates()
+        for local_item in items:
+            item_id = local_item['item_id']
+            item = _pluggy_request('GET', '/items/' + item_id)
+            investments = _pluggy_results('/investments', {'itemId':item_id})
+            summary['items'] += 1
+            connector = item.get('connector') or {}
+            db().execute(
+                'UPDATE pluggy_items SET connector_name=?,status=?,consent_expires_at=?,updated_at=? WHERE item_id=?',
+                (str(connector.get('name') or local_item['connector_name'] or 'MeuPluggy'),
+                 str(item.get('status') or ''), str(item.get('consentExpiresAt') or ''),
+                 now_text, item_id)
+            )
+            for investment in investments:
+                investment_id = str(investment.get('id') or '')
+                if not investment_id: continue
+                db().execute(
+                    """INSERT INTO pluggy_investments(investment_id,item_id,code,name,investment_type,subtype,quantity,
+                       amount_original,balance,unit_value,status,raw_json,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(investment_id) DO UPDATE SET item_id=excluded.item_id,code=excluded.code,name=excluded.name,
+                       investment_type=excluded.investment_type,subtype=excluded.subtype,quantity=excluded.quantity,
+                       amount_original=excluded.amount_original,balance=excluded.balance,unit_value=excluded.unit_value,
+                       status=excluded.status,raw_json=excluded.raw_json,updated_at=excluded.updated_at""",
+                    (investment_id,item_id,str(investment.get('code') or ''),str(investment.get('name') or ''),
+                     str(investment.get('type') or ''),str(investment.get('subtype') or ''),
+                     float(investment.get('quantity') or 0),float(investment.get('amountOriginal') or 0),
+                     float(investment.get('balance') or 0),float(investment.get('value') or 0),
+                     str(investment.get('status') or ''),json.dumps(investment,ensure_ascii=False),now_text)
+                )
+                summary['investments'] += 1
+                if _refine_pluggy_asset_type(investment) == 'outros':
+                    summary['warnings'].append(
+                        'Tipo de investimento não reconhecido pela classificação automática: ' +
+                        str(investment.get('name') or investment.get('type') or investment_id)[:90]
+                    )
+                inv_transactions = _pluggy_results('/investments/' + investment_id + '/transactions')
+                for movement in inv_transactions:
+                    summary['investment_transactions'] += 1
+                    external_id = str(movement.get('id') or '').strip()
+                    prior = db().execute(
+                        'SELECT import_state,imported_operation_id,raw_json FROM pluggy_investment_transactions WHERE transaction_id=?',
+                        (external_id,)
+                    ).fetchone() if external_id else None
+                    if prior and prior['import_state'] in ('imported_operation','imported_provento','matched_existing','provento_duplicado_ignorado'):
+                        if prior['imported_operation_id']:
+                            if prior['import_state'] == 'imported_operation':
+                                try: old_movement = json.loads(prior['raw_json'] or '{}')
+                                except (TypeError, ValueError): old_movement = {}
+                                old_qty = abs(float(old_movement.get('quantity') or 0))
+                                old_price = abs(float(old_movement.get('value') or 0))
+                                if old_price <= 0 and old_qty > 0:
+                                    old_price = abs(float(old_movement.get('amount') or 0)) / old_qty
+                                db().execute('UPDATE operacoes SET tipo=?,preco=?,custos=? WHERE id=?',
+                                    (_refine_pluggy_asset_type(investment), old_price,
+                                     _pluggy_expenses_total(old_movement), int(prior['imported_operation_id'])))
+                            else:
+                                db().execute('UPDATE operacoes SET tipo=? WHERE id=?',
+                                    (_refine_pluggy_asset_type(investment), int(prior['imported_operation_id'])))
+                        summary['duplicates_ignored'] += 1
+                        continue
+                    state = _pluggy_import_investment_transaction(item_id, investment, movement, now_text)
+                    if state == 'imported_operation': summary['operations_imported'] += 1
+                    elif state == 'matched_existing': summary['operations_matched'] += 1
+                    elif state == 'imported_provento': summary['dividends_imported'] += 1
+                    elif state == 'provento_duplicado_ignorado': summary['duplicates_ignored'] += 1
+            pluggy_snapshot_date = snapshot_date_for() or datetime.now(TZ).date().isoformat()
+            snapshot_fixed, snapshot_market, skipped_fixed = _pluggy_fixed_income_snapshot_rows(
+                item_id, investments, pluggy_snapshot_date, now_text
+            )
+            summary['fixed_income_positions'] = summary.get('fixed_income_positions', 0) + snapshot_fixed
+            summary['market_positions'] = summary.get('market_positions', 0) + snapshot_market
+            summary['fixed_income_skipped_missing_data'] = summary.get('fixed_income_skipped_missing_data', 0) + skipped_fixed
+            if skipped_fixed:
+                summary['warnings'].append(f'{skipped_fixed} posição(ões) de renda fixa não importada(s): faltam indexador ou taxa contratual.')
+            db().execute('UPDATE pluggy_items SET last_synced_at=?,updated_at=? WHERE item_id=?',
+                         (now_text,now_text,item_id))
+            db().commit()
+    except requests.HTTPError as exc:
+        db().commit()
+        code = exc.response.status_code if exc.response is not None else 502
+        return json_error('Falha ao sincronizar Pluggy (HTTP %s). Confira itemId, autorização MeuPluggy e credenciais.' % code, 400)
+    except Exception as exc:
+        db().commit()
+        return json_error('Falha na sincronização Pluggy: ' + str(exc)[:220], 400)
+    # Após atualizar as posições/movimentações, reconcilia proventos dos ativos atuais.
+    try:
+        current_items = (carteira().json or {}).get('itens', [])
+        summary['proventos_sync'] = sync_brapi_proventos(force=False, quote_items=current_items, active_items=current_items)
+    except Exception as dividend_exc:
+        summary['warnings'].append('Não foi possível atualizar proventos após a sincronização: ' + str(dividend_exc)[:160])
+    return jsonify(ok=True, summary=summary, synced_at=now_text)
+
+
+@app.route('/api/integracoes', methods=['GET'])
+def api_integrations_list():
+    rows = {row['provider']: row for row in token_db().execute('SELECT provider,token_encrypted,enabled,updated_at FROM api_credentials').fetchall()}
+    providers = []
+    for key, meta in API_PROVIDERS.items():
+        row = rows.get(key)
+        token = _get_api_token(key) if meta['auth'] and key != 'pluggy' else ''
+        pluggy_credentials = _get_pluggy_credentials() if key == 'pluggy' else {}
+        configured = bool(row) if key == 'pluggy' else bool(row)
+        if row and meta['auth'] and key != 'pluggy' and not token:
+            try: token = _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
+            except Exception: token = ''
+        if row and key == 'pluggy' and not pluggy_credentials:
+            try:
+                packed = _api_fernet().decrypt(row['token_encrypted'].encode()).decode()
+                pluggy_credentials = json.loads(packed)
+            except Exception: pluggy_credentials = {}
+        providers.append({'id':key, **meta, 'connected':key in ('brapi','hgbrasil','bcb','dadosb3'), 'configured':configured, 'enabled':bool(row['enabled']) if row else bool(token or pluggy_credentials), 'masked':('••••••••' + token[-4:]) if token else '', 'client_id_masked':(('••••••••' + pluggy_credentials.get('client_id','')[-4:]) if pluggy_credentials.get('client_id') else ''), 'updated_at':row['updated_at'] if row else None})
+    return jsonify({'providers':providers})
+
+
+@app.route('/api/integracoes/<provider>', methods=['POST','DELETE'])
+def api_integrations_save(provider):
+    if provider not in API_PROVIDERS or not API_PROVIDERS[provider]['auth']:
+        return jsonify({'error':'Este provedor não aceita token nesta tela.'}), 400
+    if request.method == 'DELETE':
+        token_db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); token_db().commit()
+        if provider == 'pluggy': PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
+        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
+        return jsonify({'ok':True})
+    payload = request.get_json(silent=True) or {}
+    if 'enabled' in payload and not any(k in payload for k in ('token','client_id','client_secret')):
+        enabled = 1 if bool(payload.get('enabled')) else 0
+        token_db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?',
+                     (enabled, datetime.now(TZ).isoformat(timespec='seconds'), provider))
+        token_db().commit()
+        if provider == 'pluggy' and not enabled:
+            PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
+        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
+        return jsonify({'ok':True,'enabled':bool(enabled),'configured':bool(token_db().execute('SELECT 1 FROM api_credentials WHERE provider=?',(provider,)).fetchone())})
+    if provider == 'pluggy':
+        client_id = str(payload.get('client_id') or '').strip()
+        client_secret = str(payload.get('client_secret') or '').strip()
+        if not client_id or not client_secret:
+            return jsonify({'error':'Informe Client ID e Client Secret.'}), 400
+        packed = json.dumps({'client_id':client_id,'client_secret':client_secret}, separators=(',',':'))
+        encrypted = _api_fernet().encrypt(packed.encode()).decode()
+        token_db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', ('pluggy',encrypted,1,datetime.now(TZ).isoformat(timespec='seconds')))
+        token_db().commit()
+        PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
+        return jsonify({'ok':True,'configured':True})
+    token = str(payload.get('token') or '').strip()
+    enabled = bool(payload.get('enabled', True))
+    if token:
+        encrypted = _api_fernet().encrypt(token.encode()).decode()
+        token_db().execute('INSERT INTO api_credentials(provider,token_encrypted,enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET token_encrypted=excluded.token_encrypted,enabled=excluded.enabled,updated_at=excluded.updated_at', (provider,encrypted,1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds')))
+    else:
+        token_db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
+    token_db().commit()
+    if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+        CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
+    return jsonify({'ok':True,'configured':bool(_get_api_token(provider))})
+
+
+@app.route('/api/integracoes/<provider>/test', methods=['POST'])
+def api_integrations_test(provider):
+    if provider not in API_PROVIDERS:
+        return jsonify({'ok':False,'message':'Provedor desconhecido.'}), 404
+    if provider in ('bcb','ibge','tesouro','cvm','b3','yahoo'):
+        return jsonify({'ok':False,'message':'Esta fonte não usa token cadastrado. A disponibilidade e os requisitos estão descritos no catálogo.'}), 400
+    if provider == 'pluggy':
+        credentials = _get_pluggy_credentials()
+        if not credentials.get('client_id') or not credentials.get('client_secret'):
+            return jsonify({'ok':False,'message':'Cadastre Client ID e Client Secret antes de testar.'}), 400
+        try:
+            response = requests.post('https://api.pluggy.ai/auth', json={'clientId':credentials['client_id'],'clientSecret':credentials['client_secret']}, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get('apiKey'):
+                raise ValueError(data.get('message') or 'A Pluggy não retornou uma API Key.')
+            return jsonify({'ok':True,'message':'Credenciais autenticadas. API Key válida; o fluxo pessoal MeuPluggy usa itemIds cadastrados manualmente.'})
+        except (requests.RequestException, ValueError) as exc:
+            return jsonify({'ok':False,'message':'Não foi possível autenticar na Pluggy. Confira as credenciais e tente novamente.'}), 400
+    token = _get_api_token(provider)
+    if not token:
+        return jsonify({'ok':False,'message':'Cadastre um token antes de testar.'}), 400
+    try:
+        if provider == 'brapi':
+            response = requests.get('https://brapi.dev/api/v2/user/usage', headers={'Authorization':f'Bearer {token}'}, timeout=15)
+        elif provider == 'hgbrasil':
+            response = requests.get('https://api.hgbrasil.com/finance', params={'key':token}, timeout=15)
+        elif provider == 'twelvedata':
+            response = requests.get('https://api.twelvedata.com/time_series', params={'symbol':'AAPL','interval':'1day','outputsize':1,'apikey':token}, timeout=15)
+        elif provider == 'alphavantage':
+            response = requests.get('https://www.alphavantage.co/query', params={'function':'GLOBAL_QUOTE','symbol':'IBM','apikey':token}, timeout=15)
+        elif provider == 'fred':
+            response = requests.get('https://api.stlouisfed.org/fred/series', params={'series_id':'GDP','api_key':token,'file_type':'json'}, timeout=15)
+        elif provider == 'dadosb3':
+            response = requests.get('https://dadosb3.com/indices/IFIX/precos', headers={'X-API-Key':token}, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if provider == 'twelvedata' and data.get('status') == 'error': raise ValueError(data.get('message') or 'A API retornou erro.')
+        if provider == 'alphavantage' and (data.get('Error Message') or data.get('Note') or data.get('Information')): raise ValueError(data.get('Error Message') or data.get('Note') or data.get('Information'))
+        if provider == 'hgbrasil' and data.get('valid_key') is False: raise ValueError('A chave foi recusada pela HG Brasil.')
+        if provider == 'dadosb3' and (data.get('amostra') or not isinstance(data.get('serie'), list) or len(data.get('serie') or []) < 2):
+            raise ValueError('A chave ainda não liberou o histórico completo. Verifique a chave e tente novamente.')
+        return jsonify({'ok':True,'message':'Conexão autenticada. A cobertura de cada ticker e endpoint ainda depende do plano e do provedor.'})
+    except (requests.RequestException, ValueError) as exc:
+        message = 'Não foi possível validar a integração. Confira as credenciais, a disponibilidade do provedor e tente novamente.'
+        return jsonify({'ok':False,'message':message}), 400
+
+
+def _fundamental_rating(quote, asset_type=''):
+    """Nota automática conservadora: pontua somente indicadores realmente recebidos da API."""
+    if not isinstance(quote, dict) or asset_type in ('renda_fixa', 'tesouro', 'cripto', 'outros'):
+        return {'score': None, 'coverage': 0, 'label': 'Dados fundamentalistas indisponíveis', 'details': []}
+    def number(*keys):
+        for key in keys:
+            value = quote.get(key)
+            try:
+                if value is not None and value != '':
+                    n = float(value)
+                    if n == n and abs(n) != float('inf'):
+                        return n
+            except (TypeError, ValueError):
+                continue
+        return None
+    metrics = []
+    # Cada métrica contribui apenas quando o provedor devolve um valor válido.
+    pe = number('priceEarnings', 'trailingPE', 'peRatio')
+    if pe is not None and pe > 0:
+        metrics.append(('Valuation P/L', 8 if pe <= 10 else 7 if pe <= 15 else 5 if pe <= 25 else 3, 'P/L %.2f' % pe))
+    pb = number('priceToBook', 'priceToBookRatio', 'priceToBookValue')
+    if pb is not None and pb > 0:
+        metrics.append(('Valuation P/VP', 8 if pb <= 1.2 else 7 if pb <= 2 else 5 if pb <= 4 else 3, 'P/VP %.2f' % pb))
+    roe = number('returnOnEquity', 'roe')
+    if roe is not None:
+        roe = roe * 100 if abs(roe) <= 1 else roe
+        metrics.append(('Rentabilidade ROE', 9 if roe >= 20 else 8 if roe >= 15 else 6 if roe >= 10 else 4 if roe >= 0 else 1, 'ROE %.1f%%' % roe))
+    margin = number('profitMargins', 'netProfitMargin', 'margemLiquida')
+    if margin is not None:
+        margin = margin * 100 if abs(margin) <= 1 else margin
+        metrics.append(('Margem líquida', 9 if margin >= 20 else 8 if margin >= 12 else 6 if margin >= 6 else 4 if margin >= 0 else 1, 'Margem %.1f%%' % margin))
+    op_margin = number('operatingMargins', 'operatingMargin')
+    if op_margin is not None:
+        op_margin = op_margin * 100 if abs(op_margin) <= 1 else op_margin
+        metrics.append(('Eficiência operacional', 9 if op_margin >= 20 else 8 if op_margin >= 12 else 6 if op_margin >= 6 else 4 if op_margin >= 0 else 1, 'Margem operacional %.1f%%' % op_margin))
+    debt = number('debtToEquity', 'debtToEquityRatio')
+    if debt is not None:
+        metrics.append(('Endividamento', 9 if debt <= 30 else 8 if debt <= 60 else 6 if debt <= 100 else 3 if debt <= 200 else 1, 'Dívida/PL %.1f' % debt))
+    current = number('currentRatio', 'current_ratio')
+    if current is not None and current > 0:
+        metrics.append(('Liquidez corrente', 9 if current >= 2 else 8 if current >= 1.5 else 6 if current >= 1 else 3, 'Liquidez corrente %.2f' % current))
+    quick = number('quickRatio', 'quick_ratio')
+    if quick is not None and quick > 0:
+        metrics.append(('Liquidez imediata', 9 if quick >= 1.5 else 8 if quick >= 1 else 6 if quick >= .7 else 3, 'Liquidez rápida %.2f' % quick))
+    market_price = number('regularMarketPrice', 'close', 'price')
+    high_52 = number('fiftyTwoWeekHigh', '52WeekHigh', 'yearHigh')
+    if market_price and high_52 and high_52 > 0:
+        drawdown = (market_price / high_52 - 1) * 100
+        metrics.append(('Queda desde máxima de 52 semanas', 9 if drawdown >= -10 else 7 if drawdown >= -20 else 5 if drawdown >= -35 else 2, 'Distância da máxima de 52 semanas %.1f%%' % drawdown))
+    revenue_growth = number('revenueGrowth', 'revenueQuarterlyGrowth')
+    if revenue_growth is not None:
+        revenue_growth = revenue_growth * 100 if abs(revenue_growth) <= 1 else revenue_growth
+        metrics.append(('Crescimento de receita', 9 if revenue_growth >= 20 else 8 if revenue_growth >= 10 else 6 if revenue_growth >= 0 else 2, 'Crescimento de receita %.1f%%' % revenue_growth))
+    operating_cash = number('operatingCashflow', 'operatingCashFlow')
+    free_cash = number('freeCashflow', 'freeCashFlow')
+    if operating_cash is not None and free_cash is not None:
+        metrics.append(('Geração de caixa', 9 if operating_cash > 0 and free_cash > 0 else 5 if operating_cash > 0 else 1, 'Fluxo operacional e fluxo de caixa livre disponíveis'))
+    earnings = number('earningsGrowth', 'earningsQuarterlyGrowth')
+    if earnings is not None:
+        earnings = earnings * 100 if abs(earnings) <= 1 else earnings
+        metrics.append(('Geração de lucro', 9 if earnings >= 20 else 8 if earnings >= 10 else 6 if earnings >= 0 else 2, 'Crescimento de lucro %.1f%%' % earnings))
+    dividend_yield = number('dividendYield', 'yield')
+    payout = number('payoutRatio', 'payout')
+    if payout is not None:
+        payout = payout * 100 if abs(payout) <= 1 else payout
+        metrics.append(('Sustentabilidade dos proventos', 9 if 0 <= payout <= 60 else 7 if payout <= 80 else 4 if payout <= 100 else 1, 'Payout %.1f%%' % payout))
+    if dividend_yield is not None and dividend_yield > 0:
+        dividend_yield = dividend_yield * 100 if dividend_yield <= 1 else dividend_yield
+        metrics.append(('Histórico de proventos', 8 if dividend_yield <= 12 else 6 if dividend_yield <= 18 else 3, 'Dividend yield %.1f%%' % dividend_yield))
+    coverage = len(metrics)
+    if coverage < 3:
+        return {'score': None, 'coverage': coverage, 'label': 'Análise incompleta · aguardando fundamentos', 'providers': quote.get('fundamentalProviders') or ([quote.get('quoteProvider')] if quote.get('quoteProvider') else []), 'details': [m[2] for m in metrics]}
+    score = round(sum(m[1] for m in metrics) / coverage, 1)
+    label = 'Excelente' if score >= 8.5 else 'Boa' if score >= 7 else 'Atenção' if score >= 5 else 'Risco elevado'
+    return {'score': score, 'coverage': coverage, 'label': label, 'providers': quote.get('fundamentalProviders') or ([quote.get('quoteProvider')] if quote.get('quoteProvider') else []), 'details': [m[2] for m in metrics]}
+
+
+def _enrich_quote_fundamentals(ticker, quote):
+    """Complementa fundamentos com provedores conectados que oferecem dados por empresa."""
+    enriched = dict(quote or {})
+    # Alpha Vantage OVERVIEW: só consulta se o usuário cadastrou e habilitou a chave.
+    token = _get_api_token('alphavantage')
+    if token:
+        try:
+            symbol = str(ticker or '').upper()
+            if symbol.endswith('.SA'):
+                symbol = symbol[:-3]
+            response = requests.get('https://www.alphavantage.co/query',
+                params={'function': 'OVERVIEW', 'symbol': symbol + '.SA', 'apikey': token}, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict) and data.get('Symbol') and not data.get('Note') and not data.get('Information'):
+                aliases = {
+                    'ReturnOnEquityTTM':'returnOnEquity','ProfitMargin':'profitMargins',
+                    'OperatingMarginTTM':'operatingMargins','DebtToEquity':'debtToEquity',
+                    'CurrentRatio':'currentRatio','DividendYield':'dividendYield',
+                    'PayoutRatio':'payoutRatio','PERatio':'priceEarnings',
+                    'PriceToBookRatio':'priceToBook','QuarterlyRevenueGrowthYOY':'revenueGrowth',
+                    'QuarterlyEarningsGrowthYOY':'earningsGrowth','52WeekHigh':'fiftyTwoWeekHigh'
+                }
+                for source, target in aliases.items():
+                    value = data.get(source)
+                    if value not in (None, '', 'None', '0') and enriched.get(target) in (None, '', 0, '0'):
+                        try: enriched[target] = float(value)
+                        except (TypeError, ValueError): pass
+                enriched['fundamentalProviders'] = sorted(set((enriched.get('fundamentalProviders') or []) + ['Alpha Vantage']))
+        except (requests.RequestException, ValueError, TypeError):
+            pass
+    if enriched.get('priceEarnings') is not None or enriched.get('returnOnEquity') is not None:
+        providers = enriched.get('fundamentalProviders') or []
+        if enriched.get('quoteProvider') == 'brapi' and 'brapi' not in providers:
+            providers.append('brapi')
+        enriched['fundamentalProviders'] = providers
+    return enriched
+
+
+def _load_last_valid_quote(ticker):
+    """Retorna a última cotação válida persistida, identificada como desatualizada."""
+    try:
+        with QUOTE_HISTORY_LOCK:
+            with open(QUOTE_HISTORY_PATH, 'r', encoding='utf-8') as handle:
+                records = json.load(handle)
+        record = records.get(str(ticker or '').upper()) if isinstance(records, dict) else None
+        if not isinstance(record, dict):
+            return {}
+        price = float(record.get('regularMarketPrice') or 0)
+        if not math.isfinite(price) or price <= 0:
+            return {}
+        record = dict(record)
+        record['regularMarketPrice'] = price
+        record['quoteIsStale'] = True
+        record['quoteLastUpdated'] = record.get('quoteLastUpdated')
+        record['quoteProvider'] = record.get('quoteProvider') or 'Última cotação salva'
+        return record
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _save_last_valid_quote(ticker, quote):
+    """Persiste somente preços positivos e finitos, sem sobrescrever cache válido por falha."""
+    try:
+        price = float(quote.get('regularMarketPrice') or quote.get('close') or quote.get('price') or 0)
+        if not math.isfinite(price) or price <= 0:
+            return
+        record = {
+            'regularMarketPrice': price,
+            'quoteProvider': quote.get('quoteProvider') or 'Provedor de cotação',
+            'quoteLastUpdated': datetime.now(TZ).isoformat(timespec='seconds'),
+            'longName': quote.get('longName') or quote.get('shortName') or str(ticker).upper(),
+        }
+        with QUOTE_HISTORY_LOCK:
+            os.makedirs(os.path.dirname(QUOTE_HISTORY_PATH) or '.', exist_ok=True)
+            try:
+                with open(QUOTE_HISTORY_PATH, 'r', encoding='utf-8') as handle:
+                    records = json.load(handle)
+                if not isinstance(records, dict):
+                    records = {}
+            except (OSError, ValueError, json.JSONDecodeError):
+                records = {}
+            records[str(ticker).upper()] = record
+            temporary = QUOTE_HISTORY_PATH + '.tmp'
+            with open(temporary, 'w', encoding='utf-8') as handle:
+                json.dump(records, handle, ensure_ascii=False, separators=(',', ':'))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, QUOTE_HISTORY_PATH)
+    except (OSError, ValueError, TypeError):
+        # Falha no cache persistente não deve interromper a consulta da carteira.
+        pass
+
+
+def cotacao(ticker):
+    now = time.time()
+    ticker = str(ticker or '').strip().upper()
+    if ticker in CACHE and now - CACHE[ticker][0] < CACHE_TTL:
+        return CACHE[ticker][1]
+
+    data = {}
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
+    params = {'fundamental': 'true', 'dividends': 'true'}
+    if _brapi_token():
+        params['token'] = _brapi_token()
+
+    # Primeira tentativa: endpoint de cotação individual.
+    try:
+        response = requests.get(
+            f'https://brapi.dev/api/quote/{ticker}',
+            params=params, headers=headers, timeout=8
+        )
+        response.raise_for_status()
+        results = response.json().get('results') or []
+        if results and isinstance(results[0], dict):
+            data = {**results[0], 'quoteProvider': 'brapi'}
+    except Exception:
+        data = {}
+
+    # Alguns tickers (principalmente FIIs/BDRs) podem não retornar preço
+    # no endpoint individual. Tenta localizar a cotação pela lista da Brapi.
+    has_price = any(
+        data.get(key) not in (None, '', 0, '0')
+        for key in ('regularMarketPrice', 'close', 'price')
+    )
+    if not has_price and ticker:
+        try:
+            response = requests.get(
+                'https://brapi.dev/api/quote/list',
+                params={'search': ticker, 'limit': 20, 'sortBy': 'name', 'sortOrder': 'asc'},
+                headers=headers, timeout=8
+            )
+            response.raise_for_status()
+            stocks = response.json().get('stocks') or []
+            match = next((
+                item for item in stocks
+                if str(item.get('stock') or item.get('symbol') or '').upper() == ticker
+            ), None)
+            if match:
+                data = {**data, **match}
+        except Exception:
+            pass
+
+    # Fontes alternativas configuradas: a cotação completa vem de uma única fonte
+    # por vez para não misturar preço de um provedor com variação de outro.
+    has_price = any(data.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price'))
+    if not has_price and ticker:
+        fallback = _fallback_market_quote(ticker)
+        if fallback:
+            data = {**data, **fallback}
+
+    has_valid_price = any(data.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price'))
+    if has_valid_price:
+        data['quoteIsStale'] = False
+        _save_last_valid_quote(ticker, data)
+    else:
+        # Mantém a última cotação realmente observada, mas sempre a identifica como antiga.
+        data = _load_last_valid_quote(ticker)
+    data = _enrich_quote_fundamentals(ticker, data)
+    CACHE[ticker] = (now, data)
+    return data
+
+
+def _fallback_market_quote(ticker):
+    """Busca cotação/variação em provedores alternativos configurados, sem combinar séries."""
+    headers = {'User-Agent': 'Mozilla/5.0 LonelyWallet/2.0.69'}
+    # HG Brasil: cobertura de ativos B3 conforme o plano.
+    token = _get_api_token('hgbrasil')
+    if token:
+        try:
+            response = requests.get('https://api.hgbrasil.com/finance',
+                params={'key': token, 'symbol': ticker}, headers=headers, timeout=10)
+            response.raise_for_status()
+            payload = response.json()
+            results = payload.get('results') or {}
+            stocks = results.get('stocks') or results
+            item = stocks.get(ticker) or stocks.get(ticker.upper()) or {}
+            price = item.get('price') or item.get('close')
+            change = item.get('change_percent') or item.get('changePercent')
+            if price and float(price) > 0:
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(change) if change is not None else None,
+                        'longName': item.get('name') or ticker,
+                        'quoteProvider': 'HG Brasil'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Twelve Data: consulta apenas quando há chave cadastrada.
+    token = _get_api_token('twelvedata')
+    if token:
+        try:
+            response = requests.get('https://api.twelvedata.com/quote',
+                params={'symbol': ticker, 'exchange': 'BVMF', 'apikey': token},
+                headers=headers, timeout=10)
+            response.raise_for_status()
+            item = response.json()
+            price = item.get('close') or item.get('price')
+            if item.get('status') != 'error' and price and float(price) > 0:
+                change = item.get('percent_change')
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(change) if change not in (None, '') else None,
+                        'longName': item.get('name') or ticker,
+                        'quoteProvider': 'Twelve Data'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Alpha Vantage é fallback final para tickers que o endpoint reconhece.
+    token = _get_api_token('alphavantage')
+    if token:
+        try:
+            response = requests.get('https://www.alphavantage.co/query',
+                params={'function': 'GLOBAL_QUOTE', 'symbol': ticker, 'apikey': token},
+                headers=headers, timeout=10)
+            response.raise_for_status()
+            item = response.json().get('Global Quote') or {}
+            price = item.get('05. price')
+            change = item.get('10. change percent')
+            if price and float(price) > 0:
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(str(change or '').replace('%', '').replace(',', '.')) if change else None,
+                        'longName': ticker, 'quoteProvider': 'Alpha Vantage'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Yahoo Finance sem chave permanece como contingência pública, não oficial.
+    try:
+        response = requests.get(
+            f'https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(ticker, safe="")}',
+            params={'range': '5d', 'interval': '1d'},
+            headers=headers, timeout=10)
+        response.raise_for_status()
+        result = next(iter(response.json().get('chart', {}).get('result') or []), None)
+        if result:
+            meta = result.get('meta') or {}
+            price = meta.get('regularMarketPrice')
+            previous = meta.get('chartPreviousClose') or meta.get('previousClose')
+            if price and float(price) > 0:
+                change = ((float(price) / float(previous)) - 1) * 100 if previous else None
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': change,
+                        'longName': meta.get('longName') or meta.get('shortName') or ticker,
+                        'quoteProvider': 'Yahoo Finance'}
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        pass
+    return {}
+
+
+def _sgs_series(series_id, start_date, end_date):
+    """Busca séries históricas oficiais do BCB/SGS, em janelas inferiores a 10 anos."""
+    start = date.fromisoformat(str(start_date)[:10])
+    end = date.fromisoformat(str(end_date)[:10])
+    if end < start:
+        return []
+    key = (int(series_id), start.isoformat(), end.isoformat())
+    cached = SGS_CACHE.get(key)
+    if cached and time.time() - cached[0] < SGS_CACHE_TTL:
+        return cached[1]
+    points = []
+    cursor = start
+    while cursor <= end:
+        chunk_end = min(end, cursor + timedelta(days=8 * 365))
+        params = {
+            'formato': 'json',
+            'dataInicial': cursor.strftime('%d/%m/%Y'),
+            'dataFinal': chunk_end.strftime('%d/%m/%Y')
+        }
+        response = requests.get(
+            f'https://api.bcb.gov.br/dados/serie/bcdata.sgs.{int(series_id)}/dados',
+            params=params, timeout=18
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError('Resposta inválida do Banco Central')
+        for row in payload:
+            try:
+                d = datetime.strptime(row['data'], '%d/%m/%Y').date()
+                value = float(str(row['valor']).replace(',', '.'))
+                points.append((d, value))
+            except (KeyError, TypeError, ValueError):
+                continue
+        cursor = chunk_end + timedelta(days=1)
+    points.sort(key=lambda item: item[0])
+    SGS_CACHE[key] = (time.time(), points)
+    return points
+
+
+def _rate_number(value):
+    """Extrai a primeira taxa numérica de campos como '120% do CDI' ou '6,5% a.a.'."""
+    raw = str(value or '').strip().replace(',', '.')
+    match = re.search(r'(-?\d+(?:\.\d+)?)', raw)
+    return float(match.group(1)) if match else 0.0
+
+
+def _fixed_income_factor(details, start_date, end_date):
+    """Fator bruto de acumulação; não desconta IR/IOF nem taxas do emissor."""
+    details = details if isinstance(details, dict) else {}
+    indexer = str(details.get('indexador') or '').strip().upper()
+    form = str(details.get('forma') or '').strip().lower()
+    rate_text = str(details.get('taxa') or '').strip()
+    rate = _rate_number(rate_text)
+    if not indexer or not rate_text or rate <= 0:
+        return None, 'Indexador ou taxa não informado'
+    try:
+        start = date.fromisoformat(str(start_date)[:10])
+        end = date.fromisoformat(str(end_date)[:10])
+    except (TypeError, ValueError):
+        return None, 'Data da aplicação inválida'
+    if end <= start:
+        return 1.0, None
+    hybrid = form == 'híbrido' or '+' in rate_text
+    factor = 1.0
+    try:
+        if indexer == 'CDI':
+            for _, daily_pct in _sgs_series(12, start + timedelta(days=1), end):
+                daily = max(0.0, daily_pct) / 100.0
+                if hybrid:
+                    spread_daily = (1 + rate / 100.0) ** (1 / 252) - 1
+                    factor *= (1 + daily) * (1 + spread_daily)
+                else:
+                    factor *= 1 + daily * (rate / 100.0)
+        elif indexer in ('SELIC', 'SELIC OVER'):
+            for _, daily_pct in _sgs_series(11, start + timedelta(days=1), end):
+                daily = max(0.0, daily_pct) / 100.0
+                factor *= (1 + daily * (rate / 100.0))
+        elif indexer in ('IPCA', 'IGP-M'):
+            series_id = 433 if indexer == 'IPCA' else 189
+            # Índices de inflação são mensais: só entram competências completas
+            # posteriores ao mês da aplicação, evitando aplicar mês cheio em data parcial.
+            first_month = date(start.year + (start.month == 12), 1 if start.month == 12 else start.month + 1, 1)
+            last_complete_month = date(end.year, end.month, 1) - timedelta(days=1)
+            if first_month <= last_complete_month:
+                for point_date, monthly_pct in _sgs_series(series_id, first_month, last_complete_month):
+                    monthly = max(-99.0, monthly_pct) / 100.0
+                    if hybrid:
+                        spread_month = (1 + rate / 100.0) ** (1 / 12) - 1
+                        factor *= (1 + monthly) * (1 + spread_month)
+                    else:
+                        factor *= 1 + monthly * (rate / 100.0)
+        elif indexer in ('PREFIXADO', 'PRÉ-FIXADO', 'PRE-FIXADO'):
+            # Taxa anual efetiva composta em dias úteis (base 252).
+            business_days = 0
+            current = start + timedelta(days=1)
+            holidays = set()
+            for year in range(start.year, end.year + 1):
+                try:
+                    holidays.update(b3_holidays(year))
+                except Exception:
+                    pass
+            while current <= end:
+                if current.weekday() < 5 and current not in holidays:
+                    business_days += 1
+                current += timedelta(days=1)
+            factor = (1 + rate / 100.0) ** (business_days / 252)
+        else:
+            return None, f'Indexador {indexer} ainda não suportado'
+    except Exception as exc:
+        app.logger.warning('Falha ao calcular renda fixa (%s): %s', indexer, exc)
+        return None, 'Não foi possível consultar o histórico do indexador'
+    return max(0.01, factor), None
+
+
+def _fixed_income_position_value(ticker, invested_cost, fallback_value, as_of=None):
+    """Recalcula lotes de renda fixa desde cada aplicação, preservando legado sem taxa."""
+    cutoff = as_of or datetime.now(TZ).date().isoformat()
+    base_date = snapshot_date_for(cutoff)
+    if base_date:
+        ops = db().execute(
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data>? AND data<=? ORDER BY data,id",
+            (str(ticker).upper(), base_date, cutoff)
+        ).fetchall()
+        imported = imported_balance(ticker, cutoff)
+        base_cost = (float(imported['quantidade']) * float(imported['preco_medio'])) if imported else 0.0
+        # Saldos-base importados não possuem necessariamente os dados contratuais.
+        lots = [{'principal': base_cost, 'date': base_date, 'details': {}, 'legacy': True}] if base_cost > 0 else []
+    else:
+        ops = db().execute(
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data<=? ORDER BY data,id",
+            (str(ticker).upper(), cutoff)
+        ).fetchall()
+        lots = []
+    for op in ops:
+        quantity = float(op['quantidade'] or 0)
+        amount = quantity * float(op['preco'] or 0)
+        if op['lado'] == 'compra':
+            try:
+                details = json.loads(op['detalhes'] or '{}')
+            except Exception:
+                details = {}
+            lots.append({'principal': amount + float(op['custos'] or 0), 'date': op['data'], 'details': details, 'legacy': False})
+        else:
+            remaining = amount
+            for lot in lots:
+                if remaining <= 0:
+                    break
+                reduction = min(lot['principal'], remaining)
+                lot['principal'] -= reduction
+                remaining -= reduction
+    total_cost = sum(max(0.0, lot['principal']) for lot in lots)
+    total_value = 0.0
+    has_calculated = False
+    warnings = []
+    for lot in lots:
+        principal = max(0.0, lot['principal'])
+        if principal <= 0:
+            continue
+        factor, error = _fixed_income_factor(lot['details'], lot['date'], cutoff)
+        if factor is None:
+            total_value += principal
+            warnings.append(error)
+        else:
+            total_value += principal * factor
+            has_calculated = True
+    if not lots:
+        return invested_cost, fallback_value, False, 'Sem histórico de aplicação'
+    if not has_calculated and warnings:
+        return total_cost, fallback_value if fallback_value > 0 else total_cost, False, warnings[0]
+    return total_cost, total_value, True, (warnings[0] if warnings else None)
+
+
+def snapshot_date_for(reference_date=None):
+    # Última data-base global válida para a data consultada.
+    cutoff = reference_date or datetime.now(TZ).date().isoformat()
+    row = db().execute(
+        'SELECT MAX(data_base) AS data_base FROM saldos_importados WHERE data_base<=?',
+        (cutoff,)
+    ).fetchone()
+    return row['data_base'] if row and row['data_base'] else None
+
+
+def imported_balance(ticker, reference_date=None):
+    base_date = snapshot_date_for(reference_date)
+    if not base_date:
+        return None
+    row = db().execute(
+        'SELECT * FROM saldos_importados WHERE ticker=? AND data_base=?',
+        (str(ticker).upper(), base_date)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def asset_type_for_ticker(ticker, reference_date=None):
+    key = str(ticker or '').strip().upper()
+    row = db().execute('SELECT tipo FROM operacoes WHERE upper(ticker)=? ORDER BY data,id LIMIT 1', (key,)).fetchone()
+    if row:
+        return str(row['tipo'] or '').lower()
+    balance = imported_balance(key, reference_date)
+    if balance and balance.get('tipo'):
+        return str(balance['tipo']).lower()
+    row = db().execute('SELECT asset_type FROM pluggy_position_snapshots WHERE upper(ticker)=? ORDER BY snapshot_at DESC LIMIT 1', (key,)).fetchone()
+    if row and row['asset_type']:
+        return str(row['asset_type']).lower()
+    row = db().execute('SELECT investment_type,subtype FROM pluggy_investments WHERE upper(code)=? OR upper(name)=? ORDER BY updated_at DESC LIMIT 1', (key, key)).fetchone()
+    if row:
+        raw = str(row['subtype'] or row['investment_type'] or '').lower()
+        mapping = {'stock':'acao','equity':'acao','fii':'fii','reit':'reit','etf':'etf','fixed_income':'renda_fixa','bond':'renda_fixa','treasury':'tesouro','crypto':'cripto'}
+        return mapping.get(raw, raw if raw in ('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros') else 'outros')
+    return None
+
+
+def posicao(ticker, as_of=None):
+    """Calcula posição usando o último saldo-base e apenas operações posteriores.
+
+    A fotografia é global e completa: ativos ausentes nela começam com saldo zero.
+    Isso evita somar novamente todo o histórico anterior à importação.
+    """
+    cutoff = as_of or datetime.now(TZ).date().isoformat()
+    base_date = snapshot_date_for(cutoff)
+    balance = imported_balance(ticker, cutoff) if base_date else None
+    if base_date:
+        qtd = float(balance['quantidade']) if balance else 0.0
+        custo = qtd * float(balance['preco_medio'] or 0) if balance else 0.0
+        ops = db().execute(
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data>? AND data<=? ORDER BY data,id",
+            (str(ticker).upper(), base_date, cutoff)
+        ).fetchall()
+    else:
+        qtd = custo = 0.0
+        ops = db().execute(
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data<=? ORDER BY data,id",
+            (str(ticker).upper(), cutoff)
+        ).fetchall()
+    for op in ops:
+        q = float(op['quantidade']); valor = q * float(op['preco'])
+        # Preço médio = soma dos valores efetivos de compra / quantidade adquirida.
+        # Taxas/custos operacionais não alteram o preço médio unitário solicitado.
+        if op['lado'] == 'compra':
+            qtd += q; custo += valor
+        elif qtd > 0:
+            pm = custo / qtd
+            vendido = min(q, qtd)
+            qtd -= vendido; custo = max(0.0, custo - vendido * pm)
+    return max(qtd, 0), (custo / qtd if qtd > 0 else 0)
+
+
+def json_error(message, status=400):
+    return jsonify(ok=False, erro=message), status
+
+
+def easter_sunday(year):
+    a=year%19; b=year//100; c=year%100; d=b//4; e=b%4; f=(b+8)//25; g=(b-f+1)//3
+    h=(19*a+b-d-g+15)%30; i=c//4; k=c%4; l=(32+2*e+2*i-h-k)%7; m=(a+11*h+22*l)//451
+    month=(h+l-7*m+114)//31; day=((h+l-7*m+114)%31)+1
+    return date(year,month,day)
+
+
+def b3_holidays(year):
+    easter=easter_sunday(year)
+    dates={date(year,1,1),date(year,4,21),date(year,5,1),date(year,9,7),date(year,10,12),date(year,11,2),date(year,11,15),date(year,11,20),date(year,12,25),date(year,12,24),date(year,12,31)}
+    dates.update({easter-timedelta(days=48),easter-timedelta(days=47),easter-timedelta(days=2),easter+timedelta(days=60)})
+    return dates
+
+
+def session_open(day):
+    easter=easter_sunday(day.year)
+    return clock_time(13,0) if day==easter-timedelta(days=46) else MARKET_OPEN
+
+
+def next_b3_session(requested):
+    candidate=requested.astimezone(TZ).replace(second=0,microsecond=0)
+    while candidate.weekday()>=5 or candidate.date() in b3_holidays(candidate.year):
+        candidate=(candidate+timedelta(days=1)).replace(hour=10,minute=0)
+    opening=session_open(candidate.date())
+    if candidate.time()<opening:
+        candidate=candidate.replace(hour=opening.hour,minute=opening.minute)
+    elif candidate.time()>=MARKET_CLOSE:
+        candidate=(candidate+timedelta(days=1)).replace(hour=10,minute=0)
+        while candidate.weekday()>=5 or candidate.date() in b3_holidays(candidate.year):
+            candidate=(candidate+timedelta(days=1)).replace(hour=10,minute=0)
+    return candidate
+
+
+def process_due_operations():
+    now=datetime.now(TZ).isoformat(timespec='minutes')
+    con=db()
+    con.execute("UPDATE operacoes SET status='executada', data=substr(data_execucao,1,10) WHERE status='agendada' AND data_execucao<=?",(now,))
+    con.commit()
+
+
+def scheduler_loop():
+    # Promove operações agendadas automaticamente quando chega o horário previsto.
+    while True:
+        con = None
+        try:
+            now=datetime.now(TZ).isoformat(timespec='minutes')
+            con=sqlite3.connect(DB_PATH,timeout=10)
+            con.execute("UPDATE operacoes SET status='executada', data=substr(data_execucao,1,10) WHERE status='agendada' AND data_execucao<=?",(now,))
+            con.commit()
+        except Exception:
+            if con is not None:
+                try: con.rollback()
+                except Exception: pass
+        finally:
+            if con is not None:
+                con.close()
+        time.sleep(30)
+
+
+threading.Thread(target=scheduler_loop,daemon=True,name='b3-operation-scheduler').start()
+
+
+def valid_operation(data):
+    try:
+        ticker=str(data.get('ticker','')).strip().upper(); tipo=str(data.get('tipo','acao')).lower(); lado=str(data.get('lado','compra')).lower()
+        qtd=float(data.get('quantidade',0)); preco=float(data.get('preco',0)); custos=float(data.get('custos',0) or 0)
+        dt=str(data.get('data','')); date.fromisoformat(dt)
+        if not all(math.isfinite(v) for v in (qtd, preco, custos)):
+            raise ValueError('Valores financeiros precisam ser finitos.')
+        allowed_types=('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros')
+        if not ticker or len(ticker)>80 or tipo not in allowed_types: raise ValueError()
+        if lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
+        if lado=='venda':
+            existing_type=asset_type_for_ticker(ticker, dt)
+            if not existing_type or existing_type!=tipo:
+                return None,'O ativo selecionado não pertence à categoria informada. Escolha o ativo dentro da categoria correta.'
+            available,_=posicao(ticker, as_of=dt)
+            reserved=0.0
+            if dt >= datetime.now(TZ).date().isoformat():
+                reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada'",(ticker,)).fetchone()[0])
+            if qtd>available-reserved+1e-8: return None,'A quantidade vendida é maior que a posição disponível na data da operação, considerando vendas já agendadas.'
+        raw=str(data.get('data_hora') or (dt+'T10:00'))
+        requested=datetime.fromisoformat(raw)
+        if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
+        now=datetime.now(TZ); now_minute=now.replace(second=0,microsecond=0)
+        # Datas anteriores são lançamentos históricos; não devem ser empurradas para o próximo pregão.
+        if requested.date()<now.date():
+            execution=requested; status='executada'
+        # Renda fixa (CDB, LCI, LCA etc.) não depende do pregão da bolsa:
+        # registra imediatamente, sem criar operação agendada.
+        elif tipo=='renda_fixa':
+            execution=now; status='executada'
+        elif requested.date()==now.date() and now.weekday()<5 and now.date() not in b3_holidays(now.year) and MARKET_OPEN<=requested.time()<MARKET_CLOSE and requested<=now_minute:
+            execution=requested; status='executada'
+        else:
+            execution=next_b3_session(requested)
+            status='executada' if execution<=now_minute else 'agendada'
+        details=data.get('detalhes') or {}
+        if isinstance(details,str): details=json.loads(details)
+        return (ticker,tipo,lado,qtd,preco,execution.date().isoformat(),custos,status,now.isoformat(timespec='minutes'),execution.isoformat(timespec='minutes'),json.dumps(details,ensure_ascii=False)),None
+    except Exception:
+        return None,'Confira ativo, tipo, quantidade, preço, custos e data da operação.'
+
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    try:
+        db().execute('SELECT 1').fetchone()
+        token_db().execute('SELECT 1').fetchone()
+        return jsonify(ok=True, status='healthy', version=(Path(__file__).resolve().parents[1] / 'VERSION').read_text(encoding='utf-8').strip()), 200
+    except Exception:
+        app.logger.exception('Healthcheck failed')
+        return jsonify(ok=False, status='unhealthy'), 503
+
+
+@app.route('/')
+def index(): return render_template('index.html')
+
+
+@app.route('/api/operacoes/exportar', methods=['GET'])
+def exportar_operacoes_b3():
+    con = db()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Movimentações'
+    ws.append(['Entrada/Saída','Data','Movimentação','Produto','Instituição','Código de Negociação','Quantidade','Preço unitário','Valor da Operação'])
+    operations = con.execute("SELECT * FROM operacoes ORDER BY date(data),id").fetchall()
+    for op in operations:
+        side = str(op['lado'] or '').lower()
+        product = f"{op['ticker']} - {op['tipo']}"
+        qty = float(op['quantidade'] or 0)
+        price = float(op['preco'] or 0)
+        ws.append(['Débito' if side == 'venda' else 'Crédito', date.fromisoformat(str(op['data'])[:10]),
+                   'Compra / Venda', product, 'Lonely Wallet', op['ticker'], qty, price, qty * price])
+    dividends = con.execute("SELECT ticker,valor_total,data FROM proventos ORDER BY date(data)").fetchall()
+    for item in dividends:
+        ws.append(['Crédito', date.fromisoformat(str(item['data'])[:10]), 'Rendimento',
+                   f"{item['ticker']} - provento", 'Lonely Wallet', item['ticker'], 0, 0,
+                   float(item['valor_total'] or 0)])
+    for col,width in {'A':16,'B':14,'C':22,'D':38,'E':22,'F':22,'G':16,'H':18,'I':20}.items():
+        ws.column_dimensions[col].width=width
+    ws.freeze_panes='A2'
+    output=io.BytesIO()
+    wb.save(output); output.seek(0)
+    return send_file(output, as_attachment=True, download_name='Lonely-Wallet-Lancamentos-B3.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def is_pluggy_operation(row):
+    """Return True for Pluggy-imported operations, which are read-only."""
+    try:
+        details = row['detalhes'] if hasattr(row, 'keys') else row.get('detalhes')
+        meta = json.loads(details or '{}') if isinstance(details, (str, bytes)) else (details or {})
+        return isinstance(meta, dict) and str(meta.get('origem') or '').strip().lower() == 'pluggy'
+    except Exception:
+        return False
+
+
+@app.route('/api/operacoes', methods=['GET','POST'])
+def operacoes():
+    if request.method == 'GET':
+        process_due_operations()
+        rows = db().execute('SELECT * FROM operacoes ORDER BY COALESCE(data_execucao,data) DESC,id DESC').fetchall()
+        return jsonify(itens=[dict(r) for r in rows])
+    process_due_operations()
+    payload, error = valid_operation(request.get_json(silent=True) or {})
+    if error: return json_error(error)
+    db().execute('INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)', payload)
+    db().commit(); CACHE.pop(payload[0], None)
+    return jsonify(ok=True,status=payload[7],data_execucao=payload[9])
+
+
+def clear_seed_snapshot_when_empty():
+    """Remove a fotografia fixa quando o usuário exclui o último lançamento.
+
+    Proventos pagos/recebidos permanecem como histórico financeiro independente;
+    apenas as posições importadas que sustentavam o patrimônio atual são limpas.
+    """
+    remaining = int(db().execute('SELECT COUNT(*) FROM operacoes').fetchone()[0])
+    if remaining == 0:
+        db().execute(
+            "DELETE FROM saldos_importados WHERE data_base=? AND origem=?",
+            ('2026-10-31', 'Posição final informada pelo usuário (captura de 31/10/2026)')
+        )
+        db().execute(
+            "INSERT INTO integracao_estado(chave,valor) VALUES(?,?) "
+            "ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor",
+            ('snapshot_20261031_lifecycle_v45', 'reset_empty')
+        )
+
+
+def cleanup_b3_operation_refs(operation_ids):
+    ids=[int(x) for x in operation_ids if x is not None]
+    if not ids:
+        return
+    con=db()
+    batch_ids=set()
+    for start in range(0,len(ids),500):
+        chunk=ids[start:start+500]
+        marks=','.join('?' for _ in chunk)
+        batch_ids.update(r[0] for r in con.execute(
+            f"SELECT DISTINCT lote_id FROM b3_importados WHERE categoria='operacao' AND registro_id IN ({marks}) AND lote_id IS NOT NULL", chunk
+        ).fetchall())
+        con.execute(f"DELETE FROM b3_importados WHERE categoria='operacao' AND registro_id IN ({marks})", chunk)
+    for batch_id in batch_ids:
+        counts=con.execute("SELECT COUNT(*) FROM b3_importados WHERE lote_id=? AND categoria='operacao'",(batch_id,)).fetchone()[0]
+        con.execute('UPDATE b3_import_lotes SET operacoes=? WHERE id=?',(int(counts),batch_id))
+
+
+
+def cleanup_pluggy_asset_refs(scope, tipo='', ticker='', operation_ids=None, investment_ids=None):
+    """Remove Pluggy investment cache/transactions linked to assets explicitly removed in the asset manager.
+    Keeps Pluggy connections and credentials intact; only investment data is handled by the integration.
+    """
+    con = db()
+    operation_ids = [int(x) for x in (operation_ids or []) if x is not None]
+    investment_ids = list(dict.fromkeys(str(x) for x in (investment_ids or []) if x))
+    if scope == 'todas':
+        inv_ids = [r[0] for r in con.execute('SELECT investment_id FROM pluggy_investments').fetchall()]
+        deleted_tx = con.execute('SELECT COUNT(*) FROM pluggy_investment_transactions').fetchone()[0]
+        con.execute('DELETE FROM pluggy_investment_transactions')
+        con.execute('DELETE FROM pluggy_investments')
+        # Pluggy event ledger is investment/dividend import provenance, not the bank account feed.
+        deleted_events = con.execute("SELECT COUNT(*) FROM pluggy_imported_events").fetchone()[0]
+        con.execute('DELETE FROM pluggy_imported_events')
+        return {'pluggy_investments': len(inv_ids), 'pluggy_transactions': int(deleted_tx), 'pluggy_events': int(deleted_events)}
+    ticker = str(ticker or '').strip().upper()
+    if not ticker:
+        return {'pluggy_investments': 0, 'pluggy_transactions': 0, 'pluggy_events': 0}
+    inv_ids = [r[0] for r in con.execute(
+        "SELECT investment_id FROM pluggy_investments WHERE upper(code)=? OR upper(name)=?",
+        (ticker, ticker)
+    ).fetchall()]
+    # Include investment ids found through their cached transaction ticker.
+    extra_ids = [r[0] for r in con.execute(
+        "SELECT DISTINCT investment_id FROM pluggy_investment_transactions WHERE upper(ticker)=?",
+        (ticker,)
+    ).fetchall()]
+    inv_ids = list(dict.fromkeys(inv_ids + extra_ids + investment_ids))
+    deleted_tx = 0
+    if inv_ids:
+        for start in range(0, len(inv_ids), 400):
+            chunk = inv_ids[start:start+400]
+            marks = ','.join('?' for _ in chunk)
+            deleted_tx += con.execute(
+                f'DELETE FROM pluggy_investment_transactions WHERE investment_id IN ({marks})', chunk
+            ).rowcount
+            con.execute(f'DELETE FROM pluggy_investments WHERE investment_id IN ({marks})', chunk)
+    deleted_tx += con.execute(
+        'DELETE FROM pluggy_investment_transactions WHERE upper(ticker)=?', (ticker,)
+    ).rowcount
+    deleted_events = con.execute(
+        'DELETE FROM pluggy_imported_events WHERE upper(ticker)=?', (ticker,)
+    ).rowcount
+    # Remove any remaining Pluggy transaction-to-operation links for deleted operations.
+    if operation_ids:
+        for start in range(0, len(operation_ids), 500):
+            chunk = operation_ids[start:start+500]
+            marks = ','.join('?' for _ in chunk)
+            con.execute(
+                f"UPDATE pluggy_investment_transactions SET imported_operation_id=NULL, import_state='imported_only' WHERE imported_operation_id IN ({marks})",
+                chunk
+            )
+    return {'pluggy_investments': len(inv_ids), 'pluggy_transactions': int(deleted_tx), 'pluggy_events': int(deleted_events)}
+
+
+def create_predelete_backup():
+    """Cria cópias SQLite consistentes antes de exclusões em massa."""
+    backup_root = Path(os.environ.get('BACKUP_DIR', '/data/backups'))
+    backup_root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(TZ).strftime('%Y%m%d-%H%M%S-%f')
+    folder = backup_root / f'pre-exclusao-{stamp}'
+    folder.mkdir(mode=0o700)
+    try:
+        for source, connection in ((Path(DB_PATH), db()), (Path(TOKEN_DB_PATH), token_db())):
+            target = folder / source.name
+            dest = sqlite3.connect(str(target), timeout=30)
+            try:
+                connection.backup(dest)
+                if dest.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+                    raise RuntimeError('Falha ao validar backup preventivo.')
+            finally:
+                dest.close()
+        return str(folder)
+    except Exception:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+
+
+@app.route('/api/operacoes/gerenciar', methods=['DELETE'])
+def excluir_operacoes_em_massa():
+    con=db()
+    payload=request.get_json(silent=True) or {}
+    scope=str(payload.get('escopo') or '').lower()
+    if scope=='todas':
+        all_rows=con.execute('SELECT id,detalhes FROM operacoes').fetchall()
+        ids=[int(r['id']) for r in all_rows if not is_pluggy_operation(r)]
+        ticker=''
+        tipo=''
+    elif scope=='ativo':
+        tipo=str(payload.get('tipo') or '').strip().lower()
+        ticker=str(payload.get('ticker') or '').strip().upper()
+        if not tipo or not ticker:
+            return json_error('Selecione a classe e o ativo para excluir os lançamentos.')
+        asset_rows=con.execute('SELECT id,detalhes FROM operacoes WHERE lower(tipo)=? AND upper(ticker)=?',(tipo,ticker)).fetchall()
+        ids=[int(r['id']) for r in asset_rows if not is_pluggy_operation(r)]
+    else:
+        return json_error('Escopo de exclusão inválido.')
+    if payload.get('confirmar') is not True:
+        return json_error('Confirme explicitamente a exclusão para continuar.', 409)
+    try:
+        backup_path = create_predelete_backup()
+        pluggy_investment_ids = []
+        if ids:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start+500]
+                marks = ','.join('?' for _ in chunk)
+                for row in con.execute(f'SELECT detalhes FROM operacoes WHERE id IN ({marks})', chunk).fetchall():
+                    try:
+                        meta = json.loads(row[0] or '{}')
+                        if meta.get('origem') == 'Pluggy' and meta.get('investment_id'):
+                            pluggy_investment_ids.append(str(meta['investment_id']))
+                    except Exception:
+                        pass
+        cleanup_b3_operation_refs(ids)
+        for start in range(0,len(ids),500):
+            chunk=ids[start:start+500]
+            marks=','.join('?' for _ in chunk)
+            con.execute(f'DELETE FROM operacoes WHERE id IN ({marks})',chunk)
+        # Pluggy-imported operations and their source cache are immutable and excluded above.
+        pluggy_removed = {'pluggy_investments': 0, 'pluggy_transactions': 0, 'pluggy_events': 0}
+        if scope == 'todas':
+            # Limpeza integral da carteira: lançamentos, snapshots/importações e cache de posições.
+            # Mantém tokens, conexões Pluggy e transações bancárias para permitir nova sincronização.
+            con.execute('DELETE FROM saldos_importados')
+            con.execute('DELETE FROM proventos_api')
+            con.execute('DELETE FROM proventos')
+            con.execute('DELETE FROM b3_importados')
+            con.execute('DELETE FROM b3_import_lotes')
+            # Preserve Pluggy source records and imported-event ledger.
+            con.execute('DELETE FROM integracao_estado WHERE chave LIKE ?', ('snapshot_%',))
+            pluggy_removed = {'pluggy_investments': pluggy_removed.get('pluggy_investments',0),
+                              'pluggy_transactions': pluggy_removed.get('pluggy_transactions',0),
+                              'pluggy_events': pluggy_removed.get('pluggy_events',0)}
+            CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear()
+            PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
+        clear_seed_snapshot_when_empty()
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    return jsonify(ok=True,excluidos=len(ids),pluggy_removidos=pluggy_removed,backup=backup_path)
+
+
+@app.route('/api/operacoes/<int:op_id>', methods=['DELETE','PUT'])
+def delete_operacao(op_id):
+    current=db().execute('SELECT * FROM operacoes WHERE id=?',(op_id,)).fetchone()
+    if not current: return json_error('Lançamento não encontrado.',404)
+    if is_pluggy_operation(current):
+        return json_error('Lançamentos importados pela Pluggy são somente leitura e não podem ser editados ou excluídos.', 403)
+    if request.method == 'DELETE':
+        cleanup_b3_operation_refs([op_id])
+        db().execute('DELETE FROM operacoes WHERE id=?', (op_id,))
+        clear_seed_snapshot_when_empty()
+        db().commit()
+        return jsonify(ok=True)
+    j=request.get_json(silent=True) or {}
+    try:
+        ticker=str(j.get('ticker',current['ticker'])).strip().upper()
+        tipo=str(j.get('tipo',current['tipo'])).lower()
+        lado=str(j.get('lado',current['lado'])).lower()
+        qtd=float(j.get('quantidade',current['quantidade']))
+        preco=float(j.get('preco',current['preco']))
+        custos=float(j.get('custos',current['custos'] or 0))
+        dt=str(j.get('data') or current['data'])
+        allowed_types=('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros')
+        date.fromisoformat(dt)
+        if not all(math.isfinite(v) for v in (qtd, preco, custos)):
+            raise ValueError('Valores financeiros precisam ser finitos.')
+        if not ticker or len(ticker)>80 or tipo not in allowed_types or lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
+        if lado=='venda':
+            existing_type=asset_type_for_ticker(ticker, dt)
+            if not existing_type or existing_type!=tipo:
+                return json_error('O ativo selecionado não pertence à categoria informada. Escolha o ativo dentro da categoria correta.')
+            available,_=posicao(ticker, as_of=dt)
+            if ticker==current['ticker'] and current['lado']=='venda' and current['status']!='agendada' and current['data']<=dt:
+                available+=float(current['quantidade'] or 0)
+            reserved=0.0
+            if dt >= datetime.now(TZ).date().isoformat():
+                reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada' AND id<>?",(ticker,op_id)).fetchone()[0])
+            if qtd>available-reserved+1e-8:
+                return json_error('A quantidade vendida é maior que a posição disponível na data da operação, considerando vendas já agendadas.')
+        raw=str(j.get('data_hora') or (dt+'T10:00'))
+        requested=datetime.fromisoformat(raw)
+        if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
+        now=datetime.now(TZ); now_minute=now.replace(second=0,microsecond=0)
+        if requested.date()<now.date():
+            execution=requested; status='executada'
+        elif tipo=='renda_fixa':
+            execution=now; status='executada'
+        elif requested.date()==now.date() and now.weekday()<5 and now.date() not in b3_holidays(now.year) and MARKET_OPEN<=requested.time()<MARKET_CLOSE and requested<=now_minute:
+            execution=requested; status='executada'
+        else:
+            execution=next_b3_session(requested); status='executada' if execution<=now_minute else 'agendada'
+        details=j.get('detalhes',current['detalhes'] or '{}')
+        if isinstance(details,dict): details=json.dumps(details,ensure_ascii=False)
+        else:
+            parsed=json.loads(details or '{}'); details=json.dumps(parsed,ensure_ascii=False)
+        db().execute('UPDATE operacoes SET ticker=?,tipo=?,lado=?,quantidade=?,preco=?,custos=?,data=?,status=?,data_execucao=?,detalhes=? WHERE id=?',
+            (ticker,tipo,lado,qtd,preco,custos,execution.date().isoformat(),status,execution.isoformat(timespec='minutes'),details,op_id))
+        db().commit(); CACHE.pop(current['ticker'],None); CACHE.pop(ticker,None)
+        return jsonify(ok=True,status=status,data_execucao=execution.isoformat(timespec='minutes'))
+    except Exception:
+        return json_error('Confira ativo, tipo, operação, quantidade, preço, custos e data do lançamento.')
+
+
+@app.route('/api/proventos', methods=['GET','POST'])
+def proventos():
+    if request.method == 'GET':
+        rows = db().execute('SELECT * FROM proventos ORDER BY data DESC,id DESC').fetchall()
+        return jsonify(itens=[dict(r) for r in rows])
+    j = request.get_json(silent=True) or {}
+    try:
+        ticker = str(j['ticker']).strip().upper(); valor = float(j['valor_total']); dt = str(j['data']); date.fromisoformat(dt)
+        if not ticker or not math.isfinite(valor) or valor <= 0: raise ValueError()
+    except Exception: return json_error('Confira ticker, valor e data.')
+    db().execute('INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)', (ticker,valor,dt)); db().commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/proventos/sincronizar', methods=['POST'])
+def sincronizar_proventos():
+    result = sync_brapi_proventos(force=True, quote_items=carteira().json.get('itens', []))
+    return jsonify(result)
+
+
+def _b3_normalize(value):
+    raw = unicodedata.normalize('NFKD', str(value or '').strip().lower())
+    return ''.join(ch for ch in raw if not unicodedata.combining(ch))
+
+
+def _b3_number(value):
+    if value is None or value == '-':
+        return 0.0
+    if isinstance(value, (int, float)):
+        number = float(value)
+    else:
+        raw = str(value).strip().replace('R$', '').replace(' ', '')
+        if not raw or raw == '-':
+            return 0.0
+        if ',' in raw:
+            raw = raw.replace('.', '').replace(',', '.')
+        number = float(raw)
+    if not math.isfinite(number):
+        raise ValueError('A planilha B3 contém um valor numérico não finito.')
+    return number
+
+
+def _b3_date(value):
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    raw = str(value or '').strip()
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(raw, fmt).date().isoformat()
+        except ValueError:
+            pass
+    raise ValueError('Data inválida na planilha B3: ' + raw)
+
+
+def _b3_asset(product):
+    name = str(product or '').strip()
+    parts = name.rsplit(' - ', 1)
+    ticker = parts[0].strip().upper()
+    suffix = _b3_normalize(parts[1]) if len(parts) == 2 else ''
+    explicit_types = {
+        'acao':'acao','acoes':'acao','fii':'fii','etf':'etf','bdr':'bdr',
+        'internacional':'internacional','stocks':'stocks','reit':'reit',
+        'cripto':'cripto','criptomoeda':'cripto','renda_fixa':'renda_fixa',
+        'tesouro':'tesouro','fundo':'fundo','outros':'outros'
+    }
+    if suffix in explicit_types:
+        return ticker[:80], explicit_types[suffix]
+    if not ticker:
+        return '', 'outros'
+    if _b3_normalize(name).startswith(('lca ', 'lci ', 'cdb ', 'rdb ', 'tesouro ')) or ticker.startswith(('LCA', 'LCI', 'CDB', 'RDB')):
+        return ticker[:80], 'renda_fixa'
+    if re.fullmatch(r'[A-Z]{4}11', ticker):
+        return ticker, 'fii' if ('fii' in _b3_normalize(name) or 'imob' in _b3_normalize(name)) else 'etf'
+    if re.fullmatch(r'[A-Z]{4}(3[0-9]|[4-9][0-9])', ticker):
+        return ticker, 'bdr'
+    if re.fullmatch(r'[A-Z]{4}[0-9]{1,2}', ticker):
+        return ticker, 'acao'
+    return ticker[:80], 'outros'
+
+
+def _parse_b3_workbook(file_storage):
+    if not file_storage or not file_storage.filename.lower().endswith('.xlsx'):
+        raise ValueError('Selecione uma planilha Excel da B3 no formato .xlsx.')
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError('O arquivo selecionado está vazio.')
+    wb = load_workbook(io.BytesIO(raw), read_only=False, data_only=True)
+    ws = wb.active
+    rows = ws.iter_rows(values_only=True)
+    header = next(rows, None)
+    if not header:
+        raise ValueError('A planilha não contém cabeçalho.')
+    headers = {_b3_normalize(v): i for i, v in enumerate(header) if v is not None}
+    required = ['entrada/saida', 'data', 'movimentacao', 'produto', 'quantidade', 'preco unitario', 'valor da operacao']
+    missing = [h for h in required if h not in headers]
+    if missing:
+        raise ValueError('Não reconheci o formato da planilha. Confira se é a planilha de movimentações exportada pela B3.')
+    parsed=[]
+    for row_number, row in enumerate(rows, start=2):
+        if not row or not any(v is not None for v in row):
+            continue
+        get=lambda key: row[headers[key]] if headers[key] < len(row) else None
+        movement=str(get('movimentacao') or '').strip()
+        movement_norm=_b3_normalize(movement)
+        entry=_b3_normalize(get('entrada/saida'))
+        product=str(get('produto') or '').strip()
+        ticker, asset_type=_b3_asset(product)
+        if not ticker:
+            continue
+        dt=_b3_date(get('data'))
+        qty=_b3_number(get('quantidade'))
+        price=_b3_number(get('preco unitario'))
+        amount=_b3_number(get('valor da operacao'))
+        category=None; record=None
+        if movement_norm in ('rendimento','juros sobre capital proprio','dividendo'):
+            if amount <= 0:
+                continue
+            category='provento'
+            record={'ticker':ticker,'valor_total':amount,'data':dt,'tipo_evento':movement}
+        elif movement_norm in ('transferencia - liquidacao','compra / venda'):
+            if qty <= 0 or amount <= 0:
+                continue
+            side='venda' if entry in ('debito','saida','saída') else 'compra'
+            if movement_norm == 'compra / venda' and asset_type == 'renda_fixa':
+                side='compra' if entry not in ('debito','saida','saída') else 'venda'
+            category='operacao'
+            record={'ticker':ticker,'tipo':asset_type,'lado':side,'quantidade':qty,'preco':price if price > 0 else amount/qty,'data':dt,'custos':0.0,'status':'executada','detalhes':{'origem':'Importação B3','movimentacao':movement,'produto':product}}
+        else:
+            # Eventos sem valor negociado (atualização, transferência entre custódias,
+            # direitos de subscrição etc.) não viram compra/venda ou provento.
+            continue
+        fingerprint=hashlib.sha256(json.dumps([row_number, category, entry, dt, movement_norm, product, qty, price, amount],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+        parsed.append({'fingerprint':fingerprint,'categoria':category,'registro':record})
+    wb.close()
+    return parsed
+
+
+@app.route('/api/importar-b3/lotes', methods=['GET'])
+def listar_lotes_b3():
+    con = db()
+    batches = [dict(r) for r in con.execute("""
+        SELECT l.id, l.arquivo, l.importado_em, l.operacoes, l.proventos,
+               COUNT(i.fingerprint) AS registros
+        FROM b3_import_lotes l LEFT JOIN b3_importados i ON i.lote_id=l.id
+        GROUP BY l.id ORDER BY l.importado_em DESC
+    """).fetchall()]
+    legacy = [dict(r) for r in con.execute("""
+        SELECT importado_em, SUM(CASE WHEN categoria='operacao' THEN 1 ELSE 0 END) AS operacoes,
+               SUM(CASE WHEN categoria='provento' THEN 1 ELSE 0 END) AS proventos,
+               COUNT(*) AS registros
+        FROM b3_importados WHERE lote_id IS NULL GROUP BY importado_em ORDER BY importado_em DESC
+    """).fetchall()]
+    return jsonify(lotes=batches, legados=legacy)
+
+
+@app.route('/api/importar-b3/lotes/<lote_id>', methods=['DELETE'])
+def excluir_lote_b3(lote_id):
+    con = db()
+    lote = con.execute('SELECT * FROM b3_import_lotes WHERE id=?', (lote_id,)).fetchone()
+    if not lote:
+        return jsonify(error='Importação não encontrada ou sem vínculo seguro.'), 404
+    rows = con.execute('SELECT categoria,registro_id FROM b3_importados WHERE lote_id=?', (lote_id,)).fetchall()
+    deleted_ops = deleted_provs = 0
+    try:
+        for row in rows:
+            if not row['registro_id']:
+                continue
+            if row['categoria'] == 'operacao':
+                cur = con.execute("DELETE FROM operacoes WHERE id=? AND detalhes LIKE '%Importação B3%'", (row['registro_id'],))
+                deleted_ops += cur.rowcount
+            elif row['categoria'] == 'provento':
+                cur = con.execute('DELETE FROM proventos WHERE id=?', (row['registro_id'],))
+                deleted_provs += cur.rowcount
+        con.execute('DELETE FROM b3_importados WHERE lote_id=?', (lote_id,))
+        con.execute('DELETE FROM b3_import_lotes WHERE id=?', (lote_id,))
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    return jsonify(ok=True, operacoes=deleted_ops, proventos=deleted_provs)
+
+
+def _b3_semantic_duplicate(item):
+    """Detecta duplicatas apenas contra registros já persistidos, na mesma data.
+
+    Não aproxima datas em uma janela de dias: execuções parciais e aportes iguais
+    em dias diferentes são operações legítimas. A deduplicação do mesmo arquivo
+    continua sendo feita pelo fingerprint exato da linha B3.
+    """
+    rec=item['registro']
+    if item['categoria']=='operacao':
+        row=db().execute(
+            """SELECT id FROM operacoes WHERE upper(ticker)=? AND lower(tipo)=? AND lower(lado)=?
+               AND date(data)=date(?)
+               AND ABS(quantidade-?)<=0.00000001
+               AND ABS(preco-?)<=0.00000001 LIMIT 1""",
+            (str(rec['ticker']).upper(),str(rec['tipo']).lower(),str(rec['lado']).lower(),
+             rec['data'],float(rec['quantidade']),float(rec['preco']))
+        ).fetchone()
+        return row['id'] if row else None
+    row=db().execute(
+        """SELECT id FROM proventos WHERE upper(ticker)=? AND date(data)=date(?)
+           AND ABS(valor_total-?)<=0.00000001 LIMIT 1""",
+        (str(rec['ticker']).upper(),rec['data'],float(rec['valor_total']))
+    ).fetchone()
+    return row['id'] if row else None
+
+
+@app.route('/api/importar-b3', methods=['POST'])
+def importar_b3():
+    try:
+        upload = request.files.get('arquivo')
+        parsed=_parse_b3_workbook(upload)
+        filename = os.path.basename(upload.filename or 'Planilha B3.xlsx')
+        mode=request.form.get('modo','preview')
+        existing={r['fingerprint'] for r in db().execute('SELECT fingerprint FROM b3_importados').fetchall()}
+        new_rows=[]; semantic_duplicates=0
+        # A fotografia de duplicatas é tomada antes de inserir qualquer linha do lote.
+        # Assim, duas execuções legítimas e iguais no mesmo arquivo não se eliminam.
+        for item in parsed:
+            if item['fingerprint'] in existing or _b3_semantic_duplicate(item):
+                semantic_duplicates+=1
+            else:
+                new_rows.append(item)
+        if mode != 'importar':
+            return jsonify(ok=True,total=len(parsed),novos=len(new_rows),duplicados=semantic_duplicates,
+                operacoes=sum(1 for r in new_rows if r['categoria']=='operacao'),
+                proventos=sum(1 for r in new_rows if r['categoria']=='provento'))
+        inserted_ops=inserted_provs=0
+        duplicates=semantic_duplicates
+        con=db()
+        if not new_rows:
+            return jsonify(ok=True,importadas=0,operacoes=0,proventos=0,duplicados=len(parsed),lote_id=None)
+        lote_id=uuid.uuid4().hex
+        imported_at=datetime.now(TZ).isoformat(timespec='seconds')
+        con.execute('INSERT INTO b3_import_lotes(id,arquivo,importado_em,operacoes,proventos) VALUES(?,?,?,?,?)',
+                    (lote_id,filename,imported_at,0,0))
+        for item in new_rows:
+            # Fingerprints já existentes foram filtrados antes da transação; a
+            # restrição PRIMARY KEY permanece como última defesa contra reimportação.
+            if con.execute('SELECT 1 FROM b3_importados WHERE fingerprint=?',(item['fingerprint'],)).fetchone():
+                duplicates+=1; continue
+            rec=item['registro']
+            if item['categoria']=='operacao':
+                cur=con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (rec['ticker'],rec['tipo'],rec['lado'],rec['quantidade'],rec['preco'],rec['data'],0.0,'executada',rec['data'],rec['data']+'T10:00:00-03:00',json.dumps(rec['detalhes'],ensure_ascii=False)))
+                record_id=cur.lastrowid; inserted_ops+=1
+            else:
+                cur=con.execute('INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)',(rec['ticker'],rec['valor_total'],rec['data']))
+                record_id=cur.lastrowid; inserted_provs+=1
+            con.execute('INSERT INTO b3_importados(fingerprint,categoria,importado_em,lote_id,registro_id) VALUES(?,?,?,?,?)',
+                        (item['fingerprint'],item['categoria'],imported_at,lote_id,record_id))
+        con.execute('UPDATE b3_import_lotes SET operacoes=?,proventos=? WHERE id=?',(inserted_ops,inserted_provs,lote_id))
+        con.commit()
+        # A importação altera a carteira: verifica eventos de proventos dos ativos que permaneceram em posição.
+        dividend_sync = None
+        try:
+            current_items = (carteira().json or {}).get('itens', [])
+            dividend_sync = sync_brapi_proventos(force=False, quote_items=current_items, active_items=current_items)
+        except Exception as dividend_exc:
+            dividend_sync = {'ok': False, 'mensagem': str(dividend_exc)[:180]}
+        return jsonify(ok=True,importadas=inserted_ops+inserted_provs,operacoes=inserted_ops,proventos=inserted_provs,duplicados=duplicates,lote_id=lote_id, sincronizacao_proventos=dividend_sync)
+    except Exception as exc:
+        return json_error(str(exc) if isinstance(exc,ValueError) else 'Não foi possível ler a planilha B3. Confira o arquivo e tente novamente.')
+
+
+@app.route('/api/metas', methods=['GET','POST'])
+def metas():
+    if request.method == 'GET':
+        return jsonify(itens=[dict(r) for r in db().execute('SELECT * FROM metas ORDER BY id DESC').fetchall()])
+    j = request.get_json(silent=True) or {}
+    try:
+        nome = str(j['nome']).strip(); objetivo = float(j['objetivo']); aporte = float(j.get('aporte',0)); tipo = str(j.get('tipo','patrimonio'))
+        categoria = str(j.get('categoria','')); ticker = str(j.get('ticker','')).strip().upper(); variacao = float(j.get('variacao_anual',0)); classes = j.get('classes','[]')
+        if not all(math.isfinite(v) for v in (objetivo, aporte, variacao)) or not nome or objetivo <= 0 or aporte < 0 or not -100 <= variacao <= 1000: raise ValueError()
+        if isinstance(classes, list): classes = json.dumps(classes, ensure_ascii=False)
+        else:
+            parsed = json.loads(str(classes or '[]'))
+            if not isinstance(parsed, list): raise ValueError()
+            classes = json.dumps(parsed, ensure_ascii=False)
+        if tipo == 'ativos' and not ticker: raise ValueError()
+        if tipo == 'proventos' and not json.loads(classes): raise ValueError()
+    except Exception: return json_error('Informe os dados da meta corretamente.')
+    db().execute('INSERT INTO metas(nome,objetivo,aporte,tipo,categoria,ticker,variacao_anual,classes) VALUES(?,?,?,?,?,?,?,?)',(nome,objetivo,aporte,tipo,categoria,ticker,variacao,classes)); db().commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/metas/<int:meta_id>', methods=['DELETE'])
+def delete_meta(meta_id):
+    db().execute('DELETE FROM metas WHERE id=?',(meta_id,)); db().commit(); return jsonify(ok=True)
+
+
+@app.route('/api/carteira')
+
+def _pluggy_total_return(ticker, current_value, dividends=0.0):
+    """Retorno total desde a primeira compra usando o histórico importado da Pluggy."""
+    rows = db().execute(
+        "SELECT movement_type, transaction_date, quantity, unit_value, amount, raw_json "
+        "FROM pluggy_investment_transactions WHERE UPPER(ticker)=? "
+        "ORDER BY transaction_date, transaction_id",
+        (str(ticker or '').upper(),)
+    ).fetchall()
+    if not rows:
+        return None
+    buys = sells = 0.0
+    first_buy = None
+    for row in rows:
+        movement = str(row['movement_type'] or '').upper()
+        amount = abs(float(row['amount'] or 0))
+        qty = abs(float(row['quantity'] or 0))
+        unit = abs(float(row['unit_value'] or 0))
+        if amount <= 0 and qty > 0 and unit > 0:
+            amount = qty * unit
+        try:
+            raw = json.loads(row['raw_json'] or '{}')
+        except (TypeError, ValueError):
+            raw = {}
+        expenses = _pluggy_expenses_total(raw)
+        if movement == 'BUY':
+            buys += amount + expenses
+            if first_buy is None:
+                first_buy = str(row['transaction_date'] or '')[:10] or None
+        elif movement == 'SELL':
+            sells += max(0.0, amount - expenses)
+    if buys <= 0:
+        return None
+    # Variação considera somente resultado de preço e operações realizadas.
+    # Rentabilidade total acrescenta os proventos recebidos no período.
+    variation_value = float(current_value or 0) + sells - buys
+    total_return_value = variation_value + float(dividends or 0)
+    return {
+        'variation_pct': round(variation_value / buys * 100, 2),
+        'variation_value': round(variation_value, 2),
+        'total_pct': round(total_return_value / buys * 100, 2),
+        'total_value': round(total_return_value, 2),
+        'invested': round(buys, 2), 'first_buy': first_buy
+    }
+
+
+def _prefetch_quotes_parallel(tickers):
+    """Consulta cotações simultaneamente para reduzir o tempo de abertura."""
+    symbols = sorted({str(t or '').strip().upper() for t in tickers if str(t or '').strip()})
+    now = time.time()
+    pending = [s for s in symbols if s not in CACHE or now - CACHE[s][0] >= CACHE_TTL]
+    if not pending:
+        return
+    with ThreadPoolExecutor(max_workers=min(8, len(pending))) as pool:
+        futures = [pool.submit(cotacao, symbol) for symbol in pending]
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception:
+                pass
+
+
+def carteira():
+    process_due_operations()
+    base_date = snapshot_date_for()
+    ticker_rows = db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall()
+    tickers = {str(row[0]).upper() for row in ticker_rows}
+    tickers.update(str(row[0]).upper() for row in db().execute(
+        "SELECT DISTINCT s.ticker FROM pluggy_position_snapshots s "
+        "JOIN pluggy_items i ON i.item_id=s.item_id WHERE i.active=1"
+    ).fetchall())
+    if base_date:
+        tickers.update(str(row[0]).upper() for row in db().execute(
+            'SELECT ticker FROM saldos_importados WHERE data_base=?', (base_date,)
+        ).fetchall())
+    itens=[]; invested=actual=received=0.0
+    for ticker in sorted(tickers):
+        qty, avg = posicao(ticker)
+        pluggy_position = db().execute(
+            "SELECT s.asset_type, SUM(s.quantity) AS quantity, "
+            "SUM(s.amount_original) AS amount_original, SUM(s.balance) AS balance "
+            "FROM pluggy_position_snapshots s JOIN pluggy_items i ON i.item_id=s.item_id "
+            "WHERE i.active=1 AND UPPER(s.ticker)=? GROUP BY UPPER(s.ticker)",
+            (ticker,)
+        ).fetchone()
+        if pluggy_position:
+            # A fotografia é autoritativa inclusive quando a quantidade é zero.
+            qty = max(0.0, float(pluggy_position['quantity'] or 0))
+            original = float(pluggy_position['amount_original'] or 0)
+            history_average = _pluggy_average_purchase_price(ticker)
+            avg = history_average if history_average and history_average > 0 else (original / qty if original > 0 and qty > 0 else avg)
+        if qty <= 1e-8: continue
+        imported = imported_balance(ticker)
+        op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
+        kind = (pluggy_position['asset_type'] if pluggy_position else None) or (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
+        # Renda fixa usa o indexador e a data de cada aplicação, não cotação de bolsa.
+        quote = {} if kind == 'renda_fixa' else cotacao(ticker)
+        raw_price=quote.get('regularMarketPrice') or quote.get('close') or quote.get('price')
+        market_quote_available=raw_price is not None and float(raw_price)>0
+        imported_price = float(imported.get('preco_base') or 0) if imported else 0.0
+        has_imported_reference = imported_price > 0
+        price=float(raw_price) if market_quote_available else (imported_price if has_imported_reference else avg)
+        quote_available=market_quote_available or has_imported_reference
+        quote_source=(('Última cotação salva · ' + str(quote.get('quoteProvider') or 'fonte anterior')) if quote.get('quoteIsStale') else (quote.get('quoteProvider') or 'brapi')) if market_quote_available else ('Posição importada' if has_imported_reference else 'Sem cotação')
+        dividends = float(received_proventos_by_ticker().get(ticker, 0.0))
+        divs = (quote.get('dividendsData') or {}).get('cashDividends',[])[:12]
+        annual_div = sum(float(x.get('rate') or 0) for x in divs)
+        ceiling = annual_div / .06 if annual_div else None
+        cost, value = qty*avg, qty*price
+        fixed_calc_ok = False
+        fixed_calc_warning = None
+        if kind == 'renda_fixa':
+            cost, value, fixed_calc_ok, fixed_calc_warning = _fixed_income_position_value(ticker, cost, value)
+            price = value / qty if qty > 0 else value
+            quote_available = fixed_calc_ok
+            quote_source = 'Indexador' if fixed_calc_ok else 'Sem indexador'
+        pluggy_return = _pluggy_total_return(ticker, value, dividends) if pluggy_position else None
+        invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
+        default_name = imported.get('nome') if imported else ticker
+        daily_variation = quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')
+        # Variação mede somente ganho/perda de preço; rentabilidade soma os proventos.
+        # Pluggy é a fonte preferencial (fluxos reais desde a primeira compra). Sem
+        # histórico Pluggy, usa custo médio e cotação atual, nunca a variação diária.
+        variation_value = pluggy_return['variation_value'] if pluggy_return else (value-cost)
+        variation_pct = pluggy_return['variation_pct'] if pluggy_return else (round(variation_value/cost*100,2) if cost else 0)
+        total_return_value = pluggy_return['total_value'] if pluggy_return else (variation_value + (0.0 if kind=='renda_fixa' else dividends))
+        profitability_pct = pluggy_return['total_pct'] if pluggy_return else (round(total_return_value/cost*100,2) if cost else 0)
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_desatualizada':bool(quote.get('quoteIsStale')),'cotacao_ultima_atualizacao':quote.get('quoteLastUpdated'),'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
+    allocation={}
+    for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
+    return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)
+
+
+def position_quantity_on_date_details(ticker, reference_date):
+    """Retorna a quantidade estimada na data-com e informa a origem do cálculo.
+
+    O saldo-base de 31/10/2026 é a fotografia mais confiável da carteira. Como o
+    histórico importado pode não conter todas as operações anteriores, a quantidade
+    retroativa é reconstruída revertendo as operações conhecidas. Se a reversão
+    resultar em zero/negativo apesar de haver saldo-base, mantém-se uma estimativa
+    pelo saldo-base, com aviso explícito, em vez de descartar silenciosamente o evento.
+    """
+    symbol = str(ticker or '').strip().upper()
+    try:
+        ref = date.fromisoformat(str(reference_date)[:10])
+    except (TypeError, ValueError):
+        return 0.0, 'data inválida'
+
+    base_date = snapshot_date_for()
+    if base_date:
+        base_day = date.fromisoformat(base_date)
+        if ref < base_day:
+            base_row = db().execute(
+                'SELECT quantidade FROM saldos_importados WHERE ticker=? AND data_base=?',
+                (symbol, base_date)
+            ).fetchone()
+            if base_row:
+                base_quantity = max(0.0, float(base_row['quantidade'] or 0))
+                quantity = base_quantity
+                later_ops = db().execute(
+                    "SELECT lado,quantidade FROM operacoes WHERE ticker=? AND status='executada' AND data>? AND data<=? ORDER BY data DESC,id DESC",
+                    (symbol, ref.isoformat(), base_date)
+                ).fetchall()
+                for operation in later_ops:
+                    amount = float(operation['quantidade'] or 0)
+                    if operation['lado'] == 'compra':
+                        quantity -= amount
+                    else:
+                        quantity += amount
+                if quantity > 1e-8:
+                    return round(quantity, 8), f'estimada pela reversão do saldo-base de {base_date}; confirme o histórico de operações'
+                if base_quantity > 1e-8:
+                    return round(base_quantity, 8), f'estimada pelo saldo-base de {base_date}; histórico parcial não permite determinar a quantidade exata na data-com'
+                return 0.0, 'sem saldo-base; quantidade depende do histórico de operações'
+
+    quantity = posicao(symbol, as_of=ref.isoformat())[0]
+    return round(max(0.0, quantity), 8), 'histórico de operações'
+
+
+def position_quantity_on_date(ticker, reference_date):
+    """Quantidade detida na data, respeitando saldo-base e operações posteriores."""
+    return position_quantity_on_date_details(ticker, reference_date)[0]
+
+
+def previous_b3_session(day):
+    """Retorna o pregão anterior quando a fonte só informa a data ex."""
+    candidate = day - timedelta(days=1)
+    while candidate.weekday() >= 5 or candidate in b3_holidays(candidate.year):
+        candidate -= timedelta(days=1)
+    return candidate
+
+
+def _api_date(value):
+    """Normaliza datas ISO/date-time da brapi sem deslocar o dia por fuso horário."""
+    if value in (None, ''):
+        return ''
+    raw = str(value).strip()
+    if len(raw) >= 10 and raw[4:5] == '-' and raw[7:8] == '-':
+        candidate = raw[:10]
+        try:
+            return date.fromisoformat(candidate).isoformat()
+        except ValueError:
+            pass
+    try:
+        return datetime.fromisoformat(raw.replace('Z', '+00:00')).date().isoformat()
+    except ValueError:
+        for fmt in ('%d/%m/%Y', '%Y/%m/%d'):
+            try:
+                return datetime.strptime(raw[:10], fmt).date().isoformat()
+            except ValueError:
+                continue
+    return ''
+
+
+def _asset_type_map():
+    types = {}
+    for row in db().execute('SELECT ticker,tipo FROM operacoes ORDER BY id').fetchall():
+        types[str(row['ticker']).upper()] = str(row['tipo'] or 'outros').lower()
+    base_date = snapshot_date_for()
+    if base_date:
+        for row in db().execute('SELECT ticker,tipo FROM saldos_importados WHERE data_base=?', (base_date,)).fetchall():
+            types[str(row['ticker']).upper()] = str(row['tipo'] or 'outros').lower()
+    return types
+
+
+def _fetch_brapi_dividend_events(asset_type, symbols, start_date):
+    """Busca eventos em dinheiro usando os endpoints v2 dedicados de ações e FIIs."""
+    if not symbols:
+        return [], []
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
+    events, errors = [], []
+    if asset_type == 'fii':
+        url = 'https://brapi.dev/api/v2/fii/dividends'
+        response_key = 'dividends'
+    else:
+        url = 'https://brapi.dev/api/v2/stocks/dividends'
+        response_key = 'results'
+    for offset in range(0, len(symbols), 20):
+        batch = symbols[offset:offset + 20]
+        params = {'symbols': ','.join(batch), 'sortBy': 'paymentDate', 'sortOrder': 'asc'}
+        if start_date:
+            params['startDate'] = start_date
+        # Algumas respostas limitam a janela padrão ao passado. Abrir endDate
+        # permite receber pagamentos já anunciados para os próximos 12 meses.
+        params['endDate'] = (datetime.now(TZ).date() + timedelta(days=365)).isoformat()
+        if asset_type != 'fii' and _brapi_token():
+            params['includeRaw'] = 'true'
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=18)
+            if response.status_code in (400, 403) and params.get('includeRaw') == 'true':
+                params.pop('includeRaw', None)
+                response = requests.get(url, params=params, headers=headers, timeout=18)
+            response.raise_for_status()
+            payload = response.json()
+            if asset_type == 'fii':
+                events.extend(payload.get(response_key) or [])
+            else:
+                for result in payload.get(response_key) or []:
+                    symbol = str(result.get('requestedSymbol') or result.get('symbol') or '').upper()
+                    data = result.get('data') or {}
+                    for event in data.get('cashDividends') or []:
+                        events.append({**event, 'symbol': event.get('symbol') or symbol})
+        except requests.RequestException as exc:
+            code = getattr(getattr(exc, 'response', None), 'status_code', None)
+            errors.append(f'{asset_type}: HTTP {code or "falha de conexão"} ao consultar {", ".join(batch)}')
+        except (ValueError, TypeError):
+            errors.append(f'{asset_type}: resposta inválida para {", ".join(batch)}')
+    return events, errors
+
+
+def _fetch_alphavantage_dividend_events(symbols, start_date):
+    """Consulta o endpoint DIVIDENDS quando há chave Alpha Vantage.
+
+    O endpoint só é usado como fonte complementar. Eventos sem data de pagamento
+    ou valor válido são descartados pelo normalizador comum, e a chave canônica
+    do evento impede que o mesmo pagamento seja contado duas vezes entre fontes.
+    """
+    token = _get_api_token('alphavantage')
+    if not token or not symbols:
+        return [], []
+    events, errors = [], []
+    for ticker in symbols:
+        # Alpha Vantage identifica ativos da B3 com sufixo .SAO em endpoints
+        # que oferecem cobertura internacional; a cobertura varia por ticker/plano.
+        symbol = ticker if '.' in ticker else ticker + '.SAO'
+        try:
+            response = requests.get('https://www.alphavantage.co/query', params={
+                'function': 'DIVIDENDS', 'symbol': symbol, 'apikey': token
+            }, timeout=18)
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
+                errors.append(f'Alpha Vantage: {ticker} sem cobertura ou limite da API')
+                continue
+            rows = payload.get('data') or payload.get('dividends') or []
+            for row in rows:
+                payment = _api_date(row.get('payment_date') or row.get('paymentDate'))
+                ex_date = _api_date(row.get('ex_dividend_date') or row.get('exDate'))
+                record = _api_date(row.get('record_date') or row.get('recordDate'))
+                declared = _api_date(row.get('declaration_date') or row.get('declarationDate'))
+                try:
+                    amount = float(row.get('amount') or row.get('dividend') or 0)
+                except (TypeError, ValueError):
+                    amount = 0
+                if amount <= 0 or not payment or (start_date and payment < start_date):
+                    continue
+                events.append({
+                    'symbol': ticker, 'rawRate': amount, 'paymentDate': payment,
+                    'lastDatePrior': record, 'exDate': ex_date,
+                    'approvedOn': declared, 'label': str(row.get('type') or 'DIVIDENDO').upper(),
+                    'remarks': 'Fonte complementar: Alpha Vantage DIVIDENDS.'
+                })
+        except (requests.RequestException, ValueError, TypeError):
+            errors.append(f'Alpha Vantage: falha ao consultar {ticker}')
+    return events, errors
+
+
+def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
+    """Sincroniza proventos apenas para posições atualmente mantidas. Idempotente e limitada por cache."""
+    now_ts = time.time()
+    if active_items is None:
+        try:
+            active_items = (carteira().json or {}).get('itens', [])
+        except Exception:
+            active_items = []
+    types = {str(item.get('ticker') or '').strip().upper(): str(item.get('tipo') or 'outros').lower()
+             for item in (active_items or []) if str(item.get('ticker') or '').strip()}
+    signature = tuple(sorted(types.items()))
+    if (not force and PROVENTOS_SYNC_CACHE.get('result')
+            and PROVENTOS_SYNC_CACHE.get('signature') == signature
+            and now_ts - PROVENTOS_SYNC_CACHE['time'] < PROVENTOS_SYNC_TTL):
+        return PROVENTOS_SYNC_CACHE['result']
+
+    if not types:
+        result = {'ok': True, 'importados': 0, 'ignorados': 0, 'erros': [], 'mensagem': 'Carteira sem posições: consulta de proventos pausada; os registros históricos foram preservados.'}
+        PROVENTOS_SYNC_CACHE.update(time=now_ts, result=result, signature=signature)
+        return result
+
+    # O intervalo começa no primeiro registro conhecido. Quando só existe saldo-base,
+    # não presumimos que a posição já existia antes da fotografia.
+    first_dates = [str(row['data'])[:10] for row in db().execute("SELECT data FROM operacoes WHERE status='executada'").fetchall() if row['data']]
+    snapshot = snapshot_date_for()
+    history_floor = (datetime.now(TZ).date() - timedelta(days=365)).isoformat()
+    # Inclui pelo menos 12 meses de eventos, mesmo quando a primeira operação
+    # cadastrada é recente ou o histórico foi importado como saldo-base.
+    date_candidates = first_dates + ([snapshot] if snapshot else []) + [history_floor]
+    start_date = min(date_candidates) if date_candidates else history_floor
+    stock_types = {'acao', 'ações', 'bdr', 'etf', 'etfs', 'unit', 'indice', 'stocks', 'stock', 'internacional', 'etf_internacional'}
+    stock_symbols = sorted(symbol for symbol, kind in types.items() if kind in stock_types)
+    fii_symbols = sorted(symbol for symbol, kind in types.items() if kind in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'})
+
+    # Sem token, evita enviar lotes com tickers protegidos. O sandbox da brapi documenta
+    # apenas MXRF11/HGLG11 para FIIs; as ações são sincronizadas quando o endpoint autorizar.
+    if not _brapi_token():
+        fii_symbols = [symbol for symbol in fii_symbols if symbol in {'MXRF11', 'HGLG11'}]
+        stock_symbols = [symbol for symbol in stock_symbols if symbol in {'PETR4', 'MGLU3', 'VALE3', 'ITUB4'}]
+
+    fetched, errors = [], []
+    stock_events, stock_errors = _fetch_brapi_dividend_events('acao', stock_symbols, start_date)
+    fii_events, fii_errors = _fetch_brapi_dividend_events('fii', fii_symbols, start_date)
+    fetched.extend((event, 'fii') for event in fii_events)
+    fetched.extend((event, 'acao') for event in stock_events)
+    errors.extend(stock_errors + fii_errors)
+
+    # Alpha Vantage DIVIDENDS é consultada como fonte complementar quando há
+    # token configurado. A normalização e a chave canônica abaixo deduplicam
+    # pagamentos já retornados pela brapi ou pelo fallback de cotação.
+    alpha_symbols = sorted(symbol for symbol, kind in types.items() if kind in stock_types or kind in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'})
+    alpha_events, alpha_errors = _fetch_alphavantage_dividend_events(alpha_symbols, start_date)
+    fetched.extend((event, 'fii' if types.get(event.get('symbol')) in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'} else 'acao') for event in alpha_events)
+    errors.extend(alpha_errors)
+
+    # Fallback compatível com a cotação v1 usada pela versão estável: ela ainda
+    # pode trazer eventos em dividendsData.cashDividends quando o endpoint v2
+    # não está habilitado/coberto para determinado ticker. A data-com continua
+    # obrigatória; não se presume elegibilidade usando exDate ou data atual.
+    if quote_items is None:
+        try:
+            quote_items = carteira().json.get('itens', [])
+        except Exception:
+            quote_items = []
+    # O fallback também consulta tickers que já foram vendidos: eles continuam
+    # tendo histórico de proventos, mesmo sem posição atual na carteira.
+    quote_symbols = set(types)
+    quote_symbols.update(str(item.get('ticker') or '').upper() for item in (quote_items or []))
+    for ticker in sorted(symbol for symbol in quote_symbols if symbol):
+        kind = types.get(ticker, 'outros')
+        if kind not in stock_types and kind not in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'}:
+            continue
+        quote = cotacao(ticker)
+        for event in ((quote.get('dividendsData') or {}).get('cashDividends') or []):
+            fetched.append(({**event, 'symbol': ticker}, 'fii' if kind in {'fii','fiis','fundo_imobiliario','fundos_imobiliarios'} else 'acao'))
+
+    today = datetime.now(TZ).date()
+    imported = ignored = 0
+    conn = db()
+    for event, source_type in fetched:
+        ticker = str(event.get('symbol') or event.get('requestedSymbol') or '').strip().upper()
+        if not ticker or ticker not in types:
+            ignored += 1
+            continue
+        official_record_date = _api_date(event.get('lastDatePrior'))
+        payment_date = _api_date(event.get('paymentDate'))
+        ex_date = _api_date(event.get('exDate'))
+        approved_date = _api_date(event.get('approvedOn'))
+        # lastDatePrior é a data-com oficial. Se a fonte legada não a trouxer,
+        # a véspera do exDate é usada apenas como estimativa e fica sinalizada.
+        record_date = official_record_date
+        estimated_date = False
+        if not record_date and ex_date:
+            try:
+                record_date = previous_b3_session(date.fromisoformat(ex_date)).isoformat()
+                estimated_date = True
+            except ValueError:
+                record_date = ''
+        try:
+            rate = float(event.get('rawRate') or event.get('rate') or event.get('value') or 0)
+        except (TypeError, ValueError):
+            rate = 0
+        if rate <= 0:
+            ignored += 1
+            continue
+        try:
+            if record_date:
+                qty, quantity_method = position_quantity_on_date_details(ticker, record_date)
+            else:
+                current_row = next((item for item in (quote_items or []) if str(item.get('ticker') or '').upper() == ticker), None)
+                qty = float((current_row or {}).get('quantidade') or posicao(ticker)[0])
+                quantity_method = 'posição atual (data-com ausente na fonte)'
+        except Exception:
+            qty, quantity_method = 0.0, 'quantidade indisponível'
+        if qty <= 1e-8:
+            ignored += 1
+            continue
+        total = round(qty * rate, 2)
+        if total <= 0:
+            ignored += 1
+            continue
+        raw_label = str(event.get('label') or ('RENDIMENTO' if source_type == 'fii' else 'PROVENTO')).strip().upper()
+        label = 'JCP' if 'JCP' in raw_label or 'INTEREST' in raw_label else ('RENDIMENTO' if 'REND' in raw_label else 'DIVIDENDO')
+        status = 'Pago' if payment_date and date.fromisoformat(payment_date) < today else 'A receber'
+        # Data de pagamento pode ser corrigida pela fonte; não faz parte da chave.
+        event_anchor = record_date or payment_date or approved_date or 'sem-data'
+        event_key = '|'.join((ticker, label, event_anchor, f'{rate:.10f}'))
+        remarks_parts = [str(event.get('remarks') or '').strip()]
+        if estimated_date:
+            remarks_parts.append('Data-com estimada pela véspera do exDate; confira o informe oficial.')
+        if quantity_method.startswith('reconstruída'):
+            remarks_parts.append('Quantidade reconstruída a partir do saldo-base; depende da completude das operações cadastradas.')
+        elif quantity_method.startswith('posição atual'):
+            remarks_parts.append('Quantidade estimada pela posição atual, pois a fonte não informou data-com.')
+        remarks_text = ' '.join(part for part in remarks_parts if part)
+        conn.execute('''
+          INSERT INTO proventos_api (event_key,ticker,tipo_ativo,tipo_evento,data_aprovacao,data_com,data_ex,data_pagamento,valor_por_ativo,quantidade,valor_total,status,remarks,sincronizado_em)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(event_key) DO UPDATE SET
+            tipo_ativo=excluded.tipo_ativo,tipo_evento=excluded.tipo_evento,data_aprovacao=excluded.data_aprovacao,
+            data_ex=excluded.data_ex,data_pagamento=excluded.data_pagamento,valor_por_ativo=excluded.valor_por_ativo,quantidade=excluded.quantidade,
+            valor_total=excluded.valor_total,status=excluded.status,remarks=excluded.remarks,sincronizado_em=excluded.sincronizado_em
+        ''', (event_key,ticker,types[ticker],label,approved_date,record_date,ex_date,payment_date,rate,qty,total,status,remarks_text,datetime.now(TZ).isoformat(timespec='seconds')))
+        imported += 1
+
+    conn.execute('INSERT INTO integracao_estado(chave,valor) VALUES(?,?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor',
+                 ('brapi_proventos_ultima_sincronizacao', datetime.now(TZ).isoformat(timespec='seconds')))
+    conn.commit()
+    result = {
+        'ok': not errors, 'importados': imported, 'ignorados': ignored, 'erros': errors,
+        'mensagem': (f'{imported} evento(s) elegível(is) sincronizado(s).' if imported else 'Nenhum evento elegível retornado para os ativos cadastrados. Verifique token, plano e cobertura da brapi.'),
+        'ultima_sincronizacao': datetime.now(TZ).isoformat(timespec='minutes')
+    }
+    PROVENTOS_SYNC_CACHE.update(time=now_ts, result=result, signature=signature)
+    return result
+
+
+def _is_income_event(event_type):
+    return 'AMORTIZA' not in str(event_type or '').upper()
+
+
+def _received_proventos_records(active_tickers=None):
+    """Retorna proventos da tabela comum com data não futura, deduplicando origens importadas.
+
+    Registros vinculados à Pluggy ou B3 mantêm a origem de importação. Registros
+    sem vínculo são lançamentos manuais e também entram na apuração de recebidos.
+    """
+    active_set = None if active_tickers is None else {str(t).upper() for t in active_tickers}
+    if active_set is not None and not active_set:
+        return []
+
+    today = datetime.now(TZ).date()
+    pluggy_ids = {int(r['target_id']) for r in db().execute(
+        "SELECT target_id FROM pluggy_imported_events WHERE event_type='provento' AND target_id IS NOT NULL"
+    ).fetchall()}
+    b3_ids = {int(r['registro_id']) for r in db().execute(
+        "SELECT registro_id FROM b3_importados WHERE lower(categoria)='provento' AND registro_id IS NOT NULL"
+    ).fetchall()}
+
+    # Todos os lançamentos da tabela comum são considerados: os importados recebem
+    # sua origem; os demais são lançamentos manuais. Eventos futuros não entram.
+    origin_by_id = {ident: 'Pluggy' for ident in pluggy_ids}
+    for ident in b3_ids:
+        origin_by_id.setdefault(ident, 'B3')
+    rows = db().execute('SELECT id,ticker,valor_total,data FROM proventos ORDER BY data,id').fetchall()
+    records = []
+    seen = set()
+    for raw in rows:
+        row = dict(raw)
+        payment_date = _api_date(row.get('data'))
+        if not payment_date:
+            continue
+        try:
+            if date.fromisoformat(payment_date) > today:
+                continue
+        except ValueError:
+            continue
+        ticker = str(row.get('ticker') or '').upper()
+        if active_set is not None and ticker not in active_set:
+            continue
+        amount = round(float(row.get('valor_total') or 0), 2)
+        if not math.isfinite(amount) or amount <= 0:
+            continue
+        key = (ticker, payment_date[:10], amount)
+        origin = origin_by_id.get(int(row['id']), 'Manual')
+        if origin != 'Manual' and key in seen:
+            continue
+        if origin != 'Manual':
+            seen.add(key)
+        records.append({
+            'ticker': ticker, 'tipo': 'Provento',
+            'tipo_ativo': typesafe_asset_type(ticker),
+            'status': 'Pago', 'data_com': None,
+            'data_pagamento': payment_date, 'quantidade': None,
+            'valor_por_ativo': None, 'valor_total': amount,
+            'origem': origin, 'tipo_evento': 'PROVENTO'
+        })
+    return records
+
+
+def typesafe_asset_type(ticker):
+    return _asset_type_map().get(str(ticker or '').upper(), 'outros')
+
+
+def received_proventos_by_ticker():
+    # O resumo considera somente ativos com posição atual; o histórico bruto permanece no banco.
+    active = []
+    for row in db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall():
+        ticker = str(row['ticker']).upper()
+        if posicao(ticker)[0] > 1e-8:
+            active.append(ticker)
+    base_date = snapshot_date_for()
+    if base_date:
+        for row in db().execute('SELECT ticker FROM saldos_importados WHERE data_base=?', (base_date,)).fetchall():
+            ticker = str(row['ticker']).upper()
+            if ticker not in active and posicao(ticker)[0] > 1e-8:
+                active.append(ticker)
+    totals = {}
+    for row in _received_proventos_records(active):
+        if not _is_income_event(row.get('tipo_evento')):
+            continue
+        ticker = row['ticker']
+        totals[ticker] = totals.get(ticker, 0.0) + float(row.get('valor_total') or 0)
+    return totals
+
+
+def _historical_points(raw_points):
+    """Normaliza fechamentos de mercado sem adjustedClose, que pode incorporar proventos."""
+    parsed = []
+    for point in raw_points or []:
+        try:
+            raw_date = point.get('date')
+            if isinstance(raw_date, (int, float)):
+                price_date = datetime.fromtimestamp(raw_date, TZ).date()
+            else:
+                price_date = date.fromisoformat(str(raw_date)[:10])
+            close = float(point.get('close') or 0)
+            # adjustedClose pode descontar/reinvestir dividendos e JCP.
+            # A evolução patrimonial solicitada mede somente variação de preço.
+            if close > 0:
+                parsed.append({'data': price_date, 'close': close})
+        except (TypeError, ValueError, OSError):
+            continue
+    parsed.sort(key=lambda item: item['data'])
+    if not parsed:
+        return []
+
+    output = []
+    for point in parsed:
+        if point['close'] > 0:
+            output.append({'data': point['data'], 'preco': point['close'], 'fechamento': point['close'], 'ajustado': False})
+    return output
+
+
+def _parse_historical_payload(payload, response_key='results'):
+    """Aceita o envelope v2 de ações, o envelope de FIIs e o endpoint legado v1."""
+    output = {}
+    rows = payload.get(response_key) or []
+    for result in rows:
+        symbol = str(result.get('requestedSymbol') or result.get('symbol') or '').strip().upper()
+        if not symbol:
+            continue
+        data = result.get('data') or {}
+        raw_points = (result.get('historicalDataPrice') or data.get('historicalDataPrice') or [])
+        points = _historical_points(raw_points)
+        if points:
+            output[symbol] = points
+            # Em caso de ticker renomeado, preserva a chave que foi pedida pelo usuário.
+            returned = str(result.get('symbol') or '').strip().upper()
+            if returned and returned not in output:
+                output[returned] = points
+    return output
+
+
+def _request_historical_batch(url, symbols, params, response_key='results', headers=None, timeout=15):
+    """Consulta vários símbolos e retorna somente as séries válidas."""
+    if not symbols:
+        return {}
+    try:
+        response = requests.get(
+            url, params={**params, 'symbols': ','.join(symbols)},
+            headers=headers or {}, timeout=timeout
+        )
+        response.raise_for_status()
+        return _parse_historical_payload(response.json(), response_key=response_key)
+    except (requests.RequestException, ValueError, TypeError):
+        return {}
+
+
+def _request_legacy_history(symbol, headers):
+    """Fallback compatível com o endpoint v1, consultado por ticker para isolar erros."""
+    for history_range in ('max', '1y'):
+        try:
+            response = requests.get(
+                f'https://brapi.dev/api/quote/{symbol}',
+                params={'range': history_range, 'interval': '1d'},
+                headers=headers, timeout=12
+            )
+            response.raise_for_status()
+            payload = response.json()
+            result = next(iter(payload.get('results') or []), None)
+            if not result:
+                continue
+            raw_points = result.get('historicalDataPrice') or (result.get('data') or {}).get('historicalDataPrice') or []
+            points = _historical_points(raw_points)
+            if points:
+                return points
+        except (requests.RequestException, ValueError, TypeError):
+            continue
+    return []
+
+
+def fetch_portfolio_price_history(operations, extra_positions=None):
+    """Busca preços históricos por classe e mantém séries parciais quando algum ativo não tem cobertura."""
+    asset_types = {}
+    first_dates = []
+    for operation in operations:
+        symbol = str(operation.get('ticker') or '').strip().upper()
+        if not symbol:
+            continue
+        asset_types[symbol] = str(operation.get('tipo') or '').strip().lower()
+        try:
+            first_dates.append(date.fromisoformat(str(operation.get('data') or '')[:10]))
+        except (TypeError, ValueError):
+            pass
+    for position in extra_positions or []:
+        symbol = str(position.get('ticker') or '').strip().upper()
+        if symbol:
+            asset_types.setdefault(symbol, str(position.get('tipo') or '').strip().lower())
+            try:
+                first_dates.append(date.fromisoformat(str(position.get('data_base') or '')[:10]))
+            except (TypeError, ValueError):
+                pass
+
+    symbols = sorted(asset_types)
+    if not symbols:
+        return {}
+    cache_key = ('price-only-v2',) + tuple(sorted((symbol, asset_types[symbol]) for symbol in symbols))
+    now = time.time()
+    cached = PORTFOLIO_HISTORY_CACHE.get(cache_key)
+    if cached:
+        ttl = PORTFOLIO_HISTORY_TTL if cached.get('data') else PORTFOLIO_HISTORY_EMPTY_TTL
+        if now - cached['time'] < ttl:
+            return cached['data']
+
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
+    response_data = {}
+
+    # Ações, BDRs e ETFs negociados em bolsa usam o histórico de ações da API v2.
+    stock_types = {'acao', 'ações', 'stock', 'stocks', 'bdr', 'etf', 'etfs', 'etf_internacional', 'internacional', 'unit', 'indice'}
+    stock_symbols = [symbol for symbol in symbols if asset_types[symbol] in stock_types]
+    if stock_symbols:
+        stock_url = 'https://brapi.dev/api/v2/stocks/historical'
+        for range_value in ('max', '1y'):
+            missing_stock_symbols = [symbol for symbol in stock_symbols if symbol not in response_data]
+            for offset in range(0, len(missing_stock_symbols), 20):
+                batch = missing_stock_symbols[offset:offset + 20]
+                found = _request_historical_batch(
+                    stock_url, batch,
+                    {'range': range_value, 'interval': '1d', 'sortOrder': 'asc'},
+                    headers=headers
+                )
+                response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de ações'} for point in points] for symbol, points in found.items()})
+            # A resposta pode ser parcial mesmo com HTTP 200. Consulte individualmente
+            # cada símbolo ausente; não deixe um ticker sem cobertura esconder os demais.
+            missing_after_batch = [symbol for symbol in stock_symbols if symbol not in response_data]
+            for symbol in missing_after_batch:
+                found = _request_historical_batch(
+                    stock_url, [symbol],
+                    {'range': range_value, 'interval': '1d', 'sortOrder': 'asc'},
+                    headers=headers
+                )
+                response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de ações'} for point in points] for symbol, points in found.items()})
+            if all(symbol in response_data for symbol in stock_symbols):
+                break
+
+    # FIIs têm endpoint dedicado. A janela é explícita para cobrir desde a primeira compra.
+    fii_types = {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'}
+    fii_symbols = [symbol for symbol in symbols if asset_types[symbol] in fii_types]
+    if fii_symbols:
+        start_date = min(first_dates).isoformat() if first_dates else (datetime.now(TZ).date() - timedelta(days=365)).isoformat()
+        fii_url = 'https://brapi.dev/api/v2/fii/historical'
+        fii_params = {'startDate': start_date, 'endDate': datetime.now(TZ).date().isoformat(), 'sortOrder': 'asc'}
+        for offset in range(0, len(fii_symbols), 20):
+            batch = fii_symbols[offset:offset + 20]
+            fii_found = _request_historical_batch(
+                fii_url, batch, fii_params, response_key='fiis', headers=headers
+            )
+            response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de FIIs'} for point in points] for symbol, points in fii_found.items()})
+        # Uma resposta parcial não deve encerrar a busca dos demais FIIs.
+        for symbol in [item for item in fii_symbols if item not in response_data]:
+            fii_found = _request_historical_batch(
+                fii_url, [symbol], fii_params, response_key='fiis', headers=headers
+            )
+            response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de FIIs'} for point in points] for symbol, points in fii_found.items()})
+
+    # Provedores alternativos autenticados: usados apenas para tickers sem série
+    # válida na brapi. Mantemos uma fonte por ativo e não concatenamos preços distintos.
+    twelve_token = _get_api_token('twelvedata')
+    alpha_token = _get_api_token('alphavantage')
+    for symbol in [item for item in symbols if item not in response_data]:
+        if twelve_token:
+            try:
+                response = requests.get('https://api.twelvedata.com/time_series',
+                    params={'symbol':symbol,'exchange':'BVMF','interval':'1day','outputsize':5000,'apikey':twelve_token},
+                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
+                response.raise_for_status()
+                payload = response.json()
+                if payload.get('status') != 'error' and isinstance(payload.get('values'),list):
+                    points=[]
+                    for row in payload.get('values') or []:
+                        try:
+                            day=date.fromisoformat(str(row.get('datetime') or '')[:10])
+                            close=float(row.get('adjusted_close') or row.get('close') or 0)
+                            if close>0: points.append({'data':day,'preco':close,'fechamento':close,'ajustado':bool(row.get('adjusted_close'))})
+                        except (TypeError,ValueError,AttributeError): continue
+                    if points: response_data[symbol]=[{**point, 'fonte':'Twelve Data · histórico diário'} for point in sorted(points,key=lambda x:x['data'])]
+            except (requests.RequestException,ValueError,TypeError,AttributeError):
+                pass
+        if symbol not in response_data and alpha_token:
+            try:
+                response = requests.get('https://www.alphavantage.co/query',
+                    params={'function':'TIME_SERIES_DAILY_ADJUSTED','symbol':symbol,'outputsize':'full','apikey':alpha_token},
+                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
+                response.raise_for_status()
+                payload=response.json()
+                rows=payload.get('Time Series (Daily)') or {}
+                points=[]
+                for day_text,row in rows.items():
+                    try:
+                        day=date.fromisoformat(day_text)
+                        close=float(row.get('5. adjusted close') or row.get('4. close') or 0)
+                        raw_close=float(row.get('4. close') or close)
+                        if close>0: points.append({'data':day,'preco':close,'fechamento':raw_close,'ajustado':bool(row.get('5. adjusted close'))})
+                    except (TypeError,ValueError,AttributeError): continue
+                if points: response_data[symbol]=[{**point, 'fonte':'Alpha Vantage · histórico diário ajustado'} for point in sorted(points,key=lambda x:x['data'])]
+            except (requests.RequestException,ValueError,TypeError,AttributeError):
+                pass
+
+    # Classes sem endpoint histórico específico (ex.: renda fixa cadastrada manualmente)
+    # não podem bloquear as séries de ativos negociados em bolsa. Para classes não reconhecidas,
+    # tenta-se o endpoint legado individualmente.
+    fallback_symbols = [
+        symbol for symbol in symbols
+        if symbol not in response_data and asset_types[symbol] not in {'renda_fixa', 'tesouro', 'tesouro_direto', 'fundos', 'fundos_de_investimento'}
+    ]
+    for symbol in fallback_symbols:
+        points = _request_legacy_history(symbol, headers)
+        if points:
+            response_data[symbol] = [{**point, 'fonte':'brapi · histórico legado'} for point in points]
+
+    # Respostas vazias ficam em cache por apenas 2 minutos; séries válidas, por 30 minutos.
+    PORTFOLIO_HISTORY_CACHE[cache_key] = {'time': now, 'data': response_data}
+    return response_data
+
+def build_portfolio_performance(operations, dividends, history=None, imported_positions=None, snapshot_date=None, current_positions=None):
+    """Reconstrói patrimônio e ganho/perda de capital por mês usando fechamentos não ajustados.
+
+    Compras e vendas são fluxos externos (Modified Dietz). Dividendos, JCP e demais
+    proventos não entram na rentabilidade nem no ganho de capital desta série.
+    Ativos sem histórico são sinalizados e não devem receber retorno inventado.
+    """
+    imported_positions = [dict(row) for row in (imported_positions or [])]
+    snapshot_date = _api_date(snapshot_date) if snapshot_date else ''
+    all_types = {
+        str(op.get('ticker') or '').upper(): str(op.get('tipo') or '').strip().lower()
+        for op in operations if op.get('ticker')
+    }
+    all_types.update({
+        str(row.get('ticker') or '').upper(): str(row.get('tipo') or '').strip().lower()
+        for row in imported_positions if row.get('ticker')
+    })
+    non_market_types = set()
+    fixed_income_symbols = {symbol for symbol, kind in all_types.items() if kind in {'renda_fixa', 'tesouro', 'tesouro_direto'}}
+    all_tickers = sorted(symbol for symbol, kind in all_types.items() if kind not in non_market_types)
+    history = history if history is not None else fetch_portfolio_price_history(operations, imported_positions)
+    normalized = {}
+    history_sources = {}
+    for ticker, points in (history or {}).items():
+        if str(ticker).upper() not in all_types:
+            continue
+        valid = [
+            point for point in points
+            if isinstance(point.get('data'), date) and float(point.get('preco') or 0) > 0
+        ]
+        if valid:
+            normalized[str(ticker).upper()] = sorted(valid, key=lambda item: item['data'])
+            source_counts = Counter(str(point.get('fonte') or 'Fonte não identificada') for point in valid)
+            history_sources[str(ticker).upper()] = {
+                'fonte': source_counts.most_common(1)[0][0],
+                'pontos': len(valid),
+                'inicio': min(point['data'] for point in valid).isoformat(),
+                'fim': max(point['data'] for point in valid).isoformat(),
+                'ajustado': all(bool(point.get('ajustado')) for point in valid)
+            }
+
+    # Ativos sem série histórica também entram na composição patrimonial.
+    # Para eles, usamos custo médio como referência nos meses passados e a
+    # cotação/valor atual do próprio portfólio no mês corrente.
+    historical_tickers = set(normalized) | fixed_income_symbols
+    available_tickers = set(all_tickers) | fixed_income_symbols
+    # Sinaliza também séries parciais: ter alguma cotação não significa cobrir
+    # todo o período desde a primeira compra/saldo-base até a data atual.
+    first_date_by_ticker = {}
+    for operation in operations:
+        ticker = str(operation.get('ticker') or '').strip().upper()
+        try:
+            operation_date = date.fromisoformat(str(operation.get('data') or '')[:10])
+            if ticker:
+                first_date_by_ticker[ticker] = min(first_date_by_ticker.get(ticker, operation_date), operation_date)
+        except (TypeError, ValueError):
+            pass
+    for position in imported_positions:
+        ticker = str(position.get('ticker') or '').strip().upper()
+        try:
+            position_date = date.fromisoformat(str(position.get('data_base') or snapshot_date or '')[:10])
+            if ticker:
+                first_date_by_ticker[ticker] = min(first_date_by_ticker.get(ticker, position_date), position_date)
+        except (TypeError, ValueError):
+            pass
+    today_for_coverage = datetime.now(TZ).date()
+    missing_set = set(all_tickers) - historical_tickers
+    for ticker in set(all_tickers) & set(normalized):
+        points = normalized[ticker]
+        first_required = first_date_by_ticker.get(ticker)
+        last_point = points[-1]['data'] if points else None
+        if (first_required and points[0]['data'] > first_required) or (last_point and (today_for_coverage - last_point).days > 45):
+            missing_set.add(ticker)
+    missing_symbols = sorted(missing_set)
+    empty = {
+        'series_12m': [], 'series_total': [], 'rentabilidade_12m': None,
+        'rentabilidade_total': None, 'meses_disponiveis': 0,
+        'primeiro_mes': None, 'historico_completo': False,
+        'ativos_sem_historico': missing_symbols,
+        'ativos_com_historico': len(historical_tickers), 'total_ativos': len(all_tickers),
+        'fontes_historico': history_sources,
+        'historico_parcial': bool(missing_symbols) or bool(snapshot_date)
+    }
+    snapshot_map = {str(row.get('ticker') or '').upper(): row for row in imported_positions if row.get('ticker')}
+    current_map = {str(row.get('ticker') or '').upper(): row for row in (current_positions or []) if row.get('ticker')}
+
+    def snapshot_only_result():
+        snapshot_cost = sum(float(row.get('quantidade') or 0) * float(row.get('preco_medio') or 0) for row in imported_positions)
+        snapshot_value = sum(float(row.get('quantidade') or 0) * float(row.get('preco_base') or 0) for row in imported_positions)
+        snapshot_return = (snapshot_value / snapshot_cost - 1) * 100 if snapshot_cost > 0 else None
+        if snapshot_return is None or not snapshot_date:
+            return empty
+        return {
+            **empty, 'series_total': [{'mes': snapshot_date[:7], 'valor': round(snapshot_return, 4)}],
+            'rentabilidade_total': round(snapshot_return, 2), 'meses_disponiveis': 0,
+            'primeiro_mes': snapshot_date[:7], 'resultado_por_saldo_base': True,
+            'historico_parcial': True, 'ativos_com_historico': 0, 'total_ativos': len(all_tickers)
+        }
+
+    if not normalized and not fixed_income_symbols and not all_tickers:
+        return snapshot_only_result()
+    if not operations and not snapshot_map:
+        return empty
+
+    def adjusted_operation_values(ticker, trade_date, quantity, price, costs):
+        # Compras/vendas permanecem nos preços efetivamente registrados.
+        return quantity * price, costs
+
+    executed = []
+    for op in operations:
+        try:
+            op_date = date.fromisoformat(str(op.get('data') or '')[:10])
+            ticker = str(op.get('ticker') or '').upper()
+            if ticker not in available_tickers:
+                continue
+            executed.append({
+                **op, '_date': op_date, '_ticker': ticker,
+                '_quantity': max(0.0, float(op.get('quantidade') or 0)),
+                '_price': max(0.0, float(op.get('preco') or 0)),
+                '_costs': max(0.0, float(op.get('custos') or 0))
+            })
+        except (TypeError, ValueError):
+            continue
+    executed.sort(key=lambda item: (item['_date'], int(item.get('id') or 0)))
+    if not executed and not snapshot_map:
+        return snapshot_only_result()
+    base_day = date.fromisoformat(snapshot_date) if snapshot_date else None
+    if not executed and not base_day:
+        return snapshot_only_result()
+    first_operation = min((item['_date'] for item in executed), default=base_day)
+    today = datetime.now(TZ).date()
+    history_start = min(first_operation, base_day) if base_day else first_operation
+    month_cursor = date(history_start.year, history_start.month, 1)
+    month_end = date(today.year, today.month, 1)
+    month_keys = []
+    while month_cursor <= month_end:
+        month_keys.append(month_cursor.strftime('%Y-%m'))
+        month_cursor = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    def held_quantities(cutoff):
+        """Reconstrói posições em torno da fotografia, sem somar o histórico duas vezes."""
+        holdings = {}
+        if base_day and snapshot_map:
+            holdings = {
+                ticker: max(0.0, float(row.get('quantidade') or 0))
+                for ticker, row in snapshot_map.items()
+            }
+            if cutoff < base_day:
+                # Volta da fotografia para a data consultada, revertendo operações conhecidas.
+                for op in executed:
+                    if cutoff < op['_date'] <= base_day:
+                        current = holdings.get(op['_ticker'], 0.0)
+                        if op.get('lado') == 'compra':
+                            current -= op['_quantity']
+                        else:
+                            current += op['_quantity']
+                        holdings[op['_ticker']] = current
+            else:
+                # Avança a partir da fotografia, aplicando somente operações posteriores.
+                for op in executed:
+                    if base_day < op['_date'] <= cutoff:
+                        current = holdings.get(op['_ticker'], 0.0)
+                        if op.get('lado') == 'compra':
+                            current += op['_quantity']
+                        else:
+                            current -= op['_quantity']
+                        holdings[op['_ticker']] = current
+        else:
+            for op in executed:
+                if op['_date'] > cutoff:
+                    break
+                current = holdings.get(op['_ticker'], 0.0)
+                current += op['_quantity'] if op.get('lado') == 'compra' else -op['_quantity']
+                holdings[op['_ticker']] = current
+        return {ticker: max(0.0, qty) for ticker, qty in holdings.items() if qty > 1e-8}
+
+    def fixed_income_value(ticker, cutoff):
+        """Reconstrói os lotes de renda fixa e aplica o indexador até o fechamento mensal."""
+        lots = []
+        if base_day and snapshot_map and cutoff >= base_day:
+            base = snapshot_map.get(ticker)
+            if base:
+                principal = float(base.get('quantidade') or 0) * float(base.get('preco_medio') or 0)
+                if principal > 0:
+                    lots.append({'principal': principal, 'date': base_day.isoformat(), 'details': {}, 'legacy_value': float(base.get('quantidade') or 0) * float(base.get('preco_base') or 0)})
+            relevant = [op for op in executed if base_day < op['_date'] <= cutoff and op['_ticker'] == ticker]
+        else:
+            relevant = [op for op in executed if op['_date'] <= cutoff and op['_ticker'] == ticker]
+        for op in relevant:
+            amount = op['_quantity'] * op['_price']
+            if op.get('lado') == 'compra':
+                try:
+                    details = json.loads(op.get('detalhes') or '{}') if isinstance(op.get('detalhes'), str) else (op.get('detalhes') or {})
+                except (TypeError, ValueError):
+                    details = {}
+                lots.append({'principal': amount + op['_costs'], 'date': op['_date'].isoformat(), 'details': details})
+            else:
+                remaining = amount
+                for lot in lots:
+                    if remaining <= 0:
+                        break
+                    reduction = min(lot['principal'], remaining)
+                    lot['principal'] -= reduction
+                    remaining -= reduction
+        total = 0.0
+        for lot in lots:
+            principal = max(0.0, float(lot['principal']))
+            if principal <= 0:
+                continue
+            factor, _warning = _fixed_income_factor(lot['details'], lot['date'], cutoff.isoformat())
+            total += principal * factor if factor is not None else float(lot.get('legacy_value') or principal)
+        return total if lots else 0.0
+
+    portfolio_value_cache = {}
+
+    def fallback_cost_value(ticker, cutoff, quantity):
+        """Estima apenas o valor patrimonial de ativos sem cotação histórica pelo custo médio.
+
+        Não cria ganho fictício: o resultado desses ativos fica zerado até existir
+        uma cotação histórica confiável. O mês corrente usa o valor atual do portfólio.
+        """
+        if cutoff >= today:
+            current = current_map.get(ticker) or {}
+            try:
+                current_value = float(current.get('valor_atual') or 0)
+                if current_value > 0:
+                    return current_value
+            except (TypeError, ValueError):
+                pass
+
+        qty = 0.0
+        cost = 0.0
+        base = snapshot_map.get(ticker)
+        if base and base_day and cutoff >= base_day:
+            qty = max(0.0, float(base.get('quantidade') or 0))
+            cost = qty * max(0.0, float(base.get('preco_medio') or 0))
+            relevant_ops = [op for op in executed if op['_ticker'] == ticker and base_day < op['_date'] <= cutoff]
+        else:
+            relevant_ops = [op for op in executed if op['_ticker'] == ticker and op['_date'] <= cutoff]
+
+        for op in relevant_ops:
+            amount = op['_quantity'] * op['_price']
+            if op.get('lado') == 'compra':
+                qty += op['_quantity']
+                cost += amount + op['_costs']
+            elif qty > 1e-8:
+                sold = min(qty, op['_quantity'])
+                average = cost / qty
+                qty -= sold
+                cost -= average * sold
+        if qty <= 1e-8:
+            # Para saldos-base anteriores à primeira operação conhecida, conserva
+            # o custo médio do saldo-base em vez de apagar a posição do gráfico.
+            if base and quantity > 0:
+                return quantity * max(0.0, float(base.get('preco_medio') or 0))
+            return 0.0
+        return max(0.0, cost)
+
+    def portfolio_value(cutoff):
+        cache_key = cutoff.isoformat()
+        if cache_key in portfolio_value_cache:
+            return portfolio_value_cache[cache_key]
+        holdings = held_quantities(cutoff)
+        total = 0.0
+        priced_positions = 0
+        for ticker, qty in holdings.items():
+            if ticker in fixed_income_symbols:
+                fixed_value = fixed_income_value(ticker, cutoff)
+                if fixed_value > 0:
+                    total += fixed_value
+                    priced_positions += 1
+                continue
+            points = normalized.get(ticker) or []
+            previous = next((point for point in reversed(points) if point['data'] <= cutoff), None)
+            price = float(previous['preco']) if previous and (cutoff - previous['data']).days <= 45 else 0.0
+            if price > 0:
+                total += qty * price
+            else:
+                # Não excluir a posição inteira por falta de histórico. O custo
+                # médio mantém o patrimônio aplicado visível sem inventar retorno.
+                total += fallback_cost_value(ticker, cutoff, qty)
+            priced_positions += 1
+        if holdings and not priced_positions:
+            portfolio_value_cache[cache_key] = None
+            return None
+        portfolio_value_cache[cache_key] = total
+        return total
+
+    # O argumento dividends é mantido por compatibilidade da chamada, mas
+    # proventos são deliberadamente excluídos da evolução e da rentabilidade.
+
+    monthly_returns = []
+    portfolio_series = []
+    snapshot_invested = sum(
+        float(row.get('quantidade') or 0) * float(row.get('preco_medio') or 0)
+        for row in imported_positions
+        if str(row.get('ticker') or '').upper() in available_tickers
+    )
+
+    def net_applied_through(cutoff, after=None):
+        """Capital líquido aplicado até a data, considerando compras e retiradas por venda."""
+        total = snapshot_invested if base_day and after is not None and cutoff >= base_day else 0.0
+        for op in executed:
+            if op['_date'] > cutoff:
+                break
+            if after is not None and op['_date'] <= after:
+                continue
+            trade_notional, adjusted_costs = adjusted_operation_values(
+                op['_ticker'], op['_date'], op['_quantity'], op['_price'], op['_costs']
+            )
+            total += (trade_notional + adjusted_costs) if op.get('lado') == 'compra' else -(trade_notional - adjusted_costs)
+        return total
+
+    first_year, first_month = int(month_keys[0][:4]), int(month_keys[0][5:7])
+    previous_end = date(first_year, first_month, 1) - timedelta(days=1)
+    for key in month_keys:
+        year, month = int(key[:4]), int(key[5:7])
+        next_month = (date(year, month, 28) + timedelta(days=4)).replace(day=1)
+        last_day = next_month - timedelta(days=1)
+        end_date = min(last_day, today)
+        start_date = previous_end
+        start_value = portfolio_value(start_date)
+        end_value = portfolio_value(end_date)
+        if end_value is not None:
+            applied_value = net_applied_through(
+                end_date,
+                after=base_day if base_day and end_date >= base_day else None
+            )
+            portfolio_series.append({
+                'mes': key,
+                'aplicado': round(applied_value, 2),
+                'patrimonio': round(end_value, 2),
+                'ganho': round(end_value - applied_value, 2)
+            })
+        if end_value is None:
+            previous_end = end_date
+            continue
+        if start_value is None:
+            if not held_quantities(start_date):
+                start_value = 0.0
+            else:
+                previous_end = end_date
+                continue
+
+        period_days = max(1, (end_date - start_date).days)
+        signed_flows = 0.0
+        weighted_flows = 0.0
+        for op in executed:
+            if not (start_date < op['_date'] <= end_date):
+                continue
+            trade_notional, adjusted_costs = adjusted_operation_values(
+                op['_ticker'], op['_date'], op['_quantity'], op['_price'], op['_costs']
+            )
+            flow = (trade_notional + adjusted_costs) if op.get('lado') == 'compra' else -(trade_notional - adjusted_costs)
+            weight = max(0.0, min(1.0, (end_date - op['_date']).days / period_days))
+            signed_flows += flow
+            weighted_flows += flow * weight
+
+        denominator = start_value + weighted_flows
+        if denominator > 1e-8:
+            # Retorno exclusivamente de preço: proventos ficam fora deste cálculo.
+            month_result = end_value - start_value - signed_flows
+            month_return = month_result / denominator
+            if -0.95 < month_return < 5:
+                monthly_returns.append({'mes': key, 'retorno': month_return,
+                                'resultado': month_result})
+        previous_end = end_date
+
+    roi_total_series = []
+    for point in portfolio_series:
+        invested = float(point.get('aplicado') or 0)
+        gain = float(point.get('ganho') or 0)
+        if invested > 1e-8:
+            roi_total_series.append({
+                'mes': point['mes'],
+                'valor': round(gain / invested * 100, 4),
+                'ganho_prejuizo_mes': round(gain, 2)
+            })
+    roi_total = roi_total_series[-1]['valor'] if roi_total_series else None
+
+    if not monthly_returns:
+        # Mesmo sem retorno mensal calculável, a série total usa exatamente
+        # patrimônio menos capital líquido aplicado em cada fechamento.
+        return {
+            **snapshot_only_result(),
+            'series_patrimonio': portfolio_series,
+            'series_roi_total': roi_total_series,
+            'rentabilidade_total': round(roi_total, 2) if roi_total is not None else None,
+            'series_12m': [], 'rentabilidade_12m': None,
+            'historico_parcial': True
+        }
+
+    total_factor = 1.0
+    series_total = []
+    rolling_returns = []
+    series_12m = []
+    for row in monthly_returns:
+        factor = 1.0 + row['retorno']
+        total_factor *= factor
+        rolling_returns.append(factor)
+        if len(rolling_returns) > 12:
+            rolling_returns.pop(0)
+        rolling_factor = 1.0
+        for value in rolling_returns:
+            rolling_factor *= value
+        point = {'mes': row['mes'], 'valor': round((total_factor - 1.0) * 100, 4),
+                 'ganho_prejuizo_mes': round(float(row.get('resultado') or 0), 2)}
+        series_total.append(point)
+        series_12m.append({'mes': row['mes'], 'valor': round((rolling_factor - 1.0) * 100, 4),
+                           'ganho_prejuizo_mes': round(float(row.get('resultado') or 0), 2)})
+
+    # Retorno de 12 meses só é publicado com 12 fechamentos mensais consecutivos.
+    last_twelve = monthly_returns[-12:]
+    twelve_complete = len(last_twelve) == 12 and all(
+        (int(last_twelve[i]['mes'][:4]) * 12 + int(last_twelve[i]['mes'][5:7])) ==
+        (int(last_twelve[i-1]['mes'][:4]) * 12 + int(last_twelve[i-1]['mes'][5:7]) + 1)
+        for i in range(1, len(last_twelve))
+    )
+    return {
+        **empty,
+        'series_12m': series_12m,
+        'series_total': series_total,
+        'series_roi_total': roi_total_series,
+        'series_patrimonio': portfolio_series,
+        'rentabilidade_12m': round((rolling_factor - 1.0) * 100, 2) if twelve_complete else None,
+        'rentabilidade_total': round(roi_total, 2) if roi_total is not None else None,
+        'meses_disponiveis': len(monthly_returns),
+        'primeiro_mes': monthly_returns[0]['mes'],
+        'historico_completo': len(monthly_returns) >= 12 and not missing_symbols and not snapshot_date,
+        'resultado_por_saldo_base': False,
+        'historico_parcial': bool(missing_symbols) or bool(snapshot_date)
+    }
+
+
+
+def _benchmark_monthly_from_yahoo(symbol, start_date, end_date):
+    """Obtém fechamentos mensais do Yahoo Finance; retorna None quando o símbolo não tem cobertura."""
+    start = date.fromisoformat(str(start_date)[:10]) - timedelta(days=45)
+    end = date.fromisoformat(str(end_date)[:10]) + timedelta(days=2)
+    period1 = int(datetime.combine(start, clock_time.min, TZ).timestamp())
+    period2 = int(datetime.combine(end, clock_time.min, TZ).timestamp())
+    url = f'https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(symbol, safe="")}'
+    response = requests.get(
+        url,
+        params={'period1': period1, 'period2': period2, 'interval': '1mo', 'events': 'div,splits'},
+        headers={'User-Agent': 'Mozilla/5.0 LonelyWallet/2.0'},
+        timeout=15
+    )
+    response.raise_for_status()
+    payload = response.json()
+    result = next(iter(payload.get('chart', {}).get('result') or []), None)
+    if not result:
+        return None
+    timestamps = result.get('timestamp') or []
+    indicators = result.get('indicators') or {}
+    quote_rows = (indicators.get('quote') or [{}])[0]
+    adjusted_rows = (indicators.get('adjclose') or [{}])[0]
+    closes = adjusted_rows.get('adjclose') or quote_rows.get('close') or []
+    points = []
+    for stamp, close in zip(timestamps, closes):
+        try:
+            if close is None or float(close) <= 0:
+                continue
+            month_key = datetime.fromtimestamp(int(stamp), ZoneInfo('UTC')).strftime('%Y-%m')
+            points.append((month_key, float(close)))
+        except (TypeError, ValueError, OSError):
+            continue
+    # Yahoo retorna pontos de fechamento mensal. O primeiro ponto é a base 0%.
+    by_month = {}
+    for month_key, close in points:
+        by_month[month_key] = close
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    return [{'mes': key, 'valor': round((value / base - 1) * 100, 4)} for key, value in ordered if base > 0]
+
+
+def _benchmark_monthly_bcb(code, start_date, end_date):
+    """Calcula CDI/IPCA acumulados a partir das séries oficiais SGS do Banco Central."""
+    if code == 'CDI':
+        points = _sgs_series(12, start_date, end_date)
+        monthly_factors = {}
+        for point_date, daily_pct in points:
+            key = point_date.strftime('%Y-%m')
+            monthly_factors[key] = monthly_factors.get(key, 1.0) * (1 + float(daily_pct) / 100.0)
+        monthly_returns = {key: (factor - 1) * 100 for key, factor in monthly_factors.items()}
+    elif code == 'IPCA':
+        points = _sgs_series(433, start_date, end_date)
+        monthly_returns = {point_date.strftime('%Y-%m'): float(value) for point_date, value in points}
+    else:
+        return None
+    cumulative = 1.0
+    output = []
+    for key in sorted(monthly_returns):
+        cumulative *= 1 + monthly_returns[key] / 100.0
+        output.append({'mes': key, 'valor': round((cumulative - 1) * 100, 4)})
+    return output if len(output) >= 1 else None
+
+
+def _benchmark_monthly_hg(symbol, start_date, end_date, token):
+    """Histórico mensal HG Brasil. A API documenta BVSP e IFIX no endpoint histórico."""
+    response = requests.get(
+        'https://api.hgbrasil.com/v2/finance/historical',
+        params={'key':token,'symbols':symbol,'start_date':date.fromisoformat(str(start_date)[:10]).isoformat(),
+                'end_date':date.fromisoformat(str(end_date)[:10]).isoformat(),'sample_by':'1M'},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('valid_key') is False:
+        raise ValueError('Chave HG Brasil inválida.')
+    rows = (payload.get('results') or {}).get(symbol.upper()) or (payload.get('results') or {}).get(symbol.lower()) or {}
+    by_month = {}
+    for timestamp, values in rows.items():
+        try:
+            month_key = str(timestamp)[:7]
+            close = float((values or {}).get('close') or 0)
+            if close > 0:
+                by_month[month_key] = close
+        except (TypeError, ValueError, AttributeError):
+            continue
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    return [{'mes':key,'valor':round((value/base-1)*100,4)} for key,value in ordered if base>0]
+
+
+def _benchmark_monthly_brapi(symbol, start_date, end_date, token):
+    """Histórico mensal brapi; aceita apenas uma resposta real do endpoint histórico."""
+    response = requests.get(
+        'https://brapi.dev/api/v2/stocks/historical',
+        params={'symbols':symbol,'startDate':date.fromisoformat(str(start_date)[:10]).isoformat(),
+                'endDate':date.fromisoformat(str(end_date)[:10]).isoformat(),'interval':'1mo','sortOrder':'asc'},
+        headers={'Authorization':f'Bearer {token}'}, timeout=20
+    )
+    response.raise_for_status()
+    found = _parse_historical_payload(response.json())
+    points = found.get(symbol.upper()) or []
+    by_month = {}
+    for point in points:
+        price = float(point.get('preco') or 0)
+        if price > 0:
+            by_month[point['data'].strftime('%Y-%m')] = price
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    return [{'mes':key,'valor':round((value/base-1)*100,4)} for key,value in ordered if base>0]
+
+
+
+def _benchmark_monthly_ibge_ipca(start_date, end_date):
+    """Consulta de conferência do IPCA no SIDRA/IBGE (tabela 1737, variável 63)."""
+    start = date.fromisoformat(str(start_date)[:10])
+    end = date.fromisoformat(str(end_date)[:10])
+    first_period = start.year * 100 + start.month
+    last_period = end.year * 100 + end.month
+    response = requests.get(
+        f'https://apisidra.ibge.gov.br/values/t/1737/n1/1/v/63/p/{first_period}-{last_period}',
+        headers={'User-Agent': 'LonelyWallet/2.0.56'},
+        timeout=20
+    )
+    response.raise_for_status()
+    rows = response.json()
+    if not isinstance(rows, list) or len(rows) < 2:
+        return None
+    monthly = {}
+    for row in rows[1:]:
+        try:
+            period = str(row.get('D3C') or row.get('D1C') or '')
+            raw_value = str(row.get('V') or '').strip()
+            if len(period) != 6 or not period.isdigit() or raw_value in ('', '-', '...', 'X'):
+                continue
+            monthly[f'{period[:4]}-{period[4:6]}'] = float(raw_value.replace(',', '.'))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    factor = 1.0
+    output = []
+    for key in sorted(monthly):
+        factor *= 1 + monthly[key] / 100.0
+        output.append({'mes': key, 'valor': round((factor - 1) * 100, 4)})
+    return output or None
+
+
+def _benchmark_monthly_prices(points):
+    """Converte fechamentos diários em fechamento mensal e retorno acumulado."""
+    by_month = {}
+    for point_date, close in points:
+        try:
+            if not isinstance(point_date, date):
+                point_date = date.fromisoformat(str(point_date)[:10])
+            price = float(close)
+            if price > 0:
+                by_month[point_date.strftime('%Y-%m')] = price
+        except (TypeError, ValueError):
+            continue
+    ordered = sorted(by_month.items())
+    if len(ordered) < 2:
+        return None
+    base = ordered[0][1]
+    if base <= 0:
+        return None
+    return [{'mes': key, 'valor': round((value / base - 1) * 100, 4)} for key, value in ordered]
+
+
+def _benchmark_monthly_dadosb3(code, start_date, end_date, token=''):
+    """Série de fechamento de índice da API Dados B3; usa a chave no cabeçalho X-API-Key."""
+    params = {
+        'de': date.fromisoformat(str(start_date)[:10]).isoformat(),
+        'ate': date.fromisoformat(str(end_date)[:10]).isoformat()
+    }
+    headers = {'X-API-Key': token} if token else {}
+    response = requests.get(
+        f'https://dadosb3.com/indices/{code}/precos',
+        params=params,
+        headers=headers,
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    rows = payload.get('serie') or []
+    if not isinstance(rows, list) or not rows:
+        return None
+    points = []
+    for row in rows:
+        try:
+            point_date = date.fromisoformat(str(row.get('data') or '')[:10])
+            close = float(row.get('fechamento') or 0)
+            if close > 0:
+                points.append((point_date, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    data = _benchmark_monthly_prices(points)
+    if not data:
+        return None
+    return {
+        'data': data,
+        'sample': bool(payload.get('amostra')),
+        'as_of': payload.get('ate') or data[-1]['mes'],
+        'note': payload.get('nota') or '',
+        'citation': payload.get('fonte') or 'Dados B3'
+    }
+
+
+def _benchmark_monthly_twelvedata(symbol, start_date, end_date, token):
+    """Série mensal ajustada quando o plano Twelve Data oferece o ativo/mercado."""
+    response = requests.get(
+        'https://api.twelvedata.com/time_series',
+        params={'symbol': symbol, 'exchange': 'BVMF', 'interval': '1month',
+                'outputsize': 5000, 'apikey': token},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('status') == 'error' or not isinstance(payload.get('values'), list):
+        return None
+    points = []
+    for row in payload.get('values') or []:
+        try:
+            day = date.fromisoformat(str(row.get('datetime') or '')[:10])
+            close = float(row.get('adjusted_close') or row.get('close') or 0)
+            if close > 0:
+                points.append((day, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return _benchmark_monthly_prices(points)
+
+
+def _benchmark_monthly_alphavantage(symbol, start_date, end_date, token):
+    """Série mensal ajustada da Alpha Vantage; contingência para IVVB11."""
+    response = requests.get(
+        'https://www.alphavantage.co/query',
+        params={'function': 'TIME_SERIES_MONTHLY_ADJUSTED', 'symbol': symbol, 'apikey': token},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
+        return None
+    rows = payload.get('Monthly Adjusted Time Series') or {}
+    points = []
+    for day_text, row in rows.items():
+        try:
+            day = date.fromisoformat(str(day_text)[:10])
+            close = float(row.get('5. adjusted close') or row.get('4. close') or 0)
+            if close > 0:
+                points.append((day, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return _benchmark_monthly_prices(points)
+
+
+def _benchmark_latest_month(points):
+    return points[-1].get('mes') if points else None
+
+
+
+@app.route('/api/benchmarks')
+def api_benchmarks():
+    """Séries mensais com prioridade de fontes e procedência explícita; sem interpolação."""
+    today = datetime.now(TZ).date()
+    # A página de Rentabilidade precisa disponibilizar o histórico integral de cada
+    # benchmark, independentemente da data da primeira operação da carteira.
+    requested_start = date(1990, 1, 1)
+    # Busca meses anteriores para calcular o retorno do primeiro mês selecionado.
+    start = max(requested_start - timedelta(days=75), date(1990, 1, 1))
+    end = today
+    cache_key = requested_start.isoformat()
+    cached = BENCHMARK_CACHE.get(cache_key)
+    if cached and time.time() - cached['time'] < BENCHMARK_CACHE_TTL:
+        return jsonify(cached['data'])
+
+    series = {}
+    source_map = {}
+    metadata = {}
+    validation = {}
+    unavailable = []
+
+    # CDI/IPCA oficiais do BCB. O IPCA é mensal e só possui competências já divulgadas.
+    try:
+        cdi_data = _benchmark_monthly_bcb('CDI', start, end)
+    except (requests.RequestException, ValueError, TypeError):
+        cdi_data = None
+    if cdi_data:
+        series['CDI'] = cdi_data
+        source_map['CDI'] = 'Banco Central do Brasil · SGS 12'
+        metadata['CDI'] = {'source': source_map['CDI'], 'last_available': _benchmark_latest_month(cdi_data), 'observations': len(cdi_data)}
+    else:
+        unavailable.append('CDI')
+
+    try:
+        ipca_bcb = _benchmark_monthly_bcb('IPCA', start, end)
+    except (requests.RequestException, ValueError, TypeError):
+        ipca_bcb = None
+    try:
+        ipca_ibge = _benchmark_monthly_ibge_ipca(start, end)
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        ipca_ibge = None
+    if ipca_bcb:
+        series['IPCA'] = ipca_bcb
+        source_map['IPCA'] = 'Banco Central do Brasil · SGS 433'
+    elif ipca_ibge:
+        series['IPCA'] = ipca_ibge
+        source_map['IPCA'] = 'IBGE · SIDRA tabela 1737, variável 63'
+    else:
+        unavailable.append('IPCA')
+    if series.get('IPCA'):
+        metadata['IPCA'] = {
+            'source': source_map['IPCA'],
+            'last_available': _benchmark_latest_month(series['IPCA']),
+            'observations': len(series['IPCA']),
+            'note': 'O mês corrente só aparece depois da divulgação oficial do IPCA.'
+        }
+    if ipca_bcb and ipca_ibge:
+        bcb_map = {item['mes']: float(item['valor']) for item in ipca_bcb}
+        ibge_map = {item['mes']: float(item['valor']) for item in ipca_ibge}
+        overlap = sorted(set(bcb_map).intersection(ibge_map))
+        if overlap:
+            last_overlap = overlap[-1]
+            difference = abs(bcb_map[last_overlap] - ibge_map[last_overlap])
+            validation['IPCA'] = {
+                'status': 'conferido' if difference <= 0.02 else 'divergencia',
+                'mes': last_overlap,
+                'diferenca_pontos_percentuais': round(difference, 4),
+                'sources': ['BCB SGS 433', 'IBGE SIDRA 1737/63']
+            }
+
+    dadosb3_token = _get_api_token('dadosb3')
+    hg_token = _get_api_token('hgbrasil')
+    brapi_token = _brapi_token()
+    twelve_token = _get_api_token('twelvedata')
+    alpha_token = _get_api_token('alphavantage')
+
+    yahoo_symbols = {
+        'IBOV': ['^BVSP', 'IBOV.SA'],
+        'IFIX': ['IFIX.SA', '^IFIX'],
+        'SMLL': ['SMLL.SA', '^SMLL'],
+        'IDIV': ['IDIV.SA', '^IDIV'],
+        'IVVB11': ['IVVB11.SA']
+    }
+    brapi_symbols = {
+        'IBOV': ['^BVSP', 'IBOV'],
+        'IFIX': ['IFIX', '^IFIX'],
+        'SMLL': ['SMLL', '^SMLL'],
+        'IDIV': ['IDIV', '^IDIV']
+    }
+    hg_symbols = {'IBOV': 'BVSP', 'IFIX': 'IFIX'}
+
+    for code in ('IBOV', 'IFIX', 'SMLL', 'IDIV', 'IVVB11'):
+        candidates = []
+        sample_candidate = None
+
+        # Dados B3: índice de retorno total, fonte prioritária para os índices nacionais.
+        if code in ('IBOV', 'IFIX', 'SMLL', 'IDIV'):
+            try:
+                result = _benchmark_monthly_dadosb3(code, start, end, dadosb3_token)
+                if result:
+                    candidate = {
+                        'data': result['data'],
+                        'source': 'Dados B3 · fechamento de índice de retorno total (dados públicos da B3)',
+                        'sample': result['sample'],
+                        'note': result.get('note') or '',
+                        'citation': result.get('citation') or 'Dados B3'
+                    }
+                    if result['sample']:
+                        sample_candidate = candidate
+                    else:
+                        candidates.append(candidate)
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                pass
+
+        # HG Brasil oferece histórico para IBOV e IFIX; a cobertura depende do plano.
+        if code in hg_symbols and hg_token:
+            try:
+                data = _benchmark_monthly_hg(hg_symbols[code], start, end, hg_token)
+                if data:
+                    candidates.append({'data': data, 'source': 'HG Brasil · histórico mensal', 'sample': False})
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                pass
+
+        # brapi: tenta os códigos cobertos pelo plano; não se presume cobertura.
+        if brapi_token and code in brapi_symbols:
+            for symbol in brapi_symbols[code]:
+                try:
+                    data = _benchmark_monthly_brapi(symbol, start, end, brapi_token)
+                    if data:
+                        candidates.append({'data': data, 'source': f'brapi · histórico mensal ({symbol})', 'sample': False})
+                        break
+                except (requests.RequestException, ValueError, TypeError, KeyError):
+                    continue
+
+        # IVVB11 é um ETF, não um índice. Provedores globais só entram como contingência.
+        if code == 'IVVB11' and twelve_token:
+            try:
+                data = _benchmark_monthly_twelvedata('IVVB11', start, end, twelve_token)
+                if data:
+                    candidates.append({'data': data, 'source': 'Twelve Data · IVVB11 ajustado (BVMF, se coberto)', 'sample': False})
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                pass
+        if code == 'IVVB11' and alpha_token:
+            for symbol in ('IVVB11.SAO', 'IVVB11.SA'):
+                try:
+                    data = _benchmark_monthly_alphavantage(symbol, start, end, alpha_token)
+                    if data:
+                        candidates.append({'data': data, 'source': f'Alpha Vantage · {symbol} ajustado', 'sample': False})
+                        break
+                except (requests.RequestException, ValueError, TypeError, KeyError):
+                    continue
+
+        # Yahoo Finance permanece como contingência não oficial para cobrir períodos maiores.
+        for symbol in yahoo_symbols.get(code, []):
+            try:
+                data = _benchmark_monthly_from_yahoo(symbol, start, end)
+                if data:
+                    candidates.append({'data': data, 'source': f'Yahoo Finance · {symbol} (complementar)', 'sample': False})
+                    break
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                continue
+
+        # Amostra pública Dados B3 é último recurso; sua limitação será informada na interface.
+        if sample_candidate:
+            candidates.append(sample_candidate)
+
+        if candidates:
+            chosen = candidates[0]
+            series[code] = chosen['data']
+            source_map[code] = chosen['source']
+            metadata[code] = {
+                'source': chosen['source'],
+                'last_available': _benchmark_latest_month(chosen['data']),
+                'observations': len(chosen['data']),
+                'sample': bool(chosen.get('sample')),
+                'other_sources_available': [item['source'] for item in candidates[1:]],
+                'note': chosen.get('note') or ''
+            }
+        else:
+            unavailable.append(code)
+
+    result = {
+        'series': series,
+        'unavailable': unavailable,
+        'source': source_map,
+        'meta': metadata,
+        'validation': validation,
+        'start': requested_start.isoformat(),
+        'end': end.isoformat(),
+        'updated_at': datetime.now(TZ).isoformat(timespec='seconds'),
+        'notes': {
+            'IPCA': 'O IPCA é mensal. A competência só aparece depois da divulgação oficial; não se estima o mês corrente.',
+            'indices': 'Para IBOV, IFIX, SMLL e IDIV, Dados B3 é priorizado quando a série completa está disponível. Fontes alternativas são identificadas e não são misturadas por média.',
+            'IVVB11': 'IVVB11 é um ETF, não um índice. Usa fechamento ajustado quando o provedor oferece esse campo.'
+        }
+    }
+    BENCHMARK_CACHE[cache_key] = {'time': time.time(), 'data': result}
+    return jsonify(result)
+
+@app.route('/api/dashboard')
+def dashboard():
+    # A sincronização é automática, mas protegida por cache de 1 hora. O botão da
+    # página Proventos permite forçar uma atualização quando o usuário desejar.
+    portfolio_before_sync = carteira().json
+    sync_status = sync_brapi_proventos(force=False, quote_items=portfolio_before_sync.get('itens', []), active_items=portfolio_before_sync.get('itens', []))
+    # Recalcula o resumo para que proventos pagos sincronizados agora já apareçam.
+    portfolio = carteira().json
+    ops = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id").fetchall()]
+    scheduled = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='agendada' ORDER BY data_execucao,id").fetchall()]
+    active_tickers = {str(item.get('ticker') or '').upper() for item in portfolio.get('itens', []) if item.get('ticker')}
+    received_records = _received_proventos_records(active_tickers)
+    if active_tickers:
+        marks = ','.join('?' for _ in active_tickers)
+        pending_rows = [dict(r) for r in db().execute("SELECT * FROM proventos_api WHERE status='A receber' AND UPPER(ticker) IN (" + marks + ") ORDER BY data_pagamento,ticker", tuple(sorted(active_tickers))).fetchall()]
+        manual_rows = [dict(r) for r in db().execute('SELECT * FROM proventos WHERE UPPER(ticker) IN (' + marks + ') ORDER BY data', tuple(sorted(active_tickers))).fetchall()]
+    else:
+        pending_rows = []
+        manual_rows = []
+
+    monthly = {}
+    for op in ops:
+        month = op['data'][:7]
+        sign = 1 if op['lado'] == 'compra' else -1
+        monthly[month] = monthly.get(month, 0) + sign * (op['quantidade'] * op['preco'] + float(op.get('custos') or 0))
+
+    today = datetime.now(TZ).date()
+    month_keys = []
+    cursor = date(today.year, today.month, 1)
+    for _ in range(11):
+        cursor = (cursor.replace(day=1) - timedelta(days=1)).replace(day=1)
+    for _ in range(12):
+        month_keys.append(cursor.strftime('%Y-%m'))
+        cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    received_by_month = {}
+    detailed = []
+    for item in received_records:
+        payment_date = _api_date(item.get('data_pagamento'))
+        if not payment_date:
+            continue
+        record = {**item, 'data_pagamento': payment_date}
+        detailed.append(record)
+        if _is_income_event(record.get('tipo_evento')):
+            month = payment_date[:7]
+            received_by_month[month] = received_by_month.get(month, 0.0) + float(record.get('valor_total') or 0)
+
+    # Pagamentos futuros já declarados. Prioriza lastDatePrior; quando a cotação
+    # antiga só informa exDate, a data-com aproximada e a quantidade são sinalizadas.
+    upcoming = []
+    manual_keys = {(str(row['ticker']).upper(), str(row['data'])[:10], round(float(row['valor_total'] or 0), 2)) for row in manual_rows}
+    # Lançamentos manuais com data futura representam proventos anunciados,
+    # não recebidos. Preserve-os como A receber em vez de os misturar ao histórico pago.
+    for row in manual_rows:
+        payment_date = _api_date(row.get('data'))
+        if payment_date and date.fromisoformat(payment_date) > today:
+            upcoming.append({
+                'ticker':str(row['ticker']).upper(),'tipo':'Provento manual','tipo_ativo':typesafe_asset_type(row['ticker']),
+                'status':'A receber','data_com':None,'data_pagamento':payment_date,'quantidade':None,
+                'valor_por_ativo':None,'valor_total':float(row['valor_total'] or 0),'origem':'Manual',
+                'tipo_evento':'PROVENTO','remarks':'Data e valor informados manualmente.'
+            })
+    for row in pending_rows:
+        key=(str(row['ticker']).upper(),str(row['data_pagamento'])[:10],round(float(row['valor_total'] or 0),2))
+        if key in manual_keys:
+            continue
+        upcoming.append({
+            'ticker':row['ticker'],'tipo':row['tipo_evento'],'tipo_ativo':row['tipo_ativo'],
+            'status':'A receber','data_com':row['data_com'],'data_pagamento':row['data_pagamento'],
+            'quantidade':float(row['quantidade'] or 0),'valor_por_ativo':float(row['valor_por_ativo'] or 0),
+            'valor_total':float(row['valor_total'] or 0),'origem':('Alpha Vantage' if 'Alpha Vantage' in str(row.get('remarks') or '') else 'brapi'),'tipo_evento':row['tipo_evento'],
+            'remarks':row.get('remarks','')
+        })
+
+    # Fallback visual da versão estável: eventos anunciados vindos da cotação v1
+    # aparecem mesmo se o módulo v2 de dividendos não estiver habilitado no plano.
+    # Esses itens são deduplicados com o histórico sincronizado e não substituem
+    # os pagamentos confirmados do banco.
+    pending_keys = {
+        (str(item.get('ticker') or '').upper(), str(item.get('data_pagamento') or '')[:10],
+         str(item.get('tipo_evento') or item.get('tipo') or '').upper(), round(float(item.get('valor_por_ativo') or 0), 8))
+        for item in upcoming
+    }
+    pending_amount_keys = {(str(item.get('ticker') or '').upper(), str(item.get('data_pagamento') or '')[:10], round(float(item.get('valor_total') or 0), 2)) for item in upcoming}
+    manual_pending_keys = {
+        (str(row['ticker']).upper(), str(row['data'])[:10], round(float(row['valor_total'] or 0), 2))
+        for row in manual_rows if str(row.get('data') or '')[:10] > today.isoformat()
+    }
+    for item in portfolio.get('itens', []):
+        ticker = str(item.get('ticker') or '').upper()
+        kind = str(item.get('tipo') or '').lower()
+        if not ticker or kind == 'renda_fixa':
+            continue
+        quote = cotacao(ticker)
+        events = ((quote.get('dividendsData') or {}).get('cashDividends') or [])
+        for event in events:
+            payment_date = _api_date(event.get('paymentDate') or event.get('payment_date'))
+            if not payment_date or date.fromisoformat(payment_date) < today:
+                continue
+            try:
+                rate = float(event.get('rawRate') or event.get('rate') or event.get('value') or 0)
+            except (TypeError, ValueError):
+                rate = 0.0
+            if rate <= 0:
+                continue
+            official_date = _api_date(event.get('lastDatePrior'))
+            ex_date = _api_date(event.get('exDate'))
+            estimated = False
+            record_date = official_date
+            if not record_date and ex_date:
+                try:
+                    record_date = previous_b3_session(date.fromisoformat(ex_date)).isoformat()
+                    estimated = True
+                except ValueError:
+                    record_date = ''
+            try:
+                if record_date:
+                    quantity, quantity_method = position_quantity_on_date_details(ticker, record_date)
+                else:
+                    quantity = float(item.get('quantidade') or 0)
+                    quantity_method = 'posição atual (data-com ausente na fonte)'
+            except Exception:
+                quantity, quantity_method = 0.0, 'quantidade indisponível'
+            if quantity <= 1e-8:
+                continue
+            event_type = str(event.get('label') or event.get('type') or ('RENDIMENTO' if kind == 'fii' else 'PROVENTO')).upper()
+            dedupe = (ticker, payment_date, event_type, round(rate, 8))
+            if dedupe in pending_keys or (ticker, payment_date, round(quantity * rate, 2)) in manual_pending_keys or (ticker, payment_date, round(quantity * rate, 2)) in pending_amount_keys:
+                continue
+            remarks = str(event.get('remarks') or '')
+            if estimated:
+                remarks = (remarks + ' Data-com estimada pela véspera do exDate; confira o informe oficial.').strip()
+            if quantity_method.startswith('reconstruída'):
+                remarks = (remarks + ' Quantidade reconstruída a partir do saldo-base; depende da completude das operações cadastradas.').strip()
+            elif quantity_method.startswith('posição atual'):
+                remarks = (remarks + ' Quantidade estimada pela posição atual, pois a fonte não informou data-com.').strip()
+            upcoming.append({
+                'ticker':ticker,'tipo':event_type,'tipo_ativo':kind,'status':'A receber',
+                'data_com':record_date or None,'data_pagamento':payment_date,
+                'quantidade':round(quantity,8),'valor_por_ativo':round(rate,8),
+                'valor_total':round(quantity*rate,2),'origem':'Cotação v1','tipo_evento':event_type,
+                'remarks':remarks
+            })
+            pending_keys.add(dedupe)
+            pending_amount_keys.add((ticker, payment_date, round(quantity * rate, 2)))
+
+    monthly_values = [{'mes':m,'recebido':round(received_by_month.get(m,0),2)} for m in month_keys]
+    total_12m = round(sum(x['recebido'] for x in monthly_values), 2)
+    portfolio_total = round(sum(float(x.get('valor_atual') or 0) for x in portfolio.get('itens', [])), 2)
+    type_totals = {}
+    for event in detailed:
+        if _is_income_event(event.get('tipo_evento')):
+            type_totals[event['ticker']] = type_totals.get(event['ticker'], 0.0) + float(event.get('valor_total') or 0)
+
+    base_date = snapshot_date_for()
+    imported_rows = [dict(row) for row in db().execute(
+        'SELECT ticker,tipo,quantidade,preco_medio,preco_base,data_base,nome,origem FROM saldos_importados WHERE data_base=? ORDER BY tipo,nome,ticker',
+        (base_date,)
+    ).fetchall()] if base_date else []
+    # Modified Dietz recebe pagamentos efetivos; adjustedClose evita contar o
+    # mesmo provento duas vezes. A posição-base também informa a cobertura atual.
+    performance_dividends = [
+        {'ticker':item['ticker'],'data':item['data_pagamento'],'valor_total':item['valor_total'],'tipo_evento':item.get('tipo_evento')}
+        for item in detailed if _is_income_event(item.get('tipo_evento'))
+    ]
+    performance_history = fetch_portfolio_price_history(ops, imported_rows)
+    performance = build_portfolio_performance(ops, performance_dividends, history=performance_history, imported_positions=imported_rows, snapshot_date=base_date, current_positions=portfolio.get('itens', []))
+    # Séries por classe permitem que o filtro da página Rentabilidade altere
+    # os indicadores e o gráfico sem misturar classes diferentes.
+    return_types = sorted({str(row.get('tipo') or '').strip().lower() for row in [*ops, *imported_rows] if row.get('tipo')})
+    performance_by_type = {}
+    for asset_type in return_types:
+        type_ops = [row for row in ops if str(row.get('tipo') or '').strip().lower() == asset_type]
+        type_positions = [row for row in imported_rows if str(row.get('tipo') or '').strip().lower() == asset_type]
+        type_tickers = {str(row.get('ticker') or '').upper() for row in [*type_ops, *type_positions]}
+        type_dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in type_tickers]
+        performance_by_type[asset_type] = build_portfolio_performance(
+            type_ops, type_dividends, history=performance_history,
+            imported_positions=type_positions, snapshot_date=base_date,
+            current_positions=[row for row in portfolio.get('itens', []) if str(row.get('tipo') or '').strip().lower() == asset_type]
+        )
+    return jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
+        saldos_importados=imported_rows, data_base_snapshot=base_date,
+        aportes_mensais=monthly, proventos_mensais=received_by_month,
+        metas=[dict(r) for r in db().execute('SELECT * FROM metas').fetchall()],
+        rentabilidade_historica=performance, rentabilidade_por_tipo=performance_by_type,
+        integridade_dados={
+            'cotacoes': {item['ticker']: {'fonte': item.get('cotacao_origem'), 'disponivel': bool(item.get('cotacao_disponivel'))} for item in portfolio.get('itens', [])},
+            'historico_precos': performance.get('fontes_historico', {}),
+            'proventos': {'fonte_canonica': 'brapi + lançamentos manuais/B3', 'deduplicacao': 'chave de evento + ticker/data de pagamento/valor', 'sincronizacao': sync_status}
+        },
+        proventos_dashboard={
+            'mensal':monthly_values,'total_12m':total_12m,'media_mensal':round(total_12m/12,2),
+            'total_carteira':portfolio_total,'recebidos':sorted(detailed,key=lambda x:x['data_pagamento'],reverse=True),
+            'a_receber':sorted(upcoming,key=lambda x:x['data_pagamento']),
+            'distribuicao':type_totals,'sincronizacao':sync_status
+        })
+
+
+@app.route('/api/ativos/busca')
+def busca_ativos():
+    termo = str(request.args.get('q', '')).strip()
+    tipo = str(request.args.get('tipo', 'acao')).lower()
+    if len(termo) < 2:
+        return jsonify(itens=[])
+
+    # O endpoint de listagem da brapi permite filtrar por ticker/nome e subtipo.
+    params = {'search': termo, 'limit': 10, 'sortBy': 'name', 'sortOrder': 'asc'}
+    if tipo == 'acao':
+        params['type'] = 'stock'
+    elif tipo == 'fii':
+        params.update({'type': 'fund', 'subType': 'fii'})
+    elif tipo == 'etf':
+        params.update({'type': 'fund', 'subType': 'etf'})
+    elif tipo == 'bdr':
+        params['type'] = 'bdr'
+    elif tipo == 'stocks':
+        params['type'] = 'stock'
+    elif tipo in ('internacional', 'cripto', 'renda_fixa', 'reit', 'tesouro', 'fundo', 'outros'):
+        return jsonify(itens=[], mensagem='Busca automática ainda não disponível para esta classe. Digite o ticker manualmente.')
+
+    headers = {'Authorization': f'Bearer {_brapi_token()}'} if _brapi_token() else {}
+    try:
+        response = requests.get('https://brapi.dev/api/quote/list',
+                                params=params, headers=headers, timeout=8)
+        response.raise_for_status()
+        payload = response.json()
+        itens = []
+        for item in payload.get('stocks', []):
+            ticker = str(item.get('stock') or item.get('symbol') or '').upper()
+            if not ticker:
+                continue
+            itens.append({
+                'ticker': ticker,
+                'nome': item.get('name') or ticker,
+                'preco': item.get('close') or item.get('regularMarketPrice'),
+                'tipo': tipo
+            })
+        return jsonify(itens=itens)
+    except requests.RequestException:
+        return jsonify(itens=[], mensagem='Não foi possível consultar a lista de ativos agora.'), 502
+
+
+@app.route('/api/distribuicao', methods=['GET', 'PUT'])
+def distribuicao():
+    if request.method == 'GET':
+        rows = db().execute('SELECT id,nome,percentual,ordem FROM distribuicao_alvo ORDER BY ordem,id').fetchall()
+        return jsonify(itens=[dict(r) for r in rows])
+    payload = request.get_json(silent=True) or {}
+    itens = payload.get('itens', [])
+    if not isinstance(itens, list) or not itens:
+        return json_error('Adicione pelo menos uma classe de ativo.')
+    cleaned = []
+    names = set()
+    total = 0.0
+    try:
+        for item in itens:
+            nome = str(item.get('nome', '')).strip()
+            percentual = float(item.get('percentual', 0))
+            key = nome.casefold()
+            if not nome or len(nome) > 50 or key in names or percentual < 0 or percentual > 100:
+                raise ValueError()
+            names.add(key)
+            total += percentual
+            cleaned.append((nome, percentual))
+        if abs(total - 100.0) > 0.001:
+            return json_error('A soma dos percentuais precisa ser exatamente 100%.')
+    except (TypeError, ValueError):
+        return json_error('Confira os nomes e percentuais informados.')
+    con = db()
+    con.execute('DELETE FROM distribuicao_alvo')
+    con.executemany('INSERT INTO distribuicao_alvo(nome,percentual,ordem) VALUES(?,?,?)',
+                    [(nome, percentual, idx) for idx, (nome, percentual) in enumerate(cleaned, 1)])
+    con.commit()
+    rows = con.execute('SELECT id,nome,percentual,ordem FROM distribuicao_alvo ORDER BY ordem,id').fetchall()
+    return jsonify(ok=True, itens=[dict(r) for r in rows])
+
+
+def _tax_year():
+    try:
+        year = int(request.args.get('ano', datetime.now(TZ).year))
+        if year < 2000 or year > 2100:
+            raise ValueError()
+        return year
+    except (TypeError, ValueError):
+        raise ValueError('Informe um ano-base válido.')
+
+
+def build_irpf_summary(year):
+    """Resumo fiscal anual com saldos-base e operações posteriores.
+
+    Saldos importados são fotografias completas: inicializam ou redefinem as
+    posições na data-base, evitando zerar vendas de ativos sem compras locais.
+    O custo fiscal inclui custos informados nas compras e é reduzido
+    proporcionalmente nas vendas.
+    """
+    year_start = date(year, 1, 1).isoformat()
+    year_end = date(year, 12, 31).isoformat()
+    snapshots = db().execute(
+        'SELECT DISTINCT data_base FROM saldos_importados WHERE data_base<=? ORDER BY data_base',
+        (year_end,)
+    ).fetchall()
+    snapshot_dates = [str(r['data_base']) for r in snapshots]
+    opening_snapshot = max((d for d in snapshot_dates if d < year_start), default=None)
+    in_year_snapshots = [d for d in snapshot_dates if year_start <= d <= year_end]
+
+    holdings = {}
+    def reset_from_snapshot(snapshot_date):
+        holdings.clear()
+        rows = db().execute('SELECT * FROM saldos_importados WHERE data_base=?', (snapshot_date,)).fetchall()
+        for row in rows:
+            ticker = str(row['ticker']).upper()
+            qty = max(0.0, float(row['quantidade'] or 0))
+            avg = max(0.0, float(row['preco_medio'] or 0))
+            holdings[ticker] = {'ticker': ticker, 'tipo': str(row['tipo'] or 'outros'),
+                                'quantidade': qty, 'custo_total': qty * avg}
+
+    if opening_snapshot:
+        reset_from_snapshot(opening_snapshot)
+        ops_start = opening_snapshot
+    else:
+        ops_start = '0001-01-01'
+
+    ops = db().execute(
+        "SELECT * FROM operacoes WHERE status='executada' AND data>? AND data<=? ORDER BY data,id",
+        (ops_start, year_end)
+    ).fetchall()
+    sales = {}
+    snapshot_set = set(in_year_snapshots)
+    # Agrupa por data para aplicar a fotografia somente após todas as operações do dia.
+    by_date = {}
+    for op in ops:
+        by_date.setdefault(str(op['data'])[:10], []).append(op)
+    for op_date in sorted(set(by_date) | snapshot_set):
+        for op in by_date.get(op_date, []):
+            ticker = str(op['ticker']).upper()
+            kind = str(op['tipo'] or 'outros')
+            qty = max(0.0, float(op['quantidade'] or 0))
+            price = max(0.0, float(op['preco'] or 0))
+            costs = max(0.0, float(op['custos'] or 0))
+            item = holdings.setdefault(ticker, {'ticker': ticker, 'tipo': kind, 'quantidade': 0.0, 'custo_total': 0.0})
+            item['tipo'] = kind or item['tipo']
+            if op['lado'] == 'compra':
+                item['quantidade'] += qty
+                item['custo_total'] += qty * price + costs
+            else:
+                available = item['quantidade']
+                sold = min(qty, available)
+                if sold > 0:
+                    average = item['custo_total'] / available if available > 0 else 0.0
+                    basis = average * sold
+                    proceeds = max(0.0, sold * price - costs)
+                    profit = proceeds - basis
+                    if year_start <= op_date <= year_end:
+                        month = op_date[:7]
+                        group = 'fiis' if kind in ('fii', 'reit') else 'comuns'
+                        bucket = sales.setdefault((group, month), {'grupo': group, 'mes': month, 'vendas': 0.0,
+                            'custo': 0.0, 'resultado': 0.0, 'operacoes': 0})
+                        bucket['vendas'] += proceeds
+                        bucket['custo'] += basis
+                        bucket['resultado'] += profit
+                        bucket['operacoes'] += 1
+                    item['quantidade'] -= sold
+                    item['custo_total'] = max(0.0, item['custo_total'] - basis)
+        if op_date in snapshot_set:
+            reset_from_snapshot(op_date)
+            snapshot_set.remove(op_date)
+
+    positions = []
+    # Usa a posição fiscal reconstruída acima (inclui custos de compra), em vez
+    # de posicao(), cuja regra operacional de preço médio exclui custos.
+    for item in holdings.values():
+        if item['quantidade'] <= 1e-8:
+            continue
+        positions.append({'ticker':item['ticker'],'tipo':item['tipo'],
+            'quantidade':round(item['quantidade'],8),
+            'preco_medio':round(item['custo_total']/item['quantidade'],4),
+            'custo_total':round(item['custo_total'],2)})
+
+    positions.sort(key=lambda x: (x['tipo'], x['ticker']))
+
+    incomes = [dict(row) for row in db().execute(
+        "SELECT * FROM irpf_lancamentos WHERE substr(data,1,4)=? ORDER BY data DESC,id DESC", (str(year),)).fetchall()]
+    exempt = sum(float(x['valor']) for x in incomes if x['grupo'] == 'isento')
+    exclusive = sum(float(x['valor']) for x in incomes if x['grupo'] == 'exclusiva')
+    monthly_sales = [dict(v, vendas=round(v['vendas'], 2), custo=round(v['custo'], 2), resultado=round(v['resultado'], 2))
+                     for _, v in sorted(sales.items(), key=lambda pair: pair[0][1])]
+    return {'ano': year, 'posicoes': positions, 'rendimentos': incomes, 'operacoes': monthly_sales,
+        'resumo': {'bens': round(sum(x['custo_total'] for x in positions), 2), 'isentos': round(exempt, 2),
+                   'exclusivos': round(exclusive, 2), 'resultado_vendas': round(sum(x['resultado'] for x in monthly_sales), 2)}}
+
+
+@app.route('/api/irpf/resumo')
+def irpf_resumo():
+    try:
+        return jsonify(build_irpf_summary(_tax_year()))
+    except ValueError as exc:
+        return json_error(str(exc))
+
+
+@app.route('/api/irpf/lancamentos', methods=['GET', 'POST'])
+def irpf_lancamentos():
+    if request.method == 'GET':
+        try:
+            year = _tax_year()
+        except ValueError as exc:
+            return json_error(str(exc))
+        rows = db().execute(
+            "SELECT * FROM irpf_lancamentos WHERE substr(data,1,4)=? ORDER BY data DESC,id DESC",
+            (str(year),)
+        ).fetchall()
+        return jsonify(itens=[dict(row) for row in rows])
+    payload = request.get_json(silent=True) or {}
+    try:
+        grupo = str(payload.get('grupo', '')).strip().lower()
+        natureza = str(payload.get('natureza', '')).strip()
+        fonte = str(payload.get('fonte_pagadora', '')).strip()
+        documento = str(payload.get('documento', '')).strip()
+        valor = float(payload.get('valor', 0))
+        data_registro = str(payload.get('data', ''))
+        observacoes = str(payload.get('observacoes', '')).strip()
+        date.fromisoformat(data_registro)
+        if not math.isfinite(valor) or grupo not in ('isento', 'exclusiva') or not natureza or not fonte or valor <= 0:
+            raise ValueError()
+        if len(natureza) > 100 or len(fonte) > 160 or len(documento) > 40 or len(observacoes) > 1000:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return json_error('Confira o grupo, natureza, fonte pagadora, valor e data.')
+    cur = db().execute(
+        'INSERT INTO irpf_lancamentos(grupo,natureza,fonte_pagadora,documento,valor,data,observacoes) VALUES(?,?,?,?,?,?,?)',
+        (grupo, natureza, fonte, documento, valor, data_registro, observacoes)
+    )
+    db().commit()
+    return jsonify(ok=True, id=cur.lastrowid)
+
+
+@app.route('/api/irpf/lancamentos/<int:item_id>', methods=['PUT', 'DELETE'])
+def irpf_lancamento_item(item_id):
+    current = db().execute('SELECT * FROM irpf_lancamentos WHERE id=?', (item_id,)).fetchone()
+    if not current:
+        return json_error('Rendimento não encontrado.', 404)
+    if request.method == 'DELETE':
+        db().execute('DELETE FROM irpf_lancamentos WHERE id=?', (item_id,))
+        db().commit()
+        return jsonify(ok=True)
+    payload = request.get_json(silent=True) or {}
+    try:
+        grupo = str(payload.get('grupo', current['grupo'])).strip().lower()
+        natureza = str(payload.get('natureza', current['natureza'])).strip()
+        fonte = str(payload.get('fonte_pagadora', current['fonte_pagadora'])).strip()
+        documento = str(payload.get('documento', current['documento'] or '')).strip()
+        valor = float(payload.get('valor', current['valor']))
+        data_registro = str(payload.get('data', current['data']))
+        observacoes = str(payload.get('observacoes', current['observacoes'] or '')).strip()
+        date.fromisoformat(data_registro)
+        if not math.isfinite(valor) or grupo not in ('isento', 'exclusiva') or not natureza or not fonte or valor <= 0:
+            raise ValueError()
+        if len(natureza) > 100 or len(fonte) > 160 or len(documento) > 40 or len(observacoes) > 1000:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return json_error('Confira os dados do rendimento.')
+    db().execute(
+        'UPDATE irpf_lancamentos SET grupo=?,natureza=?,fonte_pagadora=?,documento=?,valor=?,data=?,observacoes=? WHERE id=?',
+        (grupo, natureza, fonte, documento, valor, data_registro, observacoes, item_id)
+    )
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/darfs', methods=['GET', 'POST'])
+def darfs():
+    if request.method == 'GET':
+        year = str(request.args.get('ano', datetime.now(TZ).year))
+        if not year.isdigit() or not 2000 <= int(year) <= 2100:
+            return json_error('Informe um ano válido.')
+        rows = db().execute(
+            "SELECT * FROM darfs WHERE substr(competencia,1,4)=? ORDER BY competencia DESC,vencimento DESC,id DESC",
+            (year,)
+        ).fetchall()
+        return jsonify(itens=[dict(row) for row in rows])
+    payload = request.get_json(silent=True) or {}
+    try:
+        competencia = str(payload.get('competencia', '')).strip()
+        if len(competencia) != 7 or competencia[4] != '-':
+            raise ValueError()
+        date.fromisoformat(competencia + '-01')
+        codigo = str(payload.get('codigo', '')).strip()
+        valor = float(payload.get('valor', 0))
+        vencimento = str(payload.get('vencimento', '')).strip()
+        pago_em = str(payload.get('pago_em', '')).strip()
+        status = str(payload.get('status', 'pendente')).strip().lower()
+        observacoes = str(payload.get('observacoes', '')).strip()
+        date.fromisoformat(vencimento)
+        if pago_em:
+            date.fromisoformat(pago_em)
+        if not math.isfinite(valor) or not codigo or len(codigo) > 20 or valor <= 0 or status not in ('pendente', 'pago'):
+            raise ValueError()
+        if status == 'pago' and not pago_em:
+            raise ValueError()
+        if len(observacoes) > 1000:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return json_error('Confira competência, código, valor, vencimento e situação. Para DARF pago, informe a data do pagamento.')
+    cur = db().execute(
+        'INSERT INTO darfs(competencia,codigo,valor,vencimento,pago_em,status,observacoes) VALUES(?,?,?,?,?,?,?)',
+        (competencia, codigo, valor, vencimento, pago_em, status, observacoes)
+    )
+    db().commit()
+    return jsonify(ok=True, id=cur.lastrowid)
+
+
+@app.route('/api/darfs/<int:darf_id>', methods=['PUT', 'DELETE'])
+def darf_item(darf_id):
+    current = db().execute('SELECT * FROM darfs WHERE id=?', (darf_id,)).fetchone()
+    if not current:
+        return json_error('DARF não encontrado.', 404)
+    if request.method == 'DELETE':
+        db().execute('DELETE FROM darfs WHERE id=?', (darf_id,))
+        db().commit()
+        return jsonify(ok=True)
+    payload = request.get_json(silent=True) or {}
+    merged = {key: payload.get(key, current[key]) for key in ('competencia', 'codigo', 'valor', 'vencimento', 'pago_em', 'status', 'observacoes')}
+    try:
+        competencia = str(merged['competencia']).strip()
+        if len(competencia) != 7 or competencia[4] != '-':
+            raise ValueError()
+        date.fromisoformat(competencia + '-01')
+        codigo = str(merged['codigo']).strip()
+        valor = float(merged['valor'])
+        vencimento = str(merged['vencimento']).strip()
+        pago_em = str(merged['pago_em'] or '').strip()
+        status = str(merged['status']).strip().lower()
+        observacoes = str(merged['observacoes'] or '').strip()
+        date.fromisoformat(vencimento)
+        if pago_em:
+            date.fromisoformat(pago_em)
+        if not math.isfinite(valor) or not codigo or len(codigo) > 20 or valor <= 0 or status not in ('pendente', 'pago'):
+            raise ValueError()
+        if status == 'pago' and not pago_em:
+            raise ValueError()
+        if len(observacoes) > 1000:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return json_error('Confira os dados do DARF. Para DARF pago, informe a data do pagamento.')
+    db().execute(
+        'UPDATE darfs SET competencia=?,codigo=?,valor=?,vencimento=?,pago_em=?,status=?,observacoes=? WHERE id=?',
+        (competencia, codigo, valor, vencimento, pago_em, status, observacoes, darf_id)
+    )
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/ativo/<ticker>')
+def ativo(ticker): return jsonify(cotacao(ticker.upper()))
+
+
+if __name__ == '__main__': app.run(host='0.0.0.0',port=8080)
