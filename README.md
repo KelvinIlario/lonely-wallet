@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.5
+# Lonely Wallet v4.2.6
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.5
+- **Versão:** 4.2.6
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida

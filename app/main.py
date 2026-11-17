@@ -1733,6 +1733,20 @@ def _load_last_valid_quote(ticker):
         return {}
 
 
+def cotacao_cacheada(ticker):
+    """Retorna cotação já disponível localmente, sem iniciar chamadas externas."""
+    symbol = str(ticker or '').strip().upper()
+    cached = CACHE.get(symbol)
+    if cached:
+        cached_at, payload = cached
+        if isinstance(payload, dict) and payload:
+            result = dict(payload)
+            if time.time() - float(cached_at or 0) >= CACHE_TTL:
+                result['quoteIsStale'] = True
+            return result
+    return _load_last_valid_quote(symbol)
+
+
 def _save_last_valid_quote(ticker, quote):
     """Persiste somente preços positivos e finitos, sem sobrescrever cache válido por falha."""
     try:
@@ -2943,7 +2957,7 @@ def _prefetch_quotes_parallel(tickers):
                 pass
 
 
-def carteira():
+def carteira(use_cached_quotes=False):
     process_due_operations()
     base_date = snapshot_date_for()
     ticker_rows = db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall()
@@ -2977,7 +2991,7 @@ def carteira():
         op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
         kind = (pluggy_position['asset_type'] if pluggy_position else None) or (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
         # Renda fixa usa o indexador e a data de cada aplicação, não cotação de bolsa.
-        quote = {} if kind == 'renda_fixa' else cotacao(ticker)
+        quote = {} if kind == 'renda_fixa' else (cotacao_cacheada(ticker) if use_cached_quotes else cotacao(ticker))
         raw_price=quote.get('regularMarketPrice') or quote.get('close') or quote.get('price')
         market_quote_available=raw_price is not None and float(raw_price)>0
         imported_price = float(imported.get('preco_base') or 0) if imported else 0.0
@@ -2993,10 +3007,18 @@ def carteira():
         fixed_calc_ok = False
         fixed_calc_warning = None
         if kind == 'renda_fixa':
-            cost, value, fixed_calc_ok, fixed_calc_warning = _fixed_income_position_value(ticker, cost, value)
-            price = value / qty if qty > 0 else value
-            quote_available = fixed_calc_ok
-            quote_source = 'Indexador' if fixed_calc_ok else 'Sem indexador'
+            if use_cached_quotes:
+                # Não consulta BCB/SGS na primeira pintura; usa o saldo-base ou
+                # custo médio como referência temporária até a atualização completa.
+                fixed_calc_ok = False
+                fixed_calc_warning = 'Atualização do indexador em segundo plano'
+                quote_available = False
+                quote_source = 'Atualização do indexador'
+            else:
+                cost, value, fixed_calc_ok, fixed_calc_warning = _fixed_income_position_value(ticker, cost, value)
+                price = value / qty if qty > 0 else value
+                quote_available = fixed_calc_ok
+                quote_source = 'Indexador' if fixed_calc_ok else 'Sem indexador'
         pluggy_return = _pluggy_total_return(ticker, value, dividends) if pluggy_position else None
         invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
         default_name = imported.get('nome') if imported else ticker
@@ -4573,12 +4595,24 @@ def api_benchmarks():
 
 @app.route('/api/dashboard')
 def dashboard():
-    # A sincronização é automática, mas protegida por cache de 1 hora. O botão da
-    # página Proventos permite forçar uma atualização quando o usuário desejar.
-    portfolio_before_sync = carteira().json
-    sync_status = sync_brapi_proventos(force=False, quote_items=portfolio_before_sync.get('itens', []), active_items=portfolio_before_sync.get('itens', []))
-    # Recalcula o resumo para que proventos pagos sincronizados agora já apareçam.
-    portfolio = carteira().json
+    # A primeira pintura usa somente dados locais. O navegador solicita a versão
+    # completa em segundo plano, após mostrar a carteira e liberar a tela de PIN.
+    full_refresh = request.args.get('full') == '1'
+    if full_refresh:
+        # Sincronizações e cotações de provedores externos ficam fora do carregamento inicial.
+        portfolio_before_sync = carteira().json
+        sync_status = sync_brapi_proventos(
+            force=False,
+            quote_items=portfolio_before_sync.get('itens', []),
+            active_items=portfolio_before_sync.get('itens', [])
+        )
+        portfolio = carteira().json
+    else:
+        portfolio = carteira(use_cached_quotes=True).json
+        sync_status = PROVENTOS_SYNC_CACHE.get('result') or {
+            'ok': True,
+            'mensagem': 'Atualização de cotações, histórico e proventos será concluída em segundo plano.'
+        }
     ops = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id").fetchall()]
     scheduled = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='agendada' ORDER BY data_execucao,id").fetchall()]
     active_tickers = {str(item.get('ticker') or '').upper() for item in portfolio.get('itens', []) if item.get('ticker')}
@@ -4664,7 +4698,7 @@ def dashboard():
         kind = str(item.get('tipo') or '').lower()
         if not ticker or kind == 'renda_fixa':
             continue
-        quote = cotacao(ticker)
+        quote = cotacao(ticker) if full_refresh else cotacao_cacheada(ticker)
         events = ((quote.get('dividendsData') or {}).get('cashDividends') or [])
         for event in events:
             payment_date = _api_date(event.get('paymentDate') or event.get('payment_date'))
@@ -4736,22 +4770,39 @@ def dashboard():
         {'ticker':item['ticker'],'data':item['data_pagamento'],'valor_total':item['valor_total'],'tipo_evento':item.get('tipo_evento')}
         for item in detailed if _is_income_event(item.get('tipo_evento'))
     ]
-    performance_history = fetch_portfolio_price_history(ops, imported_rows)
-    performance = build_portfolio_performance(ops, performance_dividends, history=performance_history, imported_positions=imported_rows, snapshot_date=base_date, current_positions=portfolio.get('itens', []))
-    # Séries por classe permitem que o filtro da página Rentabilidade altere
-    # os indicadores e o gráfico sem misturar classes diferentes.
-    return_types = sorted({str(row.get('tipo') or '').strip().lower() for row in [*ops, *imported_rows] if row.get('tipo')})
-    performance_by_type = {}
-    for asset_type in return_types:
-        type_ops = [row for row in ops if str(row.get('tipo') or '').strip().lower() == asset_type]
-        type_positions = [row for row in imported_rows if str(row.get('tipo') or '').strip().lower() == asset_type]
-        type_tickers = {str(row.get('ticker') or '').upper() for row in [*type_ops, *type_positions]}
-        type_dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in type_tickers]
-        performance_by_type[asset_type] = build_portfolio_performance(
-            type_ops, type_dividends, history=performance_history,
-            imported_positions=type_positions, snapshot_date=base_date,
-            current_positions=[row for row in portfolio.get('itens', []) if str(row.get('tipo') or '').strip().lower() == asset_type]
+    if full_refresh:
+        performance_history = fetch_portfolio_price_history(ops, imported_rows)
+        performance = build_portfolio_performance(
+            ops, performance_dividends, history=performance_history,
+            imported_positions=imported_rows, snapshot_date=base_date,
+            current_positions=portfolio.get('itens', [])
         )
+        # Séries por classe permitem que o filtro da página Rentabilidade altere
+        # os indicadores e o gráfico sem misturar classes diferentes.
+        return_types = sorted({str(row.get('tipo') or '').strip().lower() for row in [*ops, *imported_rows] if row.get('tipo')})
+        performance_by_type = {}
+        for asset_type in return_types:
+            type_ops = [row for row in ops if str(row.get('tipo') or '').strip().lower() == asset_type]
+            type_positions = [row for row in imported_rows if str(row.get('tipo') or '').strip().lower() == asset_type]
+            type_tickers = {str(row.get('ticker') or '').upper() for row in [*type_ops, *type_positions]}
+            type_dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in type_tickers]
+            performance_by_type[asset_type] = build_portfolio_performance(
+                type_ops, type_dividends, history=performance_history,
+                imported_positions=type_positions, snapshot_date=base_date,
+                current_positions=[row for row in portfolio.get('itens', []) if str(row.get('tipo') or '').strip().lower() == asset_type]
+            )
+    else:
+        # Estrutura compatível com a interface enquanto o histórico é carregado.
+        performance = {
+            'series_12m': [], 'series_total': [], 'series_roi_total': [],
+            'series_patrimonio': [], 'rentabilidade_12m': None,
+            'rentabilidade_total': None, 'meses_disponiveis': 0,
+            'primeiro_mes': None, 'historico_completo': False,
+            'historico_parcial': True, 'ativos_sem_historico': [],
+            'ativos_com_historico': 0, 'total_ativos': len(portfolio.get('itens', [])),
+            'fontes_historico': {}
+        }
+        performance_by_type = {}
     return jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
         saldos_importados=imported_rows, data_base_snapshot=base_date,
         aportes_mensais=monthly, proventos_mensais=received_by_month,
