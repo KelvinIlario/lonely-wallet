@@ -69,8 +69,11 @@ def prepare_database_files():
     con.execute('PRAGMA busy_timeout=15000')
     con.execute('''CREATE TABLE IF NOT EXISTS app_auth (
         id INTEGER PRIMARY KEY CHECK(id=1), pin_salt TEXT NOT NULL, pin_hash TEXT NOT NULL,
-        failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+        failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1
     )''')
+    auth_cols = {row[1] for row in con.execute('PRAGMA table_info(app_auth)').fetchall()}
+    if 'enabled' not in auth_cols: con.execute('ALTER TABLE app_auth ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1')
     con.execute('''CREATE TABLE IF NOT EXISTS api_credentials (
         provider TEXT PRIMARY KEY, token_encrypted TEXT NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
@@ -432,7 +435,10 @@ def pin_digest(pin, salt):
 
 @app.before_request
 def require_pin_authentication():
-    if request.endpoint in ('auth_status', 'auth_setup', 'auth_login', 'static') or request.path.startswith('/static/'):
+    if request.endpoint in ('auth_status', 'auth_setup', 'auth_login', 'auth_disable', 'static') or request.path.startswith('/static/'):
+        return None
+    record = auth_record()
+    if not record or not record['enabled']:
         return None
     if request.path == '/' and not session.get('authenticated'):
         return render_template('auth.html')
@@ -452,8 +458,10 @@ def require_pin_authentication():
 
 @app.route('/api/auth/status')
 def auth_status():
-    configured = auth_record() is not None
-    return jsonify(configured=configured, authenticated=bool(session.get('authenticated')))
+    row = auth_record()
+    configured = bool(row and row['pin_hash'])
+    enabled = bool(row and row['enabled'] and configured)
+    return jsonify(configured=configured, enabled=enabled, authenticated=bool(session.get('authenticated')))
 
 
 @app.route('/api/auth/setup', methods=['POST'])
@@ -461,7 +469,8 @@ def auth_setup():
     payload = request.get_json(silent=True) or {}
     pin = str(payload.get('pin') or '')
     confirm = str(payload.get('confirm') or '')
-    if auth_record() is not None:
+    existing = auth_record()
+    if existing is not None and existing['pin_hash']:
         return jsonify(ok=False, error='O PIN já foi configurado.'), 409
     if not re.fullmatch(r'\d{6,12}', pin) or pin != confirm:
         return jsonify(ok=False, error='Use um PIN de 6 a 12 números e confirme corretamente.'), 400
@@ -469,14 +478,42 @@ def auth_setup():
     digest = pin_digest(pin, salt)
     con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
     try:
-        con.execute('INSERT INTO app_auth(id,pin_salt,pin_hash,updated_at) VALUES(1,?,?,?)',
-                    (salt, digest, datetime.now(TZ).isoformat()))
+        if existing is None:
+            con.execute('INSERT INTO app_auth(id,pin_salt,pin_hash,updated_at,enabled) VALUES(1,?,?,?,1)', (salt, digest, datetime.now(TZ).isoformat()))
+        else:
+            con.execute('UPDATE app_auth SET pin_salt=?,pin_hash=?,updated_at=?,enabled=1,failed_attempts=0,locked_until=0 WHERE id=1', (salt, digest, datetime.now(TZ).isoformat()))
         con.commit()
     except sqlite3.IntegrityError:
         return jsonify(ok=False, error='O PIN já foi configurado.'), 409
     finally:
         con.close()
     session.clear(); session['authenticated'] = True; session.permanent = True
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/disable', methods=['POST'])
+def auth_disable():
+    payload = request.get_json(silent=True) or {}
+    row = auth_record()
+    if row and row['pin_hash']:
+        current = str(payload.get('pin') or '')
+        candidate = pin_digest(current, row['pin_salt']) if re.fullmatch(r"\d{6,12}", current) else ''
+        if not hmac.compare_digest(candidate, row['pin_hash']):
+            return jsonify(ok=False, error='PIN incorreto. Não foi possível desativar a proteção.'), 401
+        con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+        try:
+            con.execute('UPDATE app_auth SET enabled=0,failed_attempts=0,locked_until=0 WHERE id=1')
+            con.commit()
+        finally:
+            con.close()
+    else:
+        con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+        try:
+            con.execute("INSERT OR REPLACE INTO app_auth(id,pin_salt,pin_hash,failed_attempts,locked_until,updated_at,enabled) VALUES(1,'','',0,0,?,0)", (datetime.now(TZ).isoformat(),))
+            con.commit()
+        finally:
+            con.close()
+    session.clear()
     return jsonify(ok=True)
 
 
