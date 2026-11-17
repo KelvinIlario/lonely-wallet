@@ -261,3 +261,10 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Corrigido o hover da coluna Variação: ao passar o mouse na linha, a célula acompanha a mesma cor de realce das demais colunas, sem retângulo escuro isolado.
 - Ajustada a identificação de proventos da Pluggy: o tipo documentado `INTEREST` continua reconhecido como distribuição; a inferência por descrição agora só é usada quando o tipo vier vazio, `UNKNOWN` ou `OTHER`, evitando classificar TAX, TRANSFER ou AMORTIZATION como renda.
 - Mantido o volume `/data` e a estrutura dos registros existentes.
+
+
+## v3.3.29 · Rentabilidade e tooltip patrimonial
+- O card Rentabilidade do Resumo agora usa a rentabilidade histórica calculada mês a mês pelo método Modified Dietz, em vez de dividir o lucro total pelo capital investido.
+- Os indicadores Últimos 12 meses e Total usam os respectivos campos calculados pelo backend. O período de 12 meses fica indisponível quando não há 12 meses calculáveis, evitando apresentar um percentual incompleto como se fosse anual.
+- O gráfico Evolução do Patrimônio usa tooltip escuro com o mês, Patrimônio, Valor aplicado e Ganho de Capital ao passar sobre cada barra.
+- A explicação do card foi atualizada para descrever a ponderação temporal dos aportes e retiradas e o tratamento de proventos sem dupla contagem.
