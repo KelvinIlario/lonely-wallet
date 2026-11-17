@@ -1,4 +1,4 @@
-# Lonely Wallet v4.1.4
+# Lonely Wallet v4.1.5
 
 ## Ajustes de acesso
 - A tela de acesso pré-carrega recursos visuais (logotipo e biblioteca de gráficos) enquanto o PIN é digitado.
@@ -18,7 +18,7 @@
 - Fazer backup da pasta de dados antes da atualização.
 
 
-## v4.1.4
+## v4.1.5
 
 - Ajustes visuais da página Segurança para ocupar a largura disponível.
 - Botões e campos da página Segurança padronizados com o tema Lonely Wallet.

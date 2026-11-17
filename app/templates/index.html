@@ -97,8 +97,11 @@
 .asset-category.collapsed .asset-category-body{display:none}
 .asset-category .data th{font-size:11px}
 .asset-category .data td{font-size:12px}
-#loadingScreen{position:fixed;inset:0;z-index:1000;background:#10131b;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;transition:opacity .35s ease,visibility .35s ease}
+#loadingScreen{position:fixed;inset:0 0 auto 0;z-index:1000;height:3px;background:transparent;display:block;overflow:hidden;pointer-events:none;transition:opacity .2s ease,visibility .2s ease}
+#loadingScreen:after{content:"";display:block;width:34%;height:100%;background:linear-gradient(90deg,transparent,var(--blue),var(--gold),transparent);animation:loadingBar 1.15s ease-in-out infinite}
 #loadingScreen.done{opacity:0;visibility:hidden;pointer-events:none}
+#loadingScreen .loading-logo,#loadingScreen .loading-spinner,#loadingScreen .loading-label{display:none!important}
+@keyframes loadingBar{from{transform:translateX(-110%)}to{transform:translateX(310%)}}
 .loading-logo{width:150px;height:150px;object-fit:contain;border-radius:30px;box-shadow:0 15px 60px #0008;animation:logoPulse 1.5s ease-in-out infinite}
 .loading-spinner{width:28px;height:28px;border:3px solid #394252;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite}
 .loading-label{font-size:13px;color:#aeb7c5;letter-spacing:.4px}
@@ -273,7 +276,7 @@ body.light-theme .total-preview{background:#f5f7fa;border-color:var(--line)}
 body.light-theme .asset-category-head:hover{background:#f0f3f7}
 body.light-theme .tag{background:#e8edf4;color:#455166}
 body.light-theme .modal{border-color:var(--line);box-shadow:0 20px 80px #26344a26}
-body.light-theme #loadingScreen{background:#f3f5f8}
+body.light-theme #loadingScreen:after{background:linear-gradient(90deg,transparent,var(--blue),var(--gold),transparent)}
 body.light-theme .opportunity-note{background:#eef1f5}
 body.light-theme .tablewrap{background:transparent}
 body.privacy-mode .statvalue,body.privacy-mode .statdetail b,
