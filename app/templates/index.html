@@ -3,7 +3,17 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
-:root{--bg:#14161d;--panel:#20232c;--panel2:#171a22;--line:#303541;--text:#f3f5f8;--muted:#929baa;--green:#20bd82;--red:#ef6680;--blue:#78b7f5;--gold:#d5a85e;--table-hover:#262b36}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,system-ui,-apple-system,Segoe UI,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.top{height:62px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 4.5%;position:sticky;top:0;background:#151820;z-index:5}.brand{font-size:18px;font-weight:750;letter-spacing:-.5px}.brand span{color:var(--gold)}.topright{display:flex;gap:10px;align-items:center;color:var(--muted)}.pillbtn,.primary,.ghost{border:1px solid var(--line);border-radius:8px;padding:9px 13px;background:#222631;color:var(--text)}.primary{background:#2478d4;border-color:#2478d4}.nav{display:flex;gap:4px;padding:0 4.5%;border-bottom:1px solid var(--line);overflow:auto;background:#171a22}.nav button{white-space:nowrap;background:none;color:#aeb7c5;border:0;padding:15px 12px;border-bottom:2px solid transparent}.nav button.active{color:white;border-color:var(--blue)}main{max-width:1500px;margin:26px auto;padding:0 4.5%}.pagehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.pagehead h1{font-size:22px;margin:0}.sub{color:var(--muted);font-size:12px;margin-top:5px}.grid{display:grid;gap:14px}.stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}.stat{padding:17px 18px;min-height:104px}.statlabel{color:var(--muted);font-size:12px}.statvalue{font-size:23px;font-weight:700;margin:9px 0 4px;letter-spacing:-.5px}.statvalue-inline{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.statvalue-inline small{font-size:13px;font-weight:700}.muted{color:var(--muted)}.green{color:var(--green)}.red{color:var(--red)}.blue{color:var(--blue)}.charts{grid-template-columns:1.45fr 1fr;margin-bottom:16px}.panel{padding:17px}.panelhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}.panelhead h2{font-size:15px;margin:0}.chartbox{height:260px;position:relative}.chartbox.small{height:245px}.chart-footnote{margin-top:8px;color:var(--muted);font-size:10px;line-height:1.45}
+:root{--bg:#14161d;--panel:#20232c;--panel2:#171a22;--line:#303541;--text:#f3f5f8;--muted:#929baa;--green:#20bd82;--red:#ef6680;--blue:#78b7f5;--gold:#d5a85e;--table-hover:#262b36}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,system-ui,-apple-system,Segoe UI,sans-serif}button,input,select{font:inherit}button{cursor:pointer}.top{height:62px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 4.5%;position:sticky;top:0;background:#151820;z-index:5}.brand{font-size:18px;font-weight:750;letter-spacing:-.5px}.brand span{color:var(--gold)}.topright{display:flex;gap:10px;align-items:center;color:var(--muted)}.pillbtn,.primary,.ghost{border:1px solid var(--line);border-radius:8px;padding:9px 13px;background:#222631;color:var(--text)}.primary{background:#2478d4;border-color:#2478d4}.nav{display:flex;gap:4px;padding:0 4.5%;border-bottom:1px solid var(--line);overflow:auto;background:#171a22}.nav button{white-space:nowrap;background:none;color:#aeb7c5;border:0;padding:15px 12px;border-bottom:2px solid transparent}.nav button.active{color:white;border-color:var(--blue)}
+.dashboard-data-wait{position:fixed;left:0;right:0;bottom:0;top:172px;z-index:950;background:var(--bg);display:none;align-items:center;justify-content:center;padding:24px;text-align:center}
+.dashboard-data-wait.active{display:flex}
+.dashboard-data-wait-card{display:flex;flex-direction:column;align-items:center;gap:13px;max-width:460px;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 32px;box-shadow:0 14px 44px #0003}
+.dashboard-data-wait-card strong{font-size:15px}
+.dashboard-data-wait-card span:not(.dashboard-data-wait-spinner){font-size:12px;color:var(--muted);line-height:1.5}
+.dashboard-data-wait-spinner{width:28px;height:28px;border:3px solid #394252;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+#dashboardDataWaitRetry{border:1px solid var(--line);background:var(--blue);color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer}
+@media(max-width:700px){.dashboard-data-wait{top:148px;padding:16px}.dashboard-data-wait-card{padding:22px 18px}}
+
+main{max-width:1500px;margin:26px auto;padding:0 4.5%}.pagehead{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.pagehead h1{font-size:22px;margin:0}.sub{color:var(--muted);font-size:12px;margin-top:5px}.grid{display:grid;gap:14px}.stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}.stat{padding:17px 18px;min-height:104px}.statlabel{color:var(--muted);font-size:12px}.statvalue{font-size:23px;font-weight:700;margin:9px 0 4px;letter-spacing:-.5px}.statvalue-inline{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.statvalue-inline small{font-size:13px;font-weight:700}.muted{color:var(--muted)}.green{color:var(--green)}.red{color:var(--red)}.blue{color:var(--blue)}.charts{grid-template-columns:1.45fr 1fr;margin-bottom:16px}.panel{padding:17px}.panelhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}.panelhead h2{font-size:15px;margin:0}.chartbox{height:260px;position:relative}.chartbox.small{height:245px}.chart-footnote{margin-top:8px;color:var(--muted);font-size:10px;line-height:1.45}
 
 /* Ajustes visuais do painel de alocação */
 .panelhead select{
@@ -2031,6 +2041,14 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar tabela da B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
 <nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="apis">⌘ APIs</button><button data-page="seguranca">♙ Segurança</button></nav>
 <main>
+<div id="dashboardDataWait" class="dashboard-data-wait active" role="status" aria-live="polite">
+ <div class="dashboard-data-wait-card">
+  <span class="dashboard-data-wait-spinner" aria-hidden="true"></span>
+  <strong id="dashboardDataWaitTitle">Atualizando os valores da carteira…</strong>
+  <span id="dashboardDataWaitMessage">Estamos confirmando cotações e saldos. Os valores serão exibidos quando a atualização terminar.</span>
+  <button id="dashboardDataWaitRetry" type="button" onclick="refreshDashboardInBackground()" style="display:none">Tentar novamente</button>
+ </div>
+</div>
 <section id="page-resumo" class="page"><div class="pagehead summary-pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
 <div class="grid stats summary-investor10" id="stats"></div><div class="grid charts"><div class="panel"><div class="panelhead"><h2>Evolução do patrimônio</h2><div class="toolbar"><select id="aportePeriod" aria-label="Período da evolução" onchange="renderEvolutionChart()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="all">Todo o período</option></select><select id="aporteType" aria-label="Tipo de ativo da evolução" onchange="renderEvolutionChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div></div><div class="chartbox"><canvas id="aporteChart"></canvas></div><div class="chart-footnote">Patrimônio mensal calculado com histórico de preços dos ativos, incluindo ganhos e prejuízos.</div></div><div class="panel allocation-panel"><div class="panelhead"><h2>Ativos na carteira</h2><select id="allocationType" aria-label="Filtrar ativos na carteira" onchange="renderAllocationChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div><div class="allocation-content"><div class="chartbox small"><canvas id="allocationChart"></canvas></div><div id="allocationLegend" class="allocation-legend"></div></div></div></div>
 <div id="positionInsights" class="position-insights"></div><div class="sectionhead summary-assets-head"><h2>Meus ativos <span class="mini" id="summaryAssetCount">(0)</span></h2></div><div id="summaryGroups" class="position-groups summary-position-groups"></div></section>
@@ -2113,7 +2131,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 
 
-<div class="footer">Lonely Wallet v4.2.6 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
+<div class="footer">Lonely Wallet v4.2.7 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
 <div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
@@ -2211,6 +2229,8 @@ function scheduleMutationRefresh(){
 let dashboardDataRevision=0;
 let dashboardFullRefreshInFlight=false;
 let dashboardFullRefreshQueued=false;
+let dashboardEnrichmentInFlight=false;
+let dashboardEnrichmentQueued=false;
 async function api(url,opts={}){
  const {timeoutMs=25000,skipAutoRefresh=false,...fetchOptions}=opts;
  const method=String(fetchOptions.method||'GET').toUpperCase();
@@ -2232,23 +2252,81 @@ async function api(url,opts={}){
  }
  return d;
 }
-async function refreshDashboardInBackground(){
- if(dashboardFullRefreshInFlight){dashboardFullRefreshQueued=true;return;}
- dashboardFullRefreshInFlight=true;
- const revisionAtStart=dashboardDataRevision;
+function positionDashboardDataWait(){
+ const overlay=document.getElementById('dashboardDataWait');
+ const main=document.querySelector('main');
+ if(overlay&&main){
+  const rect=main.getBoundingClientRect();
+  overlay.style.top=Math.max(0,Math.round(rect.top))+'px';
+ }
+}
+function setDashboardDataWait(message,showRetry=false){
+ const overlay=document.getElementById('dashboardDataWait');
+ if(!overlay)return;
+ positionDashboardDataWait();
+ const messageNode=document.getElementById('dashboardDataWaitMessage');
+ if(messageNode&&message)messageNode.textContent=message;
+ const titleNode=document.getElementById('dashboardDataWaitTitle');
+ if(titleNode)titleNode.textContent=showRetry?'Não foi possível confirmar os valores':'Atualizando os valores da carteira…';
+ const retry=document.getElementById('dashboardDataWaitRetry');
+ if(retry)retry.style.display=showRetry?'inline-flex':'none';
+ overlay.classList.add('active');
+}
+function hideDashboardDataWait(){
+ const overlay=document.getElementById('dashboardDataWait');
+ if(overlay)overlay.classList.remove('active');
+}
+window.addEventListener('resize',positionDashboardDataWait,{passive:true});
+async function refreshDashboardEnrichment(revisionAtStart){
+ if(dashboardEnrichmentInFlight){dashboardEnrichmentQueued=true;return;}
+ dashboardEnrichmentInFlight=true;
  try{
-  const complete=await api('/api/dashboard?full=1',{timeoutMs:180000});
+  // Complementa os valores já exibidos com proventos sincronizados e séries históricas.
+  // Não força uma segunda rodada de cotações: a etapa atual acabou de confirmá-las.
+  const enriched=await api('/api/dashboard?full=1&refresh_quotes=0',{timeoutMs:180000});
   if(revisionAtStart===dashboardDataRevision){
-   state=complete;
+   state=enriched;
    render();
    applyPositionColumnPrefs();
    const updated=document.getElementById('updated');
    if(updated)updated.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   }else{
+   dashboardEnrichmentQueued=true;
+  }
+ }catch(error){
+  // Uma falha no histórico complementar não invalida as cotações atuais confirmadas.
+  console.warn('A atualização complementar de histórico/proventos não terminou:',error);
+ }finally{
+  dashboardEnrichmentInFlight=false;
+  if(dashboardEnrichmentQueued){
+   dashboardEnrichmentQueued=false;
+   setTimeout(()=>refreshDashboardEnrichment(dashboardDataRevision),900);
+  }
+ }
+}
+async function refreshDashboardInBackground(){
+ if(dashboardFullRefreshInFlight){dashboardFullRefreshQueued=true;return;}
+ dashboardFullRefreshInFlight=true;
+ setDashboardDataWait('Estamos confirmando cotações e indexadores. Nenhum valor provisório será exibido.');
+ const revisionAtStart=dashboardDataRevision;
+ try{
+  // Primeiro confirma os valores atuais e libera a interface. O histórico detalhado
+  // e a sincronização de proventos continuam em uma segunda etapa não bloqueante.
+  const current=await api('/api/dashboard?full=1&current_only=1',{timeoutMs:180000});
+  if(revisionAtStart===dashboardDataRevision){
+   state=current;
+   render();
+   applyPositionColumnPrefs();
+   const updated=document.getElementById('updated');
+   if(updated)updated.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+   hideDashboardDataWait();
+   refreshDashboardEnrichment(revisionAtStart);
+  }else{
    dashboardFullRefreshQueued=true;
   }
  }catch(error){
-  console.warn('A atualização completa da carteira continuará pendente:',error);
+  console.warn('A atualização dos valores atuais não terminou:',error);
+  setDashboardDataWait('Não foi possível confirmar os valores. Nenhum valor provisório será exibido. Confira a conexão e tente novamente.',true);
  }finally{
   dashboardFullRefreshInFlight=false;
   if(dashboardFullRefreshQueued){
@@ -2261,6 +2339,7 @@ function chart(id,type,data,options={}){if(!document.getElementById(id))return;i
 function stat(label,value,sub='',color=''){return `<div class="card stat"><div class="statlabel">${label}</div><div class="statvalue ${color}">${value}</div><div class="mini">${sub}</div></div>`}
 function rowEmpty(cols,msg='Nenhum registro encontrado.'){return `<tr><td colspan="${cols}" class="empty">${msg}</td></tr>`}
 async function refresh(){
+ setDashboardDataWait('Confirmando cotações e saldos antes de exibir os valores.');
  if(mutationRefreshTimer){clearTimeout(mutationRefreshTimer);mutationRefreshTimer=null;}
  if(refreshInFlight){refreshAgain=true;return refreshInFlight;}
  refreshInFlight=(async()=>{
@@ -2281,7 +2360,11 @@ async function refresh(){
    if(irpfPage&&!irpfPage.classList.contains('hidden'))await loadIRPF();
    if(darfPage&&!darfPage.classList.contains('hidden'))await loadDARFs();
    return state;
-  }catch(e){toast(`Não foi possível carregar a carteira: ${e.message}`);return null;}
+  }catch(e){
+   setDashboardDataWait('Não foi possível carregar os dados da carteira. Nenhum valor provisório será exibido. Tente novamente.',true);
+   toast(`Não foi possível carregar a carteira: ${e.message}`);
+   return null;
+  }
   finally{
    const loader=document.getElementById('loadingScreen');
    if(loader)loader.classList.add('done');
@@ -2380,7 +2463,7 @@ function renderPositionInsights(rows){
  const winners=countableRows.filter(x=>returnPct(x)>0).length;
  const losers=countableRows.filter(x=>returnPct(x)<0).length;
  const total=countableRows.length,positivePct=total?(winners/total)*100:0;
- const opportunities=rows.filter(x=>Number(x.preco_atual)>0&&Number(x.preco_medio)>0&&Number(x.preco_atual)<Number(x.preco_medio));
+ const opportunities=getOpportunityRows();
  const recentAssets=[];
  const recentByAsset=new Map();
  (state.operacoes||[]).forEach(op=>{
@@ -2415,9 +2498,9 @@ function renderPositionInsights(rows){
    <div class="insight-profit-counts insight-profit-links"><button type="button" class="green" onclick="openProfitPositionsModal('lucro')">${winners} no lucro ▲</button><button type="button" class="red" onclick="openProfitPositionsModal('prejuizo')">${losers} no prejuízo ▼</button></div>
   </article>
   <article class="insight-card">
-   <div class="insight-title">Oportunidades de compra<span class="info-tip" tabindex="0" aria-label="Sobre oportunidades de compra" data-tip="Ativos marcados como “comprar” e com o valor atual abaixo do preço médio.">i</span></div>
+   <div class="insight-title">Oportunidades de compra<span class="info-tip" tabindex="0" aria-label="Sobre oportunidades de compra" data-tip="Ativos com preço atual abaixo do preço médio e participação na carteira abaixo da meta ideal.">i</span></div>
    <div class="insight-main">${opportunities.length} ativos</div>
-   <div class="insight-sub">Preço atual abaixo do preço médio de aquisição</div>
+   <div class="insight-sub">Preço abaixo do médio e participação abaixo da meta ideal</div>
    <button class="insight-action insight-action-animated" type="button" onclick="openOpportunityModal()">Ver ativos →</button>
   </article>`;
 }
@@ -3001,19 +3084,26 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAssetMenu()});
 function getOpportunityRows(){
  const enabled=enabledCategoryKeys(),all=state.itens||[];
  const totalPortfolio=all.reduce((sum,item)=>sum+Number(item.valor_atual||0),0);
- return all.filter(item=>enabled.has(item.tipo)&&Number(item.preco_atual)>0&&Number(item.preco_medio)>0&&Number(item.preco_atual)<Number(item.preco_medio))
-  .sort((a,b)=>(Number(a.preco_atual)/Number(a.preco_medio))-(Number(b.preco_atual)/Number(b.preco_medio)))
+ return all.filter(item=>(enabled.has(item.tipo)||enabled.has(categoryKeyFromName(item.tipo)))
+   &&Number(item.preco_atual)>0&&Number(item.preco_medio)>0
+   &&Number(item.preco_atual)<Number(item.preco_medio))
   .map(item=>{
-   return {...item,portfolioPct:totalPortfolio?Number(item.valor_atual||0)/totalPortfolio*100:0,idealPct:idealPercentForAsset(item)};
-  });
+   const portfolioPct=totalPortfolio>0?Number(item.valor_atual||0)/totalPortfolio*100:0;
+   const idealPct=idealPercentForAsset(item);
+   return {...item,portfolioPct,idealPct};
+  })
+  // Só é oportunidade quando a participação atual está abaixo da meta.
+  // A margem evita exibir diferenças que aparecem iguais com duas casas decimais.
+  .filter(item=>item.idealPct>0&&item.portfolioPct<item.idealPct-0.005)
+  .sort((a,b)=>(Number(a.preco_atual)/Number(a.preco_medio))-(Number(b.preco_atual)/Number(b.preco_medio)));
 }
 let opportunityPage=1;
 function renderOpportunityModal(){
  const rows=getOpportunityRows(),pageSize=5,totalPages=Math.max(1,Math.ceil(rows.length/pageSize));
  opportunityPage=Math.min(Math.max(1,opportunityPage),totalPages);
  document.getElementById('opportunityMessage').textContent=rows.length
-  ?`Você possui ${rows.length} ativo(s) com preço atual abaixo do seu preço médio de aquisição.`
-  :'Nenhum ativo está com preço atual abaixo do preço médio de aquisição.';
+  ?`Você possui ${rows.length} ativo(s) com preço abaixo do médio e participação abaixo da meta ideal.`
+  :'Nenhum ativo atende simultaneamente aos critérios de preço e participação abaixo da meta ideal.';
  const start=(opportunityPage-1)*pageSize,visible=rows.slice(start,start+pageSize);
  document.getElementById('opportunityRows').innerHTML=visible.length?visible.map(item=>`
   <tr>

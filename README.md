@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.6
+# Lonely Wallet v4.2.7
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.6
+- **Versão:** 4.2.7
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -12,6 +12,13 @@
 - **Diretório persistente:** `/DATA/AppData/lonely-wallet/data` no host, montado em `/data` no container
 
 ---
+
+## Atualização 4.2.7
+
+- Os indicadores e valores financeiros ficam ocultos enquanto as cotações e os indexadores atuais são confirmados.
+- A confirmação dos valores atuais é separada da sincronização complementar de proventos e do histórico de rentabilidade, que continuam em segundo plano.
+- A lista de oportunidades de compra exige preço atual abaixo do preço médio e participação atual abaixo da participação ideal.
+- O rodapé e os metadados do Compose identificam a versão 4.2.7.
 
 ## 1. O que é o Lonely Wallet
 

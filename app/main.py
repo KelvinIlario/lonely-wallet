@@ -1780,10 +1780,10 @@ def _save_last_valid_quote(ticker, quote):
         pass
 
 
-def cotacao(ticker):
+def cotacao(ticker, force_refresh=False):
     now = time.time()
     ticker = str(ticker or '').strip().upper()
-    if ticker in CACHE and now - CACHE[ticker][0] < CACHE_TTL:
+    if not force_refresh and ticker in CACHE and now - CACHE[ticker][0] < CACHE_TTL:
         return CACHE[ticker][1]
 
     data = {}
@@ -2957,7 +2957,7 @@ def _prefetch_quotes_parallel(tickers):
                 pass
 
 
-def carteira(use_cached_quotes=False):
+def carteira(use_cached_quotes=False, force_refresh_quotes=False):
     process_due_operations()
     base_date = snapshot_date_for()
     ticker_rows = db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall()
@@ -2970,6 +2970,28 @@ def carteira(use_cached_quotes=False):
         tickers.update(str(row[0]).upper() for row in db().execute(
             'SELECT ticker FROM saldos_importados WHERE data_base=?', (base_date,)
         ).fetchall())
+    if force_refresh_quotes and tickers:
+        quote_types = {}
+        for row in db().execute('SELECT ticker,tipo FROM operacoes ORDER BY id').fetchall():
+            quote_types[str(row['ticker']).upper()] = str(row['tipo'] or '').strip().lower()
+        if base_date:
+            for row in db().execute('SELECT ticker,tipo FROM saldos_importados WHERE data_base=?', (base_date,)).fetchall():
+                quote_types[str(row['ticker']).upper()] = str(row['tipo'] or '').strip().lower()
+        for row in db().execute(
+            "SELECT s.ticker,s.asset_type FROM pluggy_position_snapshots s "
+            "JOIN pluggy_items i ON i.item_id=s.item_id WHERE i.active=1"
+        ).fetchall():
+            quote_types[str(row['ticker']).upper()] = str(row['asset_type'] or '').strip().lower()
+        market_tickers = [ticker for ticker in sorted(tickers) if quote_types.get(ticker) != 'renda_fixa']
+        if market_tickers:
+            with ThreadPoolExecutor(max_workers=4) as quote_pool:
+                quote_jobs = [quote_pool.submit(cotacao, ticker, True) for ticker in market_tickers]
+                for quote_job in as_completed(quote_jobs):
+                    try:
+                        quote_job.result()
+                    except Exception:
+                        # cotacao() preserva a última cotação válida quando uma fonte falha.
+                        pass
     itens=[]; invested=actual=received=0.0
     for ticker in sorted(tickers):
         qty, avg = posicao(ticker)
@@ -2991,7 +3013,7 @@ def carteira(use_cached_quotes=False):
         op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
         kind = (pluggy_position['asset_type'] if pluggy_position else None) or (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
         # Renda fixa usa o indexador e a data de cada aplicação, não cotação de bolsa.
-        quote = {} if kind == 'renda_fixa' else (cotacao_cacheada(ticker) if use_cached_quotes else cotacao(ticker))
+        quote = {} if kind == 'renda_fixa' else (cotacao_cacheada(ticker) if use_cached_quotes else cotacao(ticker, force_refresh=force_refresh_quotes))
         raw_price=quote.get('regularMarketPrice') or quote.get('close') or quote.get('price')
         market_quote_available=raw_price is not None and float(raw_price)>0
         imported_price = float(imported.get('preco_base') or 0) if imported else 0.0
@@ -4598,14 +4620,23 @@ def dashboard():
     # A primeira pintura usa somente dados locais. O navegador solicita a versão
     # completa em segundo plano, após mostrar a carteira e liberar a tela de PIN.
     full_refresh = request.args.get('full') == '1'
+    current_only = request.args.get('current_only') == '1'
     if full_refresh:
-        # Sincronizações e cotações de provedores externos ficam fora do carregamento inicial.
-        portfolio_before_sync = carteira().json
-        sync_status = sync_brapi_proventos(
-            force=False,
-            quote_items=portfolio_before_sync.get('itens', []),
-            active_items=portfolio_before_sync.get('itens', [])
-        )
+        # A primeira etapa força cotações recentes e indexadores, mas não espera
+        # sincronização de proventos nem histórico de preços para liberar os valores.
+        force_quotes = request.args.get('refresh_quotes') != '0'
+        portfolio_before_sync = carteira(force_refresh_quotes=force_quotes).json
+        if current_only:
+            sync_status = PROVENTOS_SYNC_CACHE.get('result') or {
+                'ok': True,
+                'mensagem': 'Valores atuais conferidos. Histórico e sincronização complementar seguem em segundo plano.'
+            }
+        else:
+            sync_status = sync_brapi_proventos(
+                force=False,
+                quote_items=portfolio_before_sync.get('itens', []),
+                active_items=portfolio_before_sync.get('itens', [])
+            )
         portfolio = carteira().json
     else:
         portfolio = carteira(use_cached_quotes=True).json
@@ -4770,7 +4801,7 @@ def dashboard():
         {'ticker':item['ticker'],'data':item['data_pagamento'],'valor_total':item['valor_total'],'tipo_evento':item.get('tipo_evento')}
         for item in detailed if _is_income_event(item.get('tipo_evento'))
     ]
-    if full_refresh:
+    if full_refresh and not current_only:
         performance_history = fetch_portfolio_price_history(ops, imported_rows)
         performance = build_portfolio_performance(
             ops, performance_dividends, history=performance_history,
