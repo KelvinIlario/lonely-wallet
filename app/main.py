@@ -41,15 +41,6 @@ def security_headers(response):
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-    # Política de base compatível com os handlers inline legados e Chart.js CDN.
-    # A remoção de 'unsafe-inline' depende da migração dos 100+ handlers inline.
-    response.headers.setdefault(
-        'Content-Security-Policy',
-        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; "
-        "font-src 'self' data: https:; connect-src 'self' https:; upgrade-insecure-requests"
-    )
     return response
 
 
