@@ -2143,7 +2143,7 @@ def health():
     try:
         db().execute('SELECT 1').fetchone()
         token_db().execute('SELECT 1').fetchone()
-        return jsonify(ok=True, status='healthy', version='4.1.7'), 200
+        return jsonify(ok=True, status='healthy', version='4.1.8'), 200
     except Exception:
         app.logger.exception('Healthcheck failed')
         return jsonify(ok=False, status='unhealthy'), 503

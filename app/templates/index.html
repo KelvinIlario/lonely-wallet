@@ -2025,7 +2025,6 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
-<button class="utility-btn" type="button" title="Segurança da conta" aria-label="Segurança da conta" onclick="manageSecurity()">⌑</button>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
 <button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar tabela da B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
@@ -5364,7 +5363,6 @@ document.addEventListener('click',function(event){
 
 startPluggyAutoSync();</script>
 <script>
-async function manageSecurity(){showPage('seguranca');}
 async function loadSecuritySettings(){
  const status=document.getElementById('securityPinStatus'),desc=document.getElementById('securityPinDescription'),save=document.getElementById('securitySavePin'),disable=document.getElementById('securityDisablePin'),current=document.getElementById('securityCurrentPin');
  try{const r=await fetch('/api/auth/status',{cache:'no-store'});const d=await r.json();const active=!!d.enabled;status.textContent=active?'PIN ativado':'PIN desativado';status.className=active?'badge ok':'badge';desc.textContent=active?'Sua carteira solicita PIN após reinicializações e após 30 minutos sem atividade.':'A carteira está sem bloqueio por PIN. Recomendamos ativar essa proteção.';current.closest('.field').hidden=!active;disable.hidden=!active;save.textContent=active?'Alterar PIN':'Cadastrar PIN';document.getElementById('securityPinMessage').textContent='';}
