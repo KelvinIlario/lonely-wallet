@@ -316,3 +316,16 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 ## v3.3.44
 - Alinhamento central e espaçamento simétrico no card compacto de Rentabilidade.
 - Preço médio ponderado calculado pela soma dos valores de compra dividida pela quantidade de cotas, sem incluir proventos ou taxas operacionais.
+
+
+## v3.3.49
+
+### Paginação de Proventos
+- Atualizado o visual da paginação com botões retangulares separados, bordas discretas e página atual destacada.
+- Padronizado o comportamento visual dos controles de navegação, incluindo os estados desabilitado e hover.
+
+### Consolidação de aportes
+- Compras e Vendas passam a compartilhar a mesma posição horizontal por período.
+- Compras são exibidas acima do eixo zero, em verde, e Vendas abaixo do eixo zero, em rosa.
+- Removido o agrupamento de colunas lado a lado.
+- Mantidos os filtros, detalhamento por clique e totais financeiros, com valores de vendas apresentados como positivos nos resumos e tooltips.

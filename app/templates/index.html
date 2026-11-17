@@ -1659,16 +1659,14 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 .my-provents-toolbar .prov-history-menu .history-option{color:var(--text)!important}
 .my-provents-toolbar .prov-history-menu .history-option:hover,.my-provents-toolbar .prov-history-menu .history-option.active{background:var(--panel)!important}
 .my-provents-toolbar .prov-history-menu .history-search{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important}
-.my-prov-pagination{display:flex;justify-content:center;align-items:center;gap:0;margin:16px auto 6px;padding:0;}
-.my-prov-pagination button{min-width:48px;min-height:34px;padding:7px 13px;border:1px solid var(--line);border-right:0;background:var(--panel);color:var(--text);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
-.my-prov-pagination button:first-child{border-radius:8px 0 0 8px}
-.my-prov-pagination button:last-child{border-right:1px solid var(--line);border-radius:0 8px 8px 0}
-.my-prov-pagination button.active{background:var(--panel2);border-color:var(--blue);color:var(--text)}
+.my-prov-pagination{display:flex;justify-content:center;align-items:center;gap:4px;margin:16px auto 6px;padding:0;}
+.my-prov-pagination button{min-width:34px;min-height:32px;padding:6px 12px;border:1px solid var(--line);border-radius:0;background:var(--panel);color:var(--text);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
+.my-prov-pagination button.active{background:#414650;border-color:#414650;color:#fff}
 .my-prov-pagination button:disabled{opacity:.38;cursor:not-allowed}
-.my-prov-pagination button:not(:disabled):hover{background:var(--panel2)}
-.my-prov-pagination .page-ellipsis{min-width:34px;padding:7px 5px;text-align:center;color:var(--muted);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.my-prov-pagination button:not(:disabled):hover{background:#343a46}
+.my-prov-pagination .page-ellipsis{min-width:24px;padding:6px 4px;text-align:center;color:var(--muted)}
 body.light-theme .my-provents-toolbar .prov-history-menu{box-shadow:0 12px 32px #17203325}
-@media(max-width:650px){.my-prov-pagination{flex-wrap:wrap;gap:3px}.my-prov-pagination button{border:1px solid var(--line);border-radius:6px!important;min-width:40px;padding:7px 10px}}
+@media(max-width:650px){.my-prov-pagination{flex-wrap:wrap;gap:4px}.my-prov-pagination button{border:1px solid var(--line);border-radius:0!important;min-width:34px;padding:6px 10px}}
 @media(max-width:760px){.earnings-history-toolbar{width:100%;display:grid;grid-template-columns:1fr 1fr}.earnings-history-toolbar>#provHistoryTotal{grid-column:1/-1}.prov-history-filter{min-width:0}.prov-history-menu{right:auto;left:0}.prov-history-asset-menu{width:min(230px,calc(100vw - 48px))}}
 
 .prov-chart-period-trigger{width:100%;min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font:inherit;font-size:12px;text-align:left}
@@ -3742,13 +3740,13 @@ function renderLaunchConsolidation(){
  const fmt=k=>granularity==='anual'?k:granularity==='trimestral'?`${k.slice(0,4)} · ${k.slice(5)}`:`${k.slice(5,7)}/${k.slice(0,4)}`;
  const labels=keys.map(fmt),buys=keys.map(k=>Number(buckets[k].compras.toFixed(2))),sells=keys.map(k=>Number(buckets[k].vendas.toFixed(2)));
  chart('launchConsolidationChart','bar',{labels,datasets:[
-  {label:'Compras',data:buys,backgroundColor:'#31b77e',borderRadius:4,grouped:true,barPercentage:.82,categoryPercentage:.72},
-  {label:'Vendas',data:sells,backgroundColor:'#ef6680',borderRadius:4,grouped:true,barPercentage:.82,categoryPercentage:.72}
+  {label:'Compras',data:buys,backgroundColor:'#31b77e',borderRadius:4,grouped:false,barPercentage:.72,categoryPercentage:.72},
+  {label:'Vendas',data:sells.map(value=>-value),backgroundColor:'#ef6680',borderRadius:4,grouped:false,barPercentage:.72,categoryPercentage:.72}
  ]},{onClick:(event,elements)=>{
   if(!elements||!elements.length)return;
   const hit=elements[0],periodKey=keys[hit.index],side=hit.datasetIndex===0?'compra':'venda';
   if(periodKey)openLaunchDistribution(periodKey,side,granularity,valid);
- },plugins:{legend:{labels:{color:'#b8c1ce'}}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
+ },plugins:{legend:{labels:{color:'#b8c1ce'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${brl(Math.abs(Number(ctx.raw)||0))}`}}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(Math.abs(v)).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
  const totalBuys=buys.reduce((a,b)=>a+b,0),totalSells=sells.reduce((a,b)=>a+b,0);
  const totalEl=document.getElementById('launchConsolidationTotal');
  if(totalEl)totalEl.textContent=`Compras ${brl(totalBuys)} · Vendas ${brl(totalSells)} · Líquido ${brl(totalBuys-totalSells)}`;
