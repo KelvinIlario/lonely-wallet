@@ -2198,7 +2198,7 @@ let expandedAssetGroups={};
 let summaryExpandedAssetGroups={};
 let summaryDraggedCategory="";
 let distributionItems=[];const distributionColors=['#4b91f5','#7df0b2','#ffdc65','#ff7181','#54d5ef','#bd9af4','#e8a56b','#6fc4a8','#b9c3d3'];
-let refreshInFlight=null,mutationRefreshTimer=null,refreshAgain=false;
+let refreshInFlight=null,mutationRefreshTimer=null,refreshAgain=false,quoteWarmRefreshScheduled=false;
 function scheduleMutationRefresh(){
  if(mutationRefreshTimer)clearTimeout(mutationRefreshTimer);
  mutationRefreshTimer=setTimeout(()=>{
@@ -2234,6 +2234,12 @@ async function refresh(){
    if(dashboardError)throw dashboardError;
    render();
    applyPositionColumnPrefs();
+   // A primeira resposta usa cache local; uma atualização silenciosa busca preços
+   // atuais após o aquecimento em segundo plano, sem bloquear a abertura.
+   if(!quoteWarmRefreshScheduled){
+    quoteWarmRefreshScheduled=true;
+    setTimeout(()=>refresh(),8000);
+   }
    const updated=document.getElementById('updated');
    if(updated)updated.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
    const irpfPage=document.getElementById('page-irpf');

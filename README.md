@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.6
+# Lonely Wallet v4.2.7
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.6
+- **Versão:** 4.2.7
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -19,9 +19,9 @@ O Lonely Wallet é uma aplicação pessoal para registrar e acompanhar investime
 
 **O Lonely Wallet não é corretora, custodiante, banco, consultoria ou serviço de recomendação de investimentos.** Os valores dependem dos lançamentos cadastrados, dos saldos importados e da disponibilidade, cobertura, frequência e regras dos provedores externos. Confira extratos, notas de corretagem e documentos oficiais antes de tomar decisões ou preparar declarações fiscais.
 
-## 2. Novidades da versão 4.2.6
+## 2. Novidades da versão 4.2.7
 
-Esta versão é uma atualização corretiva baseada na v4.2.5, preservando a interface e os recursos existentes.
+Esta versão é uma atualização corretiva baseada na v4.2.6, preservando a interface e os recursos existentes.
 
 - Migração de permissões de `/data` validada: o marcador só é criado após a conclusão da varredura.
 - Falhas relevantes de acesso interrompem a inicialização com mensagem explícita, em vez de deixar o volume parcialmente migrado.
@@ -32,7 +32,7 @@ Esta versão é uma atualização corretiva baseada na v4.2.5, preservando a int
 - CSP restringe conexões iniciadas pelo navegador à própria origem (`connect-src 'self'`).
 - O cache de cotações é validado como JSON antes de ser incluído no backup.
 - O arquivo de cache é copiado com permissões restritas no diretório de backup.
-- Corrigidas as referências de versão no guia de atualização e no Compose para 4.2.6.
+- Corrigidas as referências de versão no guia de atualização e no Compose para 4.2.7.
 - Documentação reorganizada com procedimentos de instalação, atualização, restauração, segurança e perguntas frequentes.
 
 ### Como interpretar a última cotação salva
@@ -67,12 +67,12 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.2.6`.
+O retorno deve indicar `ok: true` e `version: 4.2.7`.
 
 ### Atualização de uma versão anterior
 
 1. Faça um backup antes de substituir os arquivos.
-2. Extraia o pacote 4.2.6 em uma pasta de projeto.
+2. Extraia o pacote 4.2.7 em uma pasta de projeto.
 3. **Mantenha exatamente o volume de dados existente**. O Compose padrão utiliza:
 
 ```yaml
@@ -221,7 +221,7 @@ Aguarde o período de bloqueio e tente novamente. Se houver outros dispositivos 
 
 ### O healthcheck falha
 
-Consulte `docker compose logs --tail=200 lonely-wallet` e acesse `/api/health`. Verifique se a aplicação iniciou, se os bancos estão acessíveis e se a versão informada é `4.2.6`.
+Consulte `docker compose logs --tail=200 lonely-wallet` e acesse `/api/health`. Verifique se a aplicação iniciou, se os bancos estão acessíveis e se a versão informada é `4.2.7`.
 
 ### A importação B3 apresenta duplicatas ou ignora operações
 
@@ -240,7 +240,7 @@ Sim, desde que mantenha o mesmo diretório persistente e faça backup antes da a
 Não deve conter o banco pessoal do servidor. Os dados persistentes ficam no volume `/data`. Nunca compartilhe um ZIP que tenha sido modificado para incluir bancos ou segredos.
 
 **O backup inclui as últimas cotações?**  
-Na versão 4.2.6, sim. O script inclui `quotes_last_valid.json` quando o arquivo existe e valida seu JSON antes de copiar.
+Na versão 4.2.7, sim. O script inclui `quotes_last_valid.json` quando o arquivo existe e valida seu JSON antes de copiar.
 
 **O backup inclui as chaves de criptografia?**  
 Não por padrão. Use `--include-keys` somente quando necessário e guarde o backup em local criptografado e restrito.
@@ -324,10 +324,10 @@ Ao pedir ajuda, informe:
 
 ---
 
-**Lonely Wallet v4.2.6**  
+**Lonely Wallet v4.2.7**  
 Guia do usuário e referência de operação. Valores e informações são auxiliares e devem ser conferidos com as fontes oficiais aplicáveis.
 
-## Atualização 4.2.6
+## Atualização 4.2.7
 
 Esta versão parte da linha 4.2.2 e mantém os bancos e arquivos persistentes em `/data`.
 

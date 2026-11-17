@@ -27,6 +27,10 @@ PORTFOLIO_HISTORY_CACHE, PORTFOLIO_HISTORY_TTL = {}, 1800
 PORTFOLIO_HISTORY_EMPTY_TTL = 120
 PROVENTOS_SYNC_CACHE = {'time': 0, 'result': None, 'signature': None}
 PROVENTOS_SYNC_TTL = 3600
+QUOTE_WARM_LOCK = threading.Lock()
+QUOTE_WARMING = False
+QUOTE_WARM_LAST_STARTED = 0.0
+QUOTE_WARM_MIN_INTERVAL = 60
 SGS_CACHE = {}
 SGS_CACHE_TTL = 12 * 3600
 BENCHMARK_CACHE = {'time': 0, 'data': {}}
@@ -2943,7 +2947,39 @@ def _prefetch_quotes_parallel(tickers):
                 pass
 
 
-def carteira():
+def _warm_quote_cache_background(tickers):
+    """Atualiza cotações fora do caminho crítico da resposta do dashboard."""
+    global QUOTE_WARMING, QUOTE_WARM_LAST_STARTED
+    symbols = sorted({str(t or "").strip().upper() for t in tickers if t})
+    if not symbols:
+        return
+    now = time.time()
+    with QUOTE_WARM_LOCK:
+        if QUOTE_WARMING or now - QUOTE_WARM_LAST_STARTED < QUOTE_WARM_MIN_INTERVAL:
+            return
+        QUOTE_WARMING = True
+        QUOTE_WARM_LAST_STARTED = now
+
+    def fetch_one(symbol):
+        try:
+            with app.app_context():
+                cotacao(symbol)
+        except Exception:
+            app.logger.exception("Falha ao atualizar cotação em segundo plano: %s", symbol)
+
+    def run():
+        global QUOTE_WARMING
+        try:
+            with ThreadPoolExecutor(max_workers=5) as pool:
+                list(pool.map(fetch_one, symbols))
+        finally:
+            with QUOTE_WARM_LOCK:
+                QUOTE_WARMING = False
+
+    threading.Thread(target=run, name="quote-cache-warm", daemon=True).start()
+
+
+def carteira(use_cached_quotes=False):
     process_due_operations()
     base_date = snapshot_date_for()
     ticker_rows = db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall()
@@ -2977,7 +3013,13 @@ def carteira():
         op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
         kind = (pluggy_position['asset_type'] if pluggy_position else None) or (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
         # Renda fixa usa o indexador e a data de cada aplicação, não cotação de bolsa.
-        quote = {} if kind == 'renda_fixa' else cotacao(ticker)
+        if kind == 'renda_fixa':
+            quote = {}
+        elif use_cached_quotes:
+            cached = CACHE.get(ticker)
+            quote = cached[1] if cached and time.time() - cached[0] < CACHE_TTL else _load_last_valid_quote(ticker)
+        else:
+            quote = cotacao(ticker)
         raw_price=quote.get('regularMarketPrice') or quote.get('close') or quote.get('price')
         market_quote_available=raw_price is not None and float(raw_price)>0
         imported_price = float(imported.get('preco_base') or 0) if imported else 0.0
@@ -4578,7 +4620,7 @@ def dashboard():
     portfolio_before_sync = carteira().json
     sync_status = sync_brapi_proventos(force=False, quote_items=portfolio_before_sync.get('itens', []), active_items=portfolio_before_sync.get('itens', []))
     # Recalcula o resumo para que proventos pagos sincronizados agora já apareçam.
-    portfolio = carteira().json
+    portfolio = carteira(use_cached_quotes=True).json
     ops = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id").fetchall()]
     scheduled = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='agendada' ORDER BY data_execucao,id").fetchall()]
     active_tickers = {str(item.get('ticker') or '').upper() for item in portfolio.get('itens', []) if item.get('ticker')}
@@ -4752,6 +4794,7 @@ def dashboard():
             imported_positions=type_positions, snapshot_date=base_date,
             current_positions=[row for row in portfolio.get('itens', []) if str(row.get('tipo') or '').strip().lower() == asset_type]
         )
+    _warm_quote_cache_background([item.get('ticker') for item in portfolio.get('itens', []) if item.get('tipo') != 'renda_fixa'])
     return jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
         saldos_importados=imported_rows, data_base_snapshot=base_date,
         aportes_mensais=monthly, proventos_mensais=received_by_month,
