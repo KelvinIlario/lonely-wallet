@@ -3008,7 +3008,7 @@ def received_proventos_by_ticker():
 
 
 def _historical_points(raw_points):
-    """Normaliza os pontos da brapi e prefere adjustedClose quando a série inteira o possui."""
+    """Normaliza fechamentos de mercado sem adjustedClose, que pode incorporar proventos."""
     parsed = []
     for point in raw_points or []:
         try:
@@ -3018,23 +3018,20 @@ def _historical_points(raw_points):
             else:
                 price_date = date.fromisoformat(str(raw_date)[:10])
             close = float(point.get('close') or 0)
-            adjusted = point.get('adjustedClose')
-            adjusted = float(adjusted) if adjusted not in (None, '', 0, '0') else None
-            if close > 0 or adjusted:
-                parsed.append({'data': price_date, 'close': close, 'adjusted': adjusted})
+            # adjustedClose pode descontar/reinvestir dividendos e JCP.
+            # A evolução patrimonial solicitada mede somente variação de preço.
+            if close > 0:
+                parsed.append({'data': price_date, 'close': close})
         except (TypeError, ValueError, OSError):
             continue
     parsed.sort(key=lambda item: item['data'])
     if not parsed:
         return []
 
-    # Não mistura preços ajustados e não ajustados na mesma curva.
-    use_adjusted = all(point['adjusted'] and point['adjusted'] > 0 for point in parsed)
     output = []
     for point in parsed:
-        price = point['adjusted'] if use_adjusted else point['close']
-        if price and price > 0:
-            output.append({'data': point['data'], 'preco': price, 'fechamento': point['close'], 'ajustado': use_adjusted})
+        if point['close'] > 0:
+            output.append({'data': point['data'], 'preco': point['close'], 'fechamento': point['close'], 'ajustado': False})
     return output
 
 
@@ -3121,7 +3118,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
     symbols = sorted(asset_types)
     if not symbols:
         return {}
-    cache_key = tuple(sorted((symbol, asset_types[symbol]) for symbol in symbols))
+    cache_key = ('price-only-v2',) + tuple(sorted((symbol, asset_types[symbol]) for symbol in symbols))
     now = time.time()
     cached = PORTFOLIO_HISTORY_CACHE.get(cache_key)
     if cached:
@@ -3240,12 +3237,11 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
     return response_data
 
 def build_portfolio_performance(operations, dividends, history=None, imported_positions=None, snapshot_date=None, current_positions=None):
-    """Calcula a rentabilidade mensal da parcela da carteira com histórico disponível.
+    """Reconstrói patrimônio e ganho/perda de capital por mês usando fechamentos não ajustados.
 
-    Compras e vendas são tratadas como fluxos externos ponderados pelo tempo (Modified Dietz).
-    Quando a fonte fornece adjustedClose, ele já incorpora proventos e eventos societários;
-    nesses ativos, os lançamentos manuais de proventos não são somados novamente.
-    Ativos sem histórico são informados, mas não eliminam a série dos demais.
+    Compras e vendas são fluxos externos (Modified Dietz). Dividendos, JCP e demais
+    proventos não entram na rentabilidade nem no ganho de capital desta série.
+    Ativos sem histórico são sinalizados e não devem receber retorno inventado.
     """
     imported_positions = [dict(row) for row in (imported_positions or [])]
     snapshot_date = _api_date(snapshot_date) if snapshot_date else ''
@@ -3262,7 +3258,6 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
     all_tickers = sorted(symbol for symbol, kind in all_types.items() if kind not in non_market_types)
     history = history if history is not None else fetch_portfolio_price_history(operations, imported_positions)
     normalized = {}
-    adjusted_tickers = set()
     history_sources = {}
     for ticker, points in (history or {}).items():
         if str(ticker).upper() not in all_types:
@@ -3281,15 +3276,40 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
                 'fim': max(point['data'] for point in valid).isoformat(),
                 'ajustado': all(bool(point.get('ajustado')) for point in valid)
             }
-            if all(bool(point.get('ajustado')) for point in valid):
-                adjusted_tickers.add(str(ticker).upper())
 
     # Ativos sem série histórica também entram na composição patrimonial.
     # Para eles, usamos custo médio como referência nos meses passados e a
     # cotação/valor atual do próprio portfólio no mês corrente.
     historical_tickers = set(normalized) | fixed_income_symbols
     available_tickers = set(all_tickers) | fixed_income_symbols
-    missing_symbols = sorted(set(all_tickers) - historical_tickers)
+    # Sinaliza também séries parciais: ter alguma cotação não significa cobrir
+    # todo o período desde a primeira compra/saldo-base até a data atual.
+    first_date_by_ticker = {}
+    for operation in operations:
+        ticker = str(operation.get('ticker') or '').strip().upper()
+        try:
+            operation_date = date.fromisoformat(str(operation.get('data') or '')[:10])
+            if ticker:
+                first_date_by_ticker[ticker] = min(first_date_by_ticker.get(ticker, operation_date), operation_date)
+        except (TypeError, ValueError):
+            pass
+    for position in imported_positions:
+        ticker = str(position.get('ticker') or '').strip().upper()
+        try:
+            position_date = date.fromisoformat(str(position.get('data_base') or snapshot_date or '')[:10])
+            if ticker:
+                first_date_by_ticker[ticker] = min(first_date_by_ticker.get(ticker, position_date), position_date)
+        except (TypeError, ValueError):
+            pass
+    today_for_coverage = datetime.now(TZ).date()
+    missing_set = set(all_tickers) - historical_tickers
+    for ticker in set(all_tickers) & set(normalized):
+        points = normalized[ticker]
+        first_required = first_date_by_ticker.get(ticker)
+        last_point = points[-1]['data'] if points else None
+        if (first_required and points[0]['data'] > first_required) or (last_point and (today_for_coverage - last_point).days > 45):
+            missing_set.add(ticker)
+    missing_symbols = sorted(missing_set)
     empty = {
         'series_12m': [], 'series_total': [], 'rentabilidade_12m': None,
         'rentabilidade_total': None, 'meses_disponiveis': 0,
@@ -3321,15 +3341,8 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         return empty
 
     def adjusted_operation_values(ticker, trade_date, quantity, price, costs):
-        points = normalized.get(ticker) or []
-        factor = 1.0
-        if ticker in adjusted_tickers:
-            reference = next((point for point in reversed(points) if point['data'] <= trade_date), None)
-            if reference and reference.get('fechamento') and reference.get('preco'):
-                candidate = float(reference['preco']) / float(reference['fechamento'])
-                if 0.2 <= candidate <= 5:
-                    factor = candidate
-        return quantity * price * factor, costs * factor
+        # Compras/vendas permanecem nos preços efetivamente registrados.
+        return quantity * price, costs
 
     executed = []
     for op in operations:
@@ -3511,18 +3524,8 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         portfolio_value_cache[cache_key] = total
         return total
 
-    dividend_by_ticker_month = {}
-    for item in dividends:
-        ticker = str(item.get('ticker') or '').upper()
-        # adjustedClose incorpora proventos. Só soma o valor manual para séries sem ajuste.
-        if ticker in adjusted_tickers:
-            continue
-        try:
-            key = (ticker, str(item.get('data') or '')[:7])
-            if key[1] and len(key[1]) == 7:
-                dividend_by_ticker_month[key] = dividend_by_ticker_month.get(key, 0.0) + float(item.get('valor_total') or 0)
-        except (TypeError, ValueError):
-            continue
+    # O argumento dividends é mantido por compatibilidade da chamada, mas
+    # proventos são deliberadamente excluídos da evolução e da rentabilidade.
 
     monthly_returns = []
     portfolio_series = []
@@ -3591,16 +3594,14 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
             signed_flows += flow
             weighted_flows += flow * weight
 
-        income = sum(
-            value for (ticker, month_key), value in dividend_by_ticker_month.items()
-            if month_key == key and ticker in available_tickers
-        )
         denominator = start_value + weighted_flows
         if denominator > 1e-8:
-            month_return = (end_value - start_value - signed_flows + income) / denominator
+            # Retorno exclusivamente de preço: proventos ficam fora deste cálculo.
+            month_result = end_value - start_value - signed_flows
+            month_return = month_result / denominator
             if -0.95 < month_return < 5:
                 monthly_returns.append({'mes': key, 'retorno': month_return,
-                                'resultado': end_value - start_value - signed_flows + income})
+                                'resultado': month_result})
         previous_end = end_date
 
     if not monthly_returns:
@@ -3627,15 +3628,10 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         series_12m.append({'mes': row['mes'], 'valor': round((rolling_factor - 1.0) * 100, 4),
                            'ganho_prejuizo_mes': round(float(row.get('resultado') or 0), 2)})
 
-    cumulative_dividends = 0.0
-    dividend_months = {}
-    for (ticker, month_key), amount in dividend_by_ticker_month.items():
-        dividend_months[month_key] = dividend_months.get(month_key, 0.0) + float(amount or 0)
     roi_total_series = []
     for point in portfolio_series:
-        cumulative_dividends += dividend_months.get(point['mes'], 0.0)
         invested = float(point.get('aplicado') or 0)
-        gain = float(point.get('ganho') or 0) + cumulative_dividends
+        gain = float(point.get('ganho') or 0)
         if invested > 1e-8:
             roi_total_series.append({
                 'mes': point['mes'],
