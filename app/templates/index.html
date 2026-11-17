@@ -3705,13 +3705,6 @@ function renderLaunchDistribution(){
  document.getElementById('launchDistBuyTab')?.classList.toggle('active',side==='compra');
  document.getElementById('launchDistSellTab')?.classList.toggle('active',side==='venda');
  const matches=periodOps.filter(op=>side==='compra'?op.lado!=='venda':op.lado==='venda');
-  const d=new Date(String(op._date||'')+'T12:00:00');
-  let key;
-  if(granularity==='anual')key=String(d.getFullYear());
-  else if(granularity==='trimestral')key=`${d.getFullYear()}-T${Math.floor(d.getMonth()/3)+1}`;
-  else key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  return key===periodKey&&(side==='compra'?op.lado!=='venda':op.lado==='venda');
- });
  const grouped=new Map();
  matches.forEach(op=>{
   const ticker=String(op.ticker||'Ativo sem identificação').trim()||'Ativo sem identificação';
@@ -5363,8 +5356,7 @@ document.addEventListener('click',function(event){
  }
 },true);
 
-startPluggyAutoSync();
-</script>
+startPluggyAutoSync();</script>
 </body></html>
 <style>
 

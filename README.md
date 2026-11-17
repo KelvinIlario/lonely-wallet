@@ -1,6 +1,9 @@
-# Lonely Wallet v3.3.48
+# Lonely Wallet v4.0.1
 
-## v3.3.48
+## v4.0.1
+
+- Corrigido erro de sintaxe JavaScript na rotina de distribuição de lançamentos, que impedia o carregamento do script principal.
+- Preservados os arquivos de dados e a estrutura de persistência existentes.
 
 - Gráfico Consolidação de aportes passa a exibir colunas agrupadas lado a lado para Compras e Vendas em cada período.
 - Compras permanecem em verde e Vendas em rosa, com ambas as séries partindo do zero para facilitar a comparação direta dos valores mensais.
