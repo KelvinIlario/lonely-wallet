@@ -1059,7 +1059,7 @@ def pluggy_sync():
         return json_error('Adicione ao menos um itemId do MeuPluggy antes de sincronizar.')
     payload = request.get_json(silent=True) or {}
     force_sync = bool(payload.get('force'))
-    sync_interval_minutes = 30
+    sync_interval_minutes = _pluggy_sync_interval()
     now = datetime.now(TZ)
     items = []
     skipped_recent = 0

@@ -230,3 +230,12 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - CDI, IPCA, IFIX, IBOV, SMLL, IDIV e IVVB11 ficam disponíveis para ativação individual pelo usuário.
 - A consulta de benchmarks passa a solicitar o histórico completo disponível desde 1990, independentemente da data da primeira operação da carteira.
 - O histórico de cada série continua limitado à disponibilidade real da respectiva fonte; não são criados pontos artificiais.
+
+
+## v3.3.25 · Navegação e gerenciamento Pluggy
+- Removidas as páginas Rentabilidade e Metas do menu e da interface.
+- Gerenciamento da Pluggy concentrado no botão **Gerenciar API**, com credenciais, conexões, sincronização manual, limpeza de dados e acesso ao MeuPluggy dentro de uma janela dedicada.
+- O seletor de sincronização automática foi movido para a janela de gerenciamento.
+- A preferência de intervalo permanece salva em `app_settings` no SQLite e é carregada ao abrir o aplicativo.
+- O intervalo configurado também é respeitado pelo controle de frequência do endpoint de sincronização.
+- A sincronização automática pelo navegador funciona enquanto o aplicativo estiver aberto em uma aba do navegador.
