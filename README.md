@@ -342,3 +342,17 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Adicionados seletores Por Ativo e Por Tipo.
 - Adicionados seletores Compra e Venda, permitindo alternar a operação sem fechar a janela.
 - Total, legenda e gráfico são atualizados conforme os filtros selecionados.
+
+
+## v3.3.51
+
+### Padronização da paginação
+- Aplicado o padrão visual da paginação de Lançamentos por tipo de ativo às demais paginações do sistema.
+- Unificados espaçamento, botões, destaque da página atual, estados desabilitados e indicação da página atual/total.
+- Incluída a indicação "Página X de Y" também na paginação de Proventos.
+
+### Distribuição de aportes
+- Os seletores Compra e Venda passam a ser exibidos somente quando houver operações correspondentes no mês selecionado.
+- Quando houver apenas compras, a opção Venda fica oculta.
+- Quando houver apenas vendas, a opção Compra fica oculta e Venda é selecionada automaticamente.
+- Os seletores Por Ativo e Por Tipo permanecem disponíveis.

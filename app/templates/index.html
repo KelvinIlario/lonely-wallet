@@ -136,10 +136,7 @@
 .opportunity-note{display:flex;gap:12px;align-items:center;background:#171a22;border-radius:9px;padding:14px 16px;margin:4px 0 22px;font-size:12px;color:#d8deea}
 .opportunity-table{min-width:560px}
 .opportunity-table th,.opportunity-table td{padding:11px 9px}
-.opportunity-pagination{display:flex;justify-content:center;gap:4px;margin-top:14px}
-.opportunity-pagination button{border:1px solid var(--line);background:transparent;color:var(--text);padding:6px 12px;cursor:pointer}
-.opportunity-pagination button.active{background:#414650}
-.opportunity-pagination button:disabled{opacity:.45;cursor:default}
+
 @media(max-width:620px){.modal{padding:16px}.formgrid{grid-template-columns:1fr}.operation-form .full{grid-column:1}.opportunity-modal{overflow:auto}.opportunity-table{min-width:560px}}
 .prov-charts{grid-template-columns:minmax(260px,.8fr) minmax(420px,1.5fr)}
 .prov-summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 8px}
@@ -336,12 +333,7 @@ body.light-theme .value-hint::after{box-shadow:0 10px 30px #26344a20}
 .icon-action{border:0;background:transparent;color:var(--muted);font-size:18px;padding:5px 8px}
 .icon-action:hover{color:var(--blue)}
 .icon-action.danger:hover{color:var(--red)}
-.modal-pagination{display:flex;justify-content:center;gap:0;margin:16px auto 6px}
-.modal-pagination button{background:var(--panel);border:1px solid #596578;color:var(--text);padding:7px 13px}
-.modal-pagination button:first-child{border-radius:8px 0 0 8px}
-.modal-pagination button:last-child{border-radius:0 8px 8px 0}
-.modal-pagination button.active{background:#394352}
-.modal-pagination button:disabled{opacity:.35;cursor:not-allowed}
+
 .columns-modal{width:min(565px,96vw);max-height:min(94vh,945px)}
 .columns-modal .modalhead{padding:20px 24px 16px}
 .columns-modal-content{overflow:auto;flex:1;min-height:0}
@@ -567,11 +559,7 @@ body.light-theme .tax-tabs button.active{background:#fff}
 .operation-group-totals b{font-size:12px}
 .operation-group .data th{background:#191d25}
 .operation-group .data th,.operation-group .data td{padding:10px 11px}
-.operation-group-pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:12px 10px;border-top:1px solid var(--line);background:var(--panel)}
-.operation-group-pagination button{min-width:32px;padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11px;cursor:pointer}
-.operation-group-pagination button.active{background:var(--panel2);border-color:var(--blue);color:var(--text);font-weight:750}
-.operation-group-pagination button:disabled{opacity:.35;cursor:not-allowed}
-.operation-group-pagination .page-info{margin-left:8px;color:var(--muted);font-size:11px}
+
 .imported-balance-note{margin:-5px 0 14px;line-height:1.55}
 .imported-balance-class{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#1c2029}
 .imported-balance-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;background:#222731;border-bottom:1px solid var(--line)}
@@ -1659,12 +1647,7 @@ body:not(.light-theme) .segmented button.active{background:#303744;color:var(--t
 .my-provents-toolbar .prov-history-menu .history-option{color:var(--text)!important}
 .my-provents-toolbar .prov-history-menu .history-option:hover,.my-provents-toolbar .prov-history-menu .history-option.active{background:var(--panel)!important}
 .my-provents-toolbar .prov-history-menu .history-search{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important}
-.my-prov-pagination{display:flex;justify-content:center;align-items:center;gap:4px;margin:16px auto 6px;padding:0;}
-.my-prov-pagination button{min-width:34px;min-height:32px;padding:6px 12px;border:1px solid var(--line);border-radius:0;background:var(--panel);color:var(--text);font:inherit;font-size:12px;font-weight:650;cursor:pointer}
-.my-prov-pagination button.active{background:#414650;border-color:#414650;color:#fff}
-.my-prov-pagination button:disabled{opacity:.38;cursor:not-allowed}
-.my-prov-pagination button:not(:disabled):hover{background:#343a46}
-.my-prov-pagination .page-ellipsis{min-width:24px;padding:6px 4px;text-align:center;color:var(--muted)}
+
 body.light-theme .my-provents-toolbar .prov-history-menu{box-shadow:0 12px 32px #17203325}
 @media(max-width:650px){.my-prov-pagination{flex-wrap:wrap;gap:4px}.my-prov-pagination button{border:1px solid var(--line);border-radius:0!important;min-width:34px;padding:6px 10px}}
 @media(max-width:760px){.earnings-history-toolbar{width:100%;display:grid;grid-template-columns:1fr 1fr}.earnings-history-toolbar>#provHistoryTotal{grid-column:1/-1}.prov-history-filter{min-width:0}.prov-history-menu{right:auto;left:0}.prov-history-asset-menu{width:min(230px,calc(100vw - 48px))}}
@@ -1965,7 +1948,16 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 .operation-manager-filters{margin:8px 0 14px}.operation-manager-filters .field select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:11px}.operationManagerBack .modal{overflow:hidden}#operationManagerBack .utility-modal{max-height:calc(100vh - 36px);display:flex;flex-direction:column}#operationManagerBack #operationManagerRows{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:9px}.utility-modal#operationManagerBack .modalactions{flex:none}.modalactions button.danger{background:rgba(239,83,103,.12);border:1px solid rgba(239,83,103,.38);color:var(--red);border-radius:8px;padding:9px 12px;font-weight:600}.modalactions button.danger:hover{background:rgba(239,83,103,.2)}#appConfirmBack{z-index:120}#appConfirmBack .modal{border-color:var(--line);background:var(--panel)}#appConfirmMessage{white-space:pre-line}
 
- .summary-assets-pagination{display:flex;justify-content:center;align-items:center;gap:6px;margin:16px 0 4px;flex-wrap:wrap}.summary-assets-pagination button{border:1px solid var(--line);background:transparent;color:var(--text);padding:7px 12px;border-radius:6px;cursor:pointer}.summary-assets-pagination button.active{border-color:var(--blue);background:var(--panel)}.summary-assets-pagination button:disabled{opacity:.4;cursor:default}.summary-assets-pagination span{font-size:12px;color:var(--muted);margin-left:6px}
+ .summary-assets-pagination,.operation-group-pagination,.my-prov-pagination,.opportunity-pagination,.modal-pagination{display:flex;justify-content:center;align-items:center;gap:4px;flex-wrap:wrap}
+.summary-assets-pagination{margin:16px 0 4px}
+.summary-assets-pagination button,.operation-group-pagination button,.my-prov-pagination button,.opportunity-pagination button,.modal-pagination button{min-width:32px;padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:transparent;color:var(--text);font:inherit;font-size:11px;cursor:pointer}
+.summary-assets-pagination button.active,.operation-group-pagination button.active,.my-prov-pagination button.active,.opportunity-pagination button.active,.modal-pagination button.active{background:var(--panel2);border-color:var(--blue);color:var(--text);font-weight:750}
+.summary-assets-pagination button:disabled,.operation-group-pagination button:disabled,.my-prov-pagination button:disabled,.opportunity-pagination button:disabled,.modal-pagination button:disabled{opacity:.35;cursor:not-allowed}
+.summary-assets-pagination span,.operation-group-pagination .page-info,.my-prov-pagination .page-info,.opportunity-pagination .page-info,.modal-pagination .page-info{margin-left:8px;color:var(--muted);font-size:11px}
+.operation-group-pagination{padding:12px 10px;border-top:1px solid var(--line);background:var(--panel)}
+.my-prov-pagination{margin:16px auto 6px;padding:12px 10px;border-top:1px solid var(--line);background:var(--panel)}
+.opportunity-pagination{margin-top:14px;padding:12px 10px;border-top:1px solid var(--line);background:var(--panel)}
+.modal-pagination{gap:4px;margin:16px auto 6px}
 
 /* v3.3.14 — cabeçalho de renda fixa usa a mesma grade das demais classes */
 .insight-split{grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(20px,4vw,56px);padding:12px 10px;min-height:104px;align-items:center}
@@ -3381,7 +3373,7 @@ function renderProventosDashboard(){
    else if(myProvPage<=4)pages=[1,2,3,4,5,'…',totalPages];
    else if(myProvPage>=totalPages-3)pages=[1,'…',totalPages-4,totalPages-3,totalPages-2,totalPages-1,totalPages];
    else pages=[1,'…',myProvPage-1,myProvPage,myProvPage+1,'…',totalPages];
-   pagination.innerHTML=`<button type="button" ${myProvPage===1?'disabled':''} onclick="setMyProvPage(${myProvPage-1})">Anterior</button>`+pages.map(page=>page==='…'?'<span class="page-ellipsis">…</span>':`<button type="button" class="${myProvPage===page?'active':''}" aria-current="${myProvPage===page?'page':'false'}" onclick="setMyProvPage(${page})">${page}</button>`).join('')+`<button type="button" ${myProvPage===totalPages?'disabled':''} onclick="setMyProvPage(${myProvPage+1})">Próximo</button>`;
+   pagination.innerHTML=`<button type="button" ${myProvPage===1?'disabled':''} onclick="setMyProvPage(${myProvPage-1})">Anterior</button>`+pages.map(page=>page==='…'?'<span class="page-ellipsis">…</span>':`<button type="button" class="${myProvPage===page?'active':''}" aria-current="${myProvPage===page?'page':'false'}" onclick="setMyProvPage(${page})">${page}</button>`).join('')+`<button type="button" ${myProvPage===totalPages?'disabled':''} onclick="setMyProvPage(${myProvPage+1})">Próximo</button><span class="page-info">Página ${myProvPage} de ${totalPages}</span>`;
   }
  }
 }
@@ -3693,8 +3685,26 @@ function setLaunchDistributionSide(side){
  renderLaunchDistribution();
 }
 function renderLaunchDistribution(){
- const {periodKey,granularity,operations,side,mode}=launchDistributionState;
- const matches=operations.filter(op=>{
+ const {periodKey,granularity,operations,mode}=launchDistributionState;
+ const periodOps=operations.filter(op=>{
+  const d=new Date(String(op._date||'')+'T12:00:00');
+  let key;
+  if(granularity==='anual')key=String(d.getFullYear());
+  else if(granularity==='trimestral')key=`${d.getFullYear()}-T${Math.floor(d.getMonth()/3)+1}`;
+  else key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  return key===periodKey;
+ });
+ const hasBuys=periodOps.some(op=>op.lado!=='venda');
+ const hasSells=periodOps.some(op=>op.lado==='venda');
+ const buyTab=document.getElementById('launchDistBuyTab'),sellTab=document.getElementById('launchDistSellTab');
+ if(buyTab)buyTab.style.display=hasBuys?'':'none';
+ if(sellTab)sellTab.style.display=hasSells?'':'none';
+ if(!hasBuys&&hasSells)launchDistributionState.side='venda';
+ if(!hasSells&&hasBuys)launchDistributionState.side='compra';
+ const side=launchDistributionState.side;
+ document.getElementById('launchDistBuyTab')?.classList.toggle('active',side==='compra');
+ document.getElementById('launchDistSellTab')?.classList.toggle('active',side==='venda');
+ const matches=periodOps.filter(op=>side==='compra'?op.lado!=='venda':op.lado==='venda');
   const d=new Date(String(op._date||'')+'T12:00:00');
   let key;
   if(granularity==='anual')key=String(d.getFullYear());
