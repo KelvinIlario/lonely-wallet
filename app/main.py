@@ -21,6 +21,8 @@ TZ = ZoneInfo('America/Sao_Paulo')
 MARKET_OPEN = clock_time(10, 0)
 MARKET_CLOSE = clock_time(17, 55)
 CACHE, CACHE_TTL = {}, 300
+QUOTE_HISTORY_PATH = os.environ.get('QUOTE_HISTORY_PATH', '/data/quotes_last_valid.json')
+QUOTE_HISTORY_LOCK = threading.RLock()
 PORTFOLIO_HISTORY_CACHE, PORTFOLIO_HISTORY_TTL = {}, 1800
 PORTFOLIO_HISTORY_EMPTY_TTL = 120
 PROVENTOS_SYNC_CACHE = {'time': 0, 'result': None, 'signature': None}
@@ -1708,6 +1710,61 @@ def _enrich_quote_fundamentals(ticker, quote):
     return enriched
 
 
+def _load_last_valid_quote(ticker):
+    """Retorna a última cotação válida persistida, identificada como desatualizada."""
+    try:
+        with QUOTE_HISTORY_LOCK:
+            with open(QUOTE_HISTORY_PATH, 'r', encoding='utf-8') as handle:
+                records = json.load(handle)
+        record = records.get(str(ticker or '').upper()) if isinstance(records, dict) else None
+        if not isinstance(record, dict):
+            return {}
+        price = float(record.get('regularMarketPrice') or 0)
+        if not math.isfinite(price) or price <= 0:
+            return {}
+        record = dict(record)
+        record['regularMarketPrice'] = price
+        record['quoteIsStale'] = True
+        record['quoteLastUpdated'] = record.get('quoteLastUpdated')
+        record['quoteProvider'] = record.get('quoteProvider') or 'Última cotação salva'
+        return record
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _save_last_valid_quote(ticker, quote):
+    """Persiste somente preços positivos e finitos, sem sobrescrever cache válido por falha."""
+    try:
+        price = float(quote.get('regularMarketPrice') or quote.get('close') or quote.get('price') or 0)
+        if not math.isfinite(price) or price <= 0:
+            return
+        record = {
+            'regularMarketPrice': price,
+            'quoteProvider': quote.get('quoteProvider') or 'Provedor de cotação',
+            'quoteLastUpdated': datetime.now(TZ).isoformat(timespec='seconds'),
+            'longName': quote.get('longName') or quote.get('shortName') or str(ticker).upper(),
+        }
+        with QUOTE_HISTORY_LOCK:
+            os.makedirs(os.path.dirname(QUOTE_HISTORY_PATH) or '.', exist_ok=True)
+            try:
+                with open(QUOTE_HISTORY_PATH, 'r', encoding='utf-8') as handle:
+                    records = json.load(handle)
+                if not isinstance(records, dict):
+                    records = {}
+            except (OSError, ValueError, json.JSONDecodeError):
+                records = {}
+            records[str(ticker).upper()] = record
+            temporary = QUOTE_HISTORY_PATH + '.tmp'
+            with open(temporary, 'w', encoding='utf-8') as handle:
+                json.dump(records, handle, ensure_ascii=False, separators=(',', ':'))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, QUOTE_HISTORY_PATH)
+    except (OSError, ValueError, TypeError):
+        # Falha no cache persistente não deve interromper a consulta da carteira.
+        pass
+
+
 def cotacao(ticker):
     now = time.time()
     ticker = str(ticker or '').strip().upper()
@@ -1765,6 +1822,13 @@ def cotacao(ticker):
         if fallback:
             data = {**data, **fallback}
 
+    has_valid_price = any(data.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price'))
+    if has_valid_price:
+        data['quoteIsStale'] = False
+        _save_last_valid_quote(ticker, data)
+    else:
+        # Mantém a última cotação realmente observada, mas sempre a identifica como antiga.
+        data = _load_last_valid_quote(ticker)
     data = _enrich_quote_fundamentals(ticker, data)
     CACHE[ticker] = (now, data)
     return data
@@ -2919,7 +2983,7 @@ def carteira():
         has_imported_reference = imported_price > 0
         price=float(raw_price) if market_quote_available else (imported_price if has_imported_reference else avg)
         quote_available=market_quote_available or has_imported_reference
-        quote_source=(quote.get('quoteProvider') or 'brapi') if market_quote_available else ('Posição importada' if has_imported_reference else 'Sem cotação')
+        quote_source=(('Última cotação salva · ' + str(quote.get('quoteProvider') or 'fonte anterior')) if quote.get('quoteIsStale') else (quote.get('quoteProvider') or 'brapi')) if market_quote_available else ('Posição importada' if has_imported_reference else 'Sem cotação')
         dividends = float(received_proventos_by_ticker().get(ticker, 0.0))
         divs = (quote.get('dividendsData') or {}).get('cashDividends',[])[:12]
         annual_div = sum(float(x.get('rate') or 0) for x in divs)
@@ -2943,7 +3007,7 @@ def carteira():
         variation_pct = pluggy_return['variation_pct'] if pluggy_return else (round(variation_value/cost*100,2) if cost else 0)
         total_return_value = pluggy_return['total_value'] if pluggy_return else (variation_value + (0.0 if kind=='renda_fixa' else dividends))
         profitability_pct = pluggy_return['total_pct'] if pluggy_return else (round(total_return_value/cost*100,2) if cost else 0)
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_desatualizada':bool(quote.get('quoteIsStale')),'cotacao_ultima_atualizacao':quote.get('quoteLastUpdated'),'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)

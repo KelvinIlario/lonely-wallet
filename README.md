@@ -1,4 +1,4 @@
-# Lonely Wallet v4.2.0
+# Lonely Wallet v4.2.1
 
 ## Objetivo
 Versão de estabilidade baseada no pacote v4.1.10. Prioriza integridade de operações importadas, saldos-base, cálculo fiscal, validação financeira e segurança das ações destrutivas. Mantém a interface e o volume persistente `/DATA/AppData/lonely-wallet/data:/data`.
@@ -71,3 +71,14 @@ python scripts/backup.py --destination /backup
 ```
 
 Por padrão, o backup não inclui chaves. Se precisar transportar também as credenciais criptografadas, use `--include-keys` somente para um destino criptografado, com controle de acesso restrito e armazenado separadamente dos backups comuns.
+
+
+## v4.2.1 — Histórico de última cotação
+
+- Persiste a última cotação válida por ativo em `/data/quotes_last_valid.json`.
+- Quando os provedores não retornam preço, utiliza a última cotação salva sem apresentá-la como atual.
+- A tabela identifica explicitamente a cotação como desatualizada e mostra a data/hora da última atualização conhecida.
+- O cache é atualizado somente com preços positivos e finitos; falhas de API não sobrescrevem valores válidos.
+- O arquivo fica no volume persistente `/data`, sem alteração dos bancos SQLite.
+
+A última cotação conhecida é apenas uma referência histórica. Não representa preço em tempo real e pode estar significativamente defasada.
