@@ -23,8 +23,113 @@ MARKET_CLOSE = clock_time(17, 55)
 CACHE, CACHE_TTL = {}, 300
 QUOTE_HISTORY_PATH = os.environ.get('QUOTE_HISTORY_PATH', '/data/quotes_last_valid.json')
 QUOTE_HISTORY_LOCK = threading.RLock()
+DASHBOARD_CACHE_PATH = os.environ.get('DASHBOARD_CACHE_PATH', '/data/dashboard_cache.json')
+DASHBOARD_CACHE_LOCK = threading.RLock()
+DASHBOARD_CACHE_FORMAT = 1
 PORTFOLIO_HISTORY_CACHE, PORTFOLIO_HISTORY_TTL = {}, 1800
 PORTFOLIO_HISTORY_EMPTY_TTL = 120
+def _dashboard_cache_signature():
+    """Assinatura estável dos arquivos persistentes que alteram o dashboard.
+
+    Arquivos WAL vazios são ignorados: o SQLite pode removê-los ao encerrar a
+    conexão após um checkpoint sem que o conteúdo lógico do banco tenha mudado.
+    WALs não vazios são incluídos para invalidar o cache após gravações recentes.
+    """
+    records = []
+    for path in (DB_PATH, TOKEN_DB_PATH):
+        try:
+            stat = os.stat(path)
+            records.append((path, int(stat.st_mtime_ns), int(stat.st_size)))
+        except OSError:
+            records.append((path, 0, 0))
+        wal_path = path + '-wal'
+        try:
+            wal_stat = os.stat(wal_path)
+            if wal_stat.st_size > 0:
+                records.append((wal_path, int(wal_stat.st_mtime_ns), int(wal_stat.st_size)))
+        except OSError:
+            pass
+    try:
+        quote_stat = os.stat(QUOTE_HISTORY_PATH)
+        records.append((QUOTE_HISTORY_PATH, int(quote_stat.st_mtime_ns), int(quote_stat.st_size)))
+    except OSError:
+        records.append((QUOTE_HISTORY_PATH, 0, 0))
+    raw = json.dumps(records, separators=(',', ':'), ensure_ascii=True)
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+
+def _checkpoint_dashboard_cache_sources():
+    """Consolida WALs após a leitura completa do dashboard, antes de assinar o cache."""
+    for path in (DB_PATH, TOKEN_DB_PATH):
+        if not os.path.exists(path):
+            continue
+        connection = None
+        try:
+            connection = sqlite3.connect(path, timeout=15)
+            connection.execute('PRAGMA busy_timeout=15000')
+            connection.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
+        except sqlite3.Error as exc:
+            app.logger.warning('Não foi possível consolidar o banco %s antes do cache: %s', path, exc)
+        finally:
+            if connection is not None:
+                connection.close()
+
+
+def _read_dashboard_snapshot():
+    """Carrega apenas um snapshot completo que ainda corresponde aos dados persistidos."""
+    try:
+        with DASHBOARD_CACHE_LOCK:
+            with open(DASHBOARD_CACHE_PATH, 'r', encoding='utf-8') as handle:
+                record = json.load(handle)
+        if not isinstance(record, dict) or record.get('format') != DASHBOARD_CACHE_FORMAT:
+            return None
+        if record.get('signature') != _dashboard_cache_signature():
+            return None
+        payload = record.get('payload')
+        if not isinstance(payload, dict) or not isinstance(payload.get('itens'), list):
+            return None
+        return {
+            'payload': payload,
+            'saved_at': str(record.get('saved_at') or ''),
+            'age_seconds': max(0, int(time.time() - float(record.get('saved_at_epoch') or time.time())))
+        }
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def _write_dashboard_snapshot(payload):
+    """Grava atomicamente o resultado completo; nunca publica dados parciais."""
+    if not isinstance(payload, dict):
+        return ''
+    _checkpoint_dashboard_cache_sources()
+    saved_at = datetime.now(TZ).isoformat(timespec='seconds')
+    record = {
+        'format': DASHBOARD_CACHE_FORMAT,
+        'saved_at': saved_at,
+        'saved_at_epoch': time.time(),
+        'signature': _dashboard_cache_signature(),
+        'payload': payload
+    }
+    directory = os.path.dirname(DASHBOARD_CACHE_PATH) or '.'
+    os.makedirs(directory, exist_ok=True)
+    tmp_path = DASHBOARD_CACHE_PATH + '.tmp'
+    with DASHBOARD_CACHE_LOCK:
+        try:
+            with open(tmp_path, 'w', encoding='utf-8') as handle:
+                json.dump(record, handle, ensure_ascii=False, separators=(',', ':'))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, DASHBOARD_CACHE_PATH)
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+    return saved_at
+
+
 PROVENTOS_SYNC_CACHE = {'time': 0, 'result': None, 'signature': None}
 PROVENTOS_SYNC_TTL = 3600
 SGS_CACHE = {}
@@ -1356,10 +1461,19 @@ def pluggy_remove_item(item_id):
 
 @app.route('/api/pluggy/sync', methods=['POST'])
 def pluggy_sync():
-    all_items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
+    payload = request.get_json(silent=True) or {}
+    requested_item_id = str(payload.get('item_id') or '').strip()
+    if requested_item_id:
+        all_items = db().execute(
+            'SELECT * FROM pluggy_items WHERE active=1 AND item_id=? ORDER BY created_at',
+            (requested_item_id,)
+        ).fetchall()
+        if not all_items:
+            return json_error('Conexão Pluggy não encontrada ou inativa.', 404)
+    else:
+        all_items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
     if not all_items:
         return json_error('Adicione ao menos um itemId do MeuPluggy antes de sincronizar.')
-    payload = request.get_json(silent=True) or {}
     force_sync = bool(payload.get('force'))
     sync_interval_minutes = _pluggy_sync_interval()
     now = datetime.now(TZ)
@@ -4617,10 +4731,20 @@ def api_benchmarks():
 
 @app.route('/api/dashboard')
 def dashboard():
-    # A primeira pintura usa somente dados locais. O navegador solicita a versão
-    # completa em segundo plano, após mostrar a carteira e liberar a tela de PIN.
+    # O último dashboard totalmente processado é reaproveitado no F5 quando
+    # os bancos, credenciais e as últimas cotações persistidas continuam iguais.
     full_refresh = request.args.get('full') == '1'
     current_only = request.args.get('current_only') == '1'
+    if not full_refresh:
+        cached_snapshot = _read_dashboard_snapshot()
+        if cached_snapshot:
+            cached_payload = dict(cached_snapshot['payload'])
+            cached_payload['cache_info'] = {
+                'cached': True,
+                'saved_at': cached_snapshot['saved_at'],
+                'age_seconds': cached_snapshot['age_seconds']
+            }
+            return jsonify(cached_payload)
     if full_refresh:
         # A primeira etapa força cotações recentes e indexadores, mas não espera
         # sincronização de proventos nem histórico de preços para liberar os valores.
@@ -4834,7 +4958,7 @@ def dashboard():
             'fontes_historico': {}
         }
         performance_by_type = {}
-    return jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
+    dashboard_response = jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
         saldos_importados=imported_rows, data_base_snapshot=base_date,
         aportes_mensais=monthly, proventos_mensais=received_by_month,
         metas=[dict(r) for r in db().execute('SELECT * FROM metas').fetchall()],
@@ -4850,6 +4974,17 @@ def dashboard():
             'a_receber':sorted(upcoming,key=lambda x:x['data_pagamento']),
             'distribuicao':type_totals,'sincronizacao':sync_status
         })
+    response_payload = dashboard_response.get_json()
+    if full_refresh:
+        try:
+            saved_at = _write_dashboard_snapshot(response_payload)
+            response_payload['cache_info'] = {'cached': False, 'saved_at': saved_at, 'age_seconds': 0}
+        except (OSError, TypeError, ValueError) as cache_error:
+            app.logger.warning('Não foi possível salvar o cache do dashboard: %s', cache_error)
+            response_payload['cache_info'] = {'cached': False, 'saved_at': '', 'cache_error': True}
+    else:
+        response_payload['cache_info'] = {'cached': False, 'saved_at': ''}
+    return jsonify(response_payload)
 
 
 @app.route('/api/ativos/busca')

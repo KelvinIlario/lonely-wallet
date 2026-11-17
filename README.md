@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.7
+# Lonely Wallet v4.2.8
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.7
+- **Versão:** 4.2.8
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -19,6 +19,22 @@
 - A confirmação dos valores atuais é separada da sincronização complementar de proventos e do histórico de rentabilidade, que continuam em segundo plano.
 - A lista de oportunidades de compra exige preço atual abaixo do preço médio e participação atual abaixo da participação ideal.
 - O rodapé e os metadados do Compose identificam a versão 4.2.7.
+
+## Atualização 4.2.8
+
+- O último dashboard totalmente processado é salvo em `/data/dashboard_cache.json` e reaproveitado no F5 quando bancos, credenciais e arquivo de cotações não mudaram.
+- Na primeira abertura sem cache válido, os valores permanecem ocultos até terminar a geração completa de cotações, indexadores, proventos e histórico.
+- O bloqueio de carregamento cobre toda a janela e impede rolagem enquanto não houver valores confirmados.
+- Cada conexão MeuPluggy recebeu um botão individual de sincronização, além do botão de sincronização geral.
+- O timeout das requisições de sincronização Pluggy foi ampliado e o Gunicorn passou a aceitar solicitações longas.
+
+## Atualização 4.2.8
+
+- O último dashboard totalmente processado é salvo em `/data/dashboard_cache.json` e reaproveitado no F5 quando bancos, credenciais e arquivo de cotações não mudaram.
+- Na primeira abertura sem cache válido, os valores permanecem ocultos até terminar a geração completa de cotações, indexadores, proventos e histórico.
+- O bloqueio de carregamento cobre toda a janela e impede rolagem enquanto não houver valores confirmados.
+- Cada conexão MeuPluggy recebeu um botão individual de sincronização, além do botão de sincronização geral.
+- O tempo limite de sincronização Pluggy foi ampliado no navegador e no servidor.
 
 ## 1. O que é o Lonely Wallet
 
