@@ -11,4 +11,4 @@ COPY VERSION README.md ./
 RUN mkdir -p /data/backups && chmod 755 /srv/scripts/entrypoint.py
 EXPOSE 8080
 ENTRYPOINT ["python", "/srv/scripts/entrypoint.py"]
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "-w", "1", "--threads", "4", "--timeout", "1200", "app.main:app"]
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "-w", "1", "--threads", "4", "app.main:app"]

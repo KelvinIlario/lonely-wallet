@@ -23,113 +23,8 @@ MARKET_CLOSE = clock_time(17, 55)
 CACHE, CACHE_TTL = {}, 300
 QUOTE_HISTORY_PATH = os.environ.get('QUOTE_HISTORY_PATH', '/data/quotes_last_valid.json')
 QUOTE_HISTORY_LOCK = threading.RLock()
-DASHBOARD_CACHE_PATH = os.environ.get('DASHBOARD_CACHE_PATH', '/data/dashboard_cache.json')
-DASHBOARD_CACHE_LOCK = threading.RLock()
-DASHBOARD_CACHE_FORMAT = 1
 PORTFOLIO_HISTORY_CACHE, PORTFOLIO_HISTORY_TTL = {}, 1800
 PORTFOLIO_HISTORY_EMPTY_TTL = 120
-def _dashboard_cache_signature():
-    """Assinatura estável dos arquivos persistentes que alteram o dashboard.
-
-    Arquivos WAL vazios são ignorados: o SQLite pode removê-los ao encerrar a
-    conexão após um checkpoint sem que o conteúdo lógico do banco tenha mudado.
-    WALs não vazios são incluídos para invalidar o cache após gravações recentes.
-    """
-    records = []
-    for path in (DB_PATH, TOKEN_DB_PATH):
-        try:
-            stat = os.stat(path)
-            records.append((path, int(stat.st_mtime_ns), int(stat.st_size)))
-        except OSError:
-            records.append((path, 0, 0))
-        wal_path = path + '-wal'
-        try:
-            wal_stat = os.stat(wal_path)
-            if wal_stat.st_size > 0:
-                records.append((wal_path, int(wal_stat.st_mtime_ns), int(wal_stat.st_size)))
-        except OSError:
-            pass
-    try:
-        quote_stat = os.stat(QUOTE_HISTORY_PATH)
-        records.append((QUOTE_HISTORY_PATH, int(quote_stat.st_mtime_ns), int(quote_stat.st_size)))
-    except OSError:
-        records.append((QUOTE_HISTORY_PATH, 0, 0))
-    raw = json.dumps(records, separators=(',', ':'), ensure_ascii=True)
-    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
-
-
-def _checkpoint_dashboard_cache_sources():
-    """Consolida WALs após a leitura completa do dashboard, antes de assinar o cache."""
-    for path in (DB_PATH, TOKEN_DB_PATH):
-        if not os.path.exists(path):
-            continue
-        connection = None
-        try:
-            connection = sqlite3.connect(path, timeout=15)
-            connection.execute('PRAGMA busy_timeout=15000')
-            connection.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
-        except sqlite3.Error as exc:
-            app.logger.warning('Não foi possível consolidar o banco %s antes do cache: %s', path, exc)
-        finally:
-            if connection is not None:
-                connection.close()
-
-
-def _read_dashboard_snapshot():
-    """Carrega apenas um snapshot completo que ainda corresponde aos dados persistidos."""
-    try:
-        with DASHBOARD_CACHE_LOCK:
-            with open(DASHBOARD_CACHE_PATH, 'r', encoding='utf-8') as handle:
-                record = json.load(handle)
-        if not isinstance(record, dict) or record.get('format') != DASHBOARD_CACHE_FORMAT:
-            return None
-        if record.get('signature') != _dashboard_cache_signature():
-            return None
-        payload = record.get('payload')
-        if not isinstance(payload, dict) or not isinstance(payload.get('itens'), list):
-            return None
-        return {
-            'payload': payload,
-            'saved_at': str(record.get('saved_at') or ''),
-            'age_seconds': max(0, int(time.time() - float(record.get('saved_at_epoch') or time.time())))
-        }
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return None
-
-
-def _write_dashboard_snapshot(payload):
-    """Grava atomicamente o resultado completo; nunca publica dados parciais."""
-    if not isinstance(payload, dict):
-        return ''
-    _checkpoint_dashboard_cache_sources()
-    saved_at = datetime.now(TZ).isoformat(timespec='seconds')
-    record = {
-        'format': DASHBOARD_CACHE_FORMAT,
-        'saved_at': saved_at,
-        'saved_at_epoch': time.time(),
-        'signature': _dashboard_cache_signature(),
-        'payload': payload
-    }
-    directory = os.path.dirname(DASHBOARD_CACHE_PATH) or '.'
-    os.makedirs(directory, exist_ok=True)
-    tmp_path = DASHBOARD_CACHE_PATH + '.tmp'
-    with DASHBOARD_CACHE_LOCK:
-        try:
-            with open(tmp_path, 'w', encoding='utf-8') as handle:
-                json.dump(record, handle, ensure_ascii=False, separators=(',', ':'))
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(tmp_path, 0o600)
-            os.replace(tmp_path, DASHBOARD_CACHE_PATH)
-        finally:
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            except OSError:
-                pass
-    return saved_at
-
-
 PROVENTOS_SYNC_CACHE = {'time': 0, 'result': None, 'signature': None}
 PROVENTOS_SYNC_TTL = 3600
 SGS_CACHE = {}
@@ -146,7 +41,7 @@ def security_headers(response):
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-    response.headers.setdefault('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https:; font-src 'self' data: https:")
+    response.headers.setdefault('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/chart.js@4.4.4/; connect-src 'self'; font-src 'self' data:")
     return response
 
 
@@ -1327,9 +1222,24 @@ def pluggy_settings():
         return json_error('Intervalo inválido.')
     if interval not in (0, 15, 30, 60, 240, 720, 1440):
         return json_error('Escolha um intervalo disponível.')
-    db().execute("INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(interval),))
-    db().commit()
-    return jsonify(ok=True, interval_minutes=interval)
+    con = db()
+    con.execute(
+        "INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (str(interval),)
+    )
+    con.commit()
+    # Retorna o valor relido do SQLite após o commit, confirmando a persistência.
+    saved = con.execute(
+        "SELECT value FROM app_settings WHERE key='pluggy_sync_interval'"
+    ).fetchone()
+    try:
+        persisted_interval = int(saved['value']) if saved else None
+    except (TypeError, ValueError):
+        persisted_interval = None
+    if persisted_interval != interval:
+        return json_error('Não foi possível confirmar a gravação da frequência de sincronização.', 500)
+    return jsonify(ok=True, interval_minutes=persisted_interval)
 
 
 @app.route('/api/pluggy/state', methods=['GET'])
@@ -1461,19 +1371,10 @@ def pluggy_remove_item(item_id):
 
 @app.route('/api/pluggy/sync', methods=['POST'])
 def pluggy_sync():
-    payload = request.get_json(silent=True) or {}
-    requested_item_id = str(payload.get('item_id') or '').strip()
-    if requested_item_id:
-        all_items = db().execute(
-            'SELECT * FROM pluggy_items WHERE active=1 AND item_id=? ORDER BY created_at',
-            (requested_item_id,)
-        ).fetchall()
-        if not all_items:
-            return json_error('Conexão Pluggy não encontrada ou inativa.', 404)
-    else:
-        all_items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
+    all_items = db().execute('SELECT * FROM pluggy_items WHERE active=1 ORDER BY created_at').fetchall()
     if not all_items:
         return json_error('Adicione ao menos um itemId do MeuPluggy antes de sincronizar.')
+    payload = request.get_json(silent=True) or {}
     force_sync = bool(payload.get('force'))
     sync_interval_minutes = _pluggy_sync_interval()
     now = datetime.now(TZ)
@@ -1847,20 +1748,6 @@ def _load_last_valid_quote(ticker):
         return {}
 
 
-def cotacao_cacheada(ticker):
-    """Retorna cotação já disponível localmente, sem iniciar chamadas externas."""
-    symbol = str(ticker or '').strip().upper()
-    cached = CACHE.get(symbol)
-    if cached:
-        cached_at, payload = cached
-        if isinstance(payload, dict) and payload:
-            result = dict(payload)
-            if time.time() - float(cached_at or 0) >= CACHE_TTL:
-                result['quoteIsStale'] = True
-            return result
-    return _load_last_valid_quote(symbol)
-
-
 def _save_last_valid_quote(ticker, quote):
     """Persiste somente preços positivos e finitos, sem sobrescrever cache válido por falha."""
     try:
@@ -1894,10 +1781,10 @@ def _save_last_valid_quote(ticker, quote):
         pass
 
 
-def cotacao(ticker, force_refresh=False):
+def cotacao(ticker):
     now = time.time()
     ticker = str(ticker or '').strip().upper()
-    if not force_refresh and ticker in CACHE and now - CACHE[ticker][0] < CACHE_TTL:
+    if ticker in CACHE and now - CACHE[ticker][0] < CACHE_TTL:
         return CACHE[ticker][1]
 
     data = {}
@@ -3071,7 +2958,7 @@ def _prefetch_quotes_parallel(tickers):
                 pass
 
 
-def carteira(use_cached_quotes=False, force_refresh_quotes=False):
+def carteira():
     process_due_operations()
     base_date = snapshot_date_for()
     ticker_rows = db().execute('SELECT DISTINCT ticker FROM operacoes').fetchall()
@@ -3084,28 +2971,6 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
         tickers.update(str(row[0]).upper() for row in db().execute(
             'SELECT ticker FROM saldos_importados WHERE data_base=?', (base_date,)
         ).fetchall())
-    if force_refresh_quotes and tickers:
-        quote_types = {}
-        for row in db().execute('SELECT ticker,tipo FROM operacoes ORDER BY id').fetchall():
-            quote_types[str(row['ticker']).upper()] = str(row['tipo'] or '').strip().lower()
-        if base_date:
-            for row in db().execute('SELECT ticker,tipo FROM saldos_importados WHERE data_base=?', (base_date,)).fetchall():
-                quote_types[str(row['ticker']).upper()] = str(row['tipo'] or '').strip().lower()
-        for row in db().execute(
-            "SELECT s.ticker,s.asset_type FROM pluggy_position_snapshots s "
-            "JOIN pluggy_items i ON i.item_id=s.item_id WHERE i.active=1"
-        ).fetchall():
-            quote_types[str(row['ticker']).upper()] = str(row['asset_type'] or '').strip().lower()
-        market_tickers = [ticker for ticker in sorted(tickers) if quote_types.get(ticker) != 'renda_fixa']
-        if market_tickers:
-            with ThreadPoolExecutor(max_workers=4) as quote_pool:
-                quote_jobs = [quote_pool.submit(cotacao, ticker, True) for ticker in market_tickers]
-                for quote_job in as_completed(quote_jobs):
-                    try:
-                        quote_job.result()
-                    except Exception:
-                        # cotacao() preserva a última cotação válida quando uma fonte falha.
-                        pass
     itens=[]; invested=actual=received=0.0
     for ticker in sorted(tickers):
         qty, avg = posicao(ticker)
@@ -3127,7 +2992,7 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
         op_kind = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
         kind = (pluggy_position['asset_type'] if pluggy_position else None) or (imported.get('tipo') if imported else None) or (op_kind['tipo'] if op_kind else 'outros')
         # Renda fixa usa o indexador e a data de cada aplicação, não cotação de bolsa.
-        quote = {} if kind == 'renda_fixa' else (cotacao_cacheada(ticker) if use_cached_quotes else cotacao(ticker, force_refresh=force_refresh_quotes))
+        quote = {} if kind == 'renda_fixa' else cotacao(ticker)
         raw_price=quote.get('regularMarketPrice') or quote.get('close') or quote.get('price')
         market_quote_available=raw_price is not None and float(raw_price)>0
         imported_price = float(imported.get('preco_base') or 0) if imported else 0.0
@@ -3143,18 +3008,10 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
         fixed_calc_ok = False
         fixed_calc_warning = None
         if kind == 'renda_fixa':
-            if use_cached_quotes:
-                # Não consulta BCB/SGS na primeira pintura; usa o saldo-base ou
-                # custo médio como referência temporária até a atualização completa.
-                fixed_calc_ok = False
-                fixed_calc_warning = 'Atualização do indexador em segundo plano'
-                quote_available = False
-                quote_source = 'Atualização do indexador'
-            else:
-                cost, value, fixed_calc_ok, fixed_calc_warning = _fixed_income_position_value(ticker, cost, value)
-                price = value / qty if qty > 0 else value
-                quote_available = fixed_calc_ok
-                quote_source = 'Indexador' if fixed_calc_ok else 'Sem indexador'
+            cost, value, fixed_calc_ok, fixed_calc_warning = _fixed_income_position_value(ticker, cost, value)
+            price = value / qty if qty > 0 else value
+            quote_available = fixed_calc_ok
+            quote_source = 'Indexador' if fixed_calc_ok else 'Sem indexador'
         pluggy_return = _pluggy_total_return(ticker, value, dividends) if pluggy_position else None
         invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
         default_name = imported.get('nome') if imported else ticker
@@ -4731,43 +4588,14 @@ def api_benchmarks():
 
 @app.route('/api/dashboard')
 def dashboard():
-    # O último dashboard totalmente processado é reaproveitado no F5 quando
-    # os bancos, credenciais e as últimas cotações persistidas continuam iguais.
-    full_refresh = request.args.get('full') == '1'
-    current_only = request.args.get('current_only') == '1'
-    if not full_refresh:
-        cached_snapshot = _read_dashboard_snapshot()
-        if cached_snapshot:
-            cached_payload = dict(cached_snapshot['payload'])
-            cached_payload['cache_info'] = {
-                'cached': True,
-                'saved_at': cached_snapshot['saved_at'],
-                'age_seconds': cached_snapshot['age_seconds']
-            }
-            return jsonify(cached_payload)
-    if full_refresh:
-        # A primeira etapa força cotações recentes e indexadores, mas não espera
-        # sincronização de proventos nem histórico de preços para liberar os valores.
-        force_quotes = request.args.get('refresh_quotes') != '0'
-        portfolio_before_sync = carteira(force_refresh_quotes=force_quotes).json
-        if current_only:
-            sync_status = PROVENTOS_SYNC_CACHE.get('result') or {
-                'ok': True,
-                'mensagem': 'Valores atuais conferidos. Histórico e sincronização complementar seguem em segundo plano.'
-            }
-        else:
-            sync_status = sync_brapi_proventos(
-                force=False,
-                quote_items=portfolio_before_sync.get('itens', []),
-                active_items=portfolio_before_sync.get('itens', [])
-            )
-        portfolio = carteira().json
-    else:
-        portfolio = carteira(use_cached_quotes=True).json
-        sync_status = PROVENTOS_SYNC_CACHE.get('result') or {
-            'ok': True,
-            'mensagem': 'Atualização de cotações, histórico e proventos será concluída em segundo plano.'
-        }
+    # A abertura do painel não deve aguardar consultas externas de proventos.
+    # A sincronização continua disponível pela ação explícita na página Proventos.
+    # Monta a carteira uma única vez para evitar repetir cálculos e consultas de cotação.
+    portfolio = carteira().json
+    sync_status = {
+        'ok': True,
+        'mensagem': 'Sincronização automática adiada para não bloquear o carregamento. Use Atualizar na página Proventos.'
+    }
     ops = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id").fetchall()]
     scheduled = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='agendada' ORDER BY data_execucao,id").fetchall()]
     active_tickers = {str(item.get('ticker') or '').upper() for item in portfolio.get('itens', []) if item.get('ticker')}
@@ -4853,7 +4681,7 @@ def dashboard():
         kind = str(item.get('tipo') or '').lower()
         if not ticker or kind == 'renda_fixa':
             continue
-        quote = cotacao(ticker) if full_refresh else cotacao_cacheada(ticker)
+        quote = cotacao(ticker)
         events = ((quote.get('dividendsData') or {}).get('cashDividends') or [])
         for event in events:
             payment_date = _api_date(event.get('paymentDate') or event.get('payment_date'))
@@ -4925,40 +4753,19 @@ def dashboard():
         {'ticker':item['ticker'],'data':item['data_pagamento'],'valor_total':item['valor_total'],'tipo_evento':item.get('tipo_evento')}
         for item in detailed if _is_income_event(item.get('tipo_evento'))
     ]
-    if full_refresh and not current_only:
-        performance_history = fetch_portfolio_price_history(ops, imported_rows)
-        performance = build_portfolio_performance(
-            ops, performance_dividends, history=performance_history,
-            imported_positions=imported_rows, snapshot_date=base_date,
-            current_positions=portfolio.get('itens', [])
-        )
-        # Séries por classe permitem que o filtro da página Rentabilidade altere
-        # os indicadores e o gráfico sem misturar classes diferentes.
-        return_types = sorted({str(row.get('tipo') or '').strip().lower() for row in [*ops, *imported_rows] if row.get('tipo')})
-        performance_by_type = {}
-        for asset_type in return_types:
-            type_ops = [row for row in ops if str(row.get('tipo') or '').strip().lower() == asset_type]
-            type_positions = [row for row in imported_rows if str(row.get('tipo') or '').strip().lower() == asset_type]
-            type_tickers = {str(row.get('ticker') or '').upper() for row in [*type_ops, *type_positions]}
-            type_dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in type_tickers]
-            performance_by_type[asset_type] = build_portfolio_performance(
-                type_ops, type_dividends, history=performance_history,
-                imported_positions=type_positions, snapshot_date=base_date,
-                current_positions=[row for row in portfolio.get('itens', []) if str(row.get('tipo') or '').strip().lower() == asset_type]
-            )
-    else:
-        # Estrutura compatível com a interface enquanto o histórico é carregado.
-        performance = {
-            'series_12m': [], 'series_total': [], 'series_roi_total': [],
-            'series_patrimonio': [], 'rentabilidade_12m': None,
-            'rentabilidade_total': None, 'meses_disponiveis': 0,
-            'primeiro_mes': None, 'historico_completo': False,
-            'historico_parcial': True, 'ativos_sem_historico': [],
-            'ativos_com_historico': 0, 'total_ativos': len(portfolio.get('itens', [])),
-            'fontes_historico': {}
-        }
-        performance_by_type = {}
-    dashboard_response = jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
+    # O histórico de preços é carregado em endpoint separado, depois que o Resumo
+    # já foi entregue. Isso impede que APIs históricas bloqueiem a primeira pintura.
+    performance = {
+        'series_12m': [], 'series_total': [], 'series_roi_total': [],
+        'series_patrimonio': [], 'rentabilidade_12m': None,
+        'rentabilidade_total': None, 'meses_disponiveis': 0,
+        'primeiro_mes': None, 'historico_completo': False,
+        'historico_parcial': True, 'ativos_sem_historico': [],
+        'ativos_com_historico': 0, 'total_ativos': len(portfolio.get('itens', [])),
+        'fontes_historico': {}
+    }
+    performance_by_type = {}
+    return jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
         saldos_importados=imported_rows, data_base_snapshot=base_date,
         aportes_mensais=monthly, proventos_mensais=received_by_month,
         metas=[dict(r) for r in db().execute('SELECT * FROM metas').fetchall()],
@@ -4974,17 +4781,48 @@ def dashboard():
             'a_receber':sorted(upcoming,key=lambda x:x['data_pagamento']),
             'distribuicao':type_totals,'sincronizacao':sync_status
         })
-    response_payload = dashboard_response.get_json()
-    if full_refresh:
-        try:
-            saved_at = _write_dashboard_snapshot(response_payload)
-            response_payload['cache_info'] = {'cached': False, 'saved_at': saved_at, 'age_seconds': 0}
-        except (OSError, TypeError, ValueError) as cache_error:
-            app.logger.warning('Não foi possível salvar o cache do dashboard: %s', cache_error)
-            response_payload['cache_info'] = {'cached': False, 'saved_at': '', 'cache_error': True}
-    else:
-        response_payload['cache_info'] = {'cached': False, 'saved_at': ''}
-    return jsonify(response_payload)
+
+
+@app.route('/api/dashboard/historico')
+def dashboard_history():
+    """Carrega séries históricas em segundo plano, sem atrasar o dashboard principal."""
+    ops = [dict(r) for r in db().execute(
+        "SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id"
+    ).fetchall()]
+    base_date = snapshot_date_for()
+    imported_rows = [dict(row) for row in db().execute(
+        'SELECT ticker,tipo,quantidade,preco_medio,preco_base,data_base,nome,origem FROM saldos_importados WHERE data_base=? ORDER BY tipo,nome,ticker',
+        (base_date,)
+    ).fetchall()] if base_date else []
+    active_tickers = {str(row.get('ticker') or '').upper() for row in imported_rows}
+    active_tickers.update(str(row.get('ticker') or '').upper() for row in ops)
+    received_records = _received_proventos_records(active_tickers)
+    performance_dividends = [
+        {'ticker': item['ticker'], 'data': item['data_pagamento'],
+         'valor_total': item['valor_total'], 'tipo_evento': item.get('tipo_evento')}
+        for item in received_records if _is_income_event(item.get('tipo_evento'))
+    ]
+    payload = request.get_json(silent=True) or {}
+    current = payload.get('current_positions') if isinstance(payload.get('current_positions'), list) else []
+    history = fetch_portfolio_price_history(ops, imported_rows)
+    performance = build_portfolio_performance(
+        ops, performance_dividends, history=history, imported_positions=imported_rows,
+        snapshot_date=base_date, current_positions=current
+    )
+    types = sorted({str(row.get('tipo') or '').strip().lower()
+                    for row in [*ops, *imported_rows] if row.get('tipo')})
+    by_type = {}
+    for asset_type in types:
+        type_ops = [row for row in ops if str(row.get('tipo') or '').strip().lower() == asset_type]
+        type_positions = [row for row in imported_rows if str(row.get('tipo') or '').strip().lower() == asset_type]
+        tickers = {str(row.get('ticker') or '').upper() for row in [*type_ops, *type_positions]}
+        dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in tickers]
+        by_type[asset_type] = build_portfolio_performance(
+            type_ops, dividends, history=history, imported_positions=type_positions,
+            snapshot_date=base_date,
+            current_positions=[row for row in current if str(row.get('tipo') or '').strip().lower() == asset_type]
+        )
+    return jsonify(rentabilidade_historica=performance, rentabilidade_por_tipo=by_type)
 
 
 @app.route('/api/ativos/busca')
