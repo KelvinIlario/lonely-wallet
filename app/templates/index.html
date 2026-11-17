@@ -460,11 +460,11 @@ body.light-theme .value-hint::after{box-shadow:0 10px 30px #26344a20}
 .launch-distribution-legend{min-width:0;max-height:390px;overflow:auto}
 .launch-distribution-total{display:flex;justify-content:space-between;align-items:center;padding:8px 4px 14px;border-bottom:1px solid var(--line);margin-bottom:8px}
 .launch-distribution-total strong{color:#00d4a0;font-size:17px}
-.launch-distribution-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:7px 4px;font-size:12px;border-bottom:1px solid var(--line)}
+.launch-distribution-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;min-height:36px;padding:7px 4px;font-size:12px;border-bottom:1px solid var(--line)}
 .launch-distribution-name{display:flex;align-items:center;gap:8px;min-width:0}
 .launch-distribution-name i{width:12px;height:12px;border-radius:3px;flex:none}
 .launch-distribution-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.launch-distribution-row b{white-space:nowrap}
+.launch-distribution-row b{white-space:nowrap;align-self:center;line-height:1.2;text-align:right}
 @media(max-width:700px){.launch-distribution-layout{grid-template-columns:1fr}.launch-distribution-chart{height:280px}.launch-distribution-legend{max-height:240px}}
 
 .goal-dashboard-card{padding:20px;margin-bottom:14px}
@@ -3469,7 +3469,7 @@ function openProvDistributionModal(){
  back.style.display='flex';setProvDistributionMode(provDistributionMode||'ativo');
 }
 function closeProvDistributionModal(){const back=document.getElementById('provDistributionBack');if(back)back.style.display='none';}
-function setProvDistributionMode(mode){provDistributionMode=mode;document.getElementById('provDistAssetTab')?.classList.toggle('active',mode==='ativo');document.getElementById('provDistTypeTab')?.classList.toggle('active',mode==='tipo');const items=provDistributionData[mode]||[];const total=items.reduce((sum,x)=>sum+Number(x.value||0),0);const totalEl=document.getElementById('provDistributionTotal');if(totalEl)totalEl.textContent=brl(total);const list=document.getElementById('provDistributionDetailList');if(list)list.innerHTML=items.length?items.map(item=>`<div class="prov-distribution-item" data-tooltip="${provDistributionStatus==='A receber'?'Previsto':'Recebido'}: ${brl(item.value)}"><span><i style="background:${item.color}"></i>${escapeHTML(item.name)}</span><b>${pct(total?item.value/total*100:0)}</b></div>`).join(''):`<div class="empty">Nenhum provento ${provDistributionStatus==='A receber'?'previsto':'recebido'} no período.</div>`;chart('provDistributionDetailChart','doughnut',{labels:items.map(x=>x.name),datasets:[{data:items.map(x=>x.value),backgroundColor:items.map(x=>x.color),borderWidth:0}]},{cutout:'48%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)}`}}}});}
+function setProvDistributionMode(mode){provDistributionMode=mode;document.getElementById('provDistAssetTab')?.classList.toggle('active',mode==='ativo');document.getElementById('provDistTypeTab')?.classList.toggle('active',mode==='tipo');const items=provDistributionData[mode]||[];const total=items.reduce((sum,x)=>sum+Number(x.value||0),0);const totalEl=document.getElementById('provDistributionTotal');if(totalEl){totalEl.textContent=brl(total);totalEl.style.color=side==='venda'?'#ef6680':'#00d4a0';}const list=document.getElementById('provDistributionDetailList');if(list)list.innerHTML=items.length?items.map(item=>`<div class="prov-distribution-item" data-tooltip="${provDistributionStatus==='A receber'?'Previsto':'Recebido'}: ${brl(item.value)}"><span><i style="background:${item.color}"></i>${escapeHTML(item.name)}</span><b>${pct(total?item.value/total*100:0)}</b></div>`).join(''):`<div class="empty">Nenhum provento ${provDistributionStatus==='A receber'?'previsto':'recebido'} no período.</div>`;chart('provDistributionDetailChart','doughnut',{labels:items.map(x=>x.name),datasets:[{data:items.map(x=>x.value),backgroundColor:items.map(x=>x.color),borderWidth:0}]},{cutout:'48%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)}`}}}});}
 
 const chartPalette=['#78b7f5','#f3d978','#42d49b','#b59af3','#ed8e9c','#74d7d2','#d7a36a','#e8a56b','#a8b7cb','#d98ad0','#f28f5b','#88c1a8','#c49aeb','#d9c46a','#78a8d8','#e57da9','#9cc36b','#b6a0d8'];
 function getAllTypesPortfolioHistory(){
@@ -3707,7 +3707,7 @@ function openLaunchDistribution(periodKey,side,granularity,operations){
  if(totalEl)totalEl.textContent=brl(total);
  const rows=document.getElementById('launchDistributionRows');
  const colors=getDistinctChartColors(entries.length);
- if(rows)rows.innerHTML=entries.length?entries.map(([name,value],i)=>`<div class="launch-distribution-row"><div class="launch-distribution-name"><i style="background:${colors[i]}"></i><span title="${escapeHTML(name)}">${escapeHTML(name)}</span></div><b>${pct(total?value/total*100:0)}</b></div>`).join():'<div class="empty">Não há operações deste tipo no período selecionado.</div>';
+ if(rows)rows.innerHTML=entries.length?entries.map(([name,value],i)=>`<div class="launch-distribution-row"><div class="launch-distribution-name"><i style="background:${colors[i]}"></i><span title="${escapeHTML(name)}">${escapeHTML(name)}</span></div><b style="color:${side==='venda'?'#ef6680':'#00d4a0'}">${pct(total?value/total*100:0)}</b></div>`).join(''):'<div class="empty">Não há operações deste tipo no período selecionado.</div>';
  const back=document.getElementById('launchDistributionBack');
  if(back)back.style.display='flex';
  const canvas=document.getElementById('launchDistributionChart');

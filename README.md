@@ -1,4 +1,4 @@
-# Lonely Wallet v3.3.38
+# Lonely Wallet v3.3.47\n\n## v3.3.47\n\n- Ajustado o alinhamento vertical dos percentuais na legenda do gráfico de distribuição de compras e vendas.\n- Valores e percentuais de vendas destacados em vermelho; compras permanecem em verde.\n- Removidas vírgulas indevidas entre os ativos da legenda.\n- Mantida a representação simultânea de compras e vendas no gráfico de barras, em lados opostos do eixo zero.\n\n# Lonely Wallet v3.3.38
 
 ## v3.3.38
 
