@@ -1,8 +1,8 @@
 #!/usr/local/bin/python
-"""Prepare the persistent data volume once, then drop privileges."""
+"""Migrate /data ownership once, then drop privileges before starting the app."""
+import grp
 import os
 import pwd
-import grp
 import sys
 from pathlib import Path
 
@@ -12,18 +12,22 @@ GROUP = "app"
 MARKER = DATA / ".lonely-wallet-permissions-v1"
 
 
-def _raise_walk_error(error):
+def _walk_error(error):
     raise error
 
 
 def migrate_permissions(data_dir: Path, uid: int, gid: int) -> None:
+    """Change ownership of every entry; never hide permission or traversal errors."""
     failures = []
-    for root, dirs, files in os.walk(data_dir, topdown=True, followlinks=False,
-                                     onerror=_raise_walk_error):
-        for path in [Path(root)] + [Path(root) / name for name in dirs + files]:
+    for root, dirs, files in os.walk(
+        data_dir, topdown=True, followlinks=False, onerror=_walk_error
+    ):
+        entries = [Path(root)] + [Path(root) / name for name in dirs + files]
+        for path in entries:
             try:
                 os.chown(path, uid, gid, follow_symlinks=False)
             except FileNotFoundError:
+                # A transient file removed during traversal no longer needs ownership.
                 continue
             except OSError as exc:
                 failures.append(f"{path}: {exc}")
@@ -33,32 +37,45 @@ def migrate_permissions(data_dir: Path, uid: int, gid: int) -> None:
             break
     if failures:
         raise RuntimeError(
-            "Migração de permissões de /data incompleta. A aplicação não será iniciada. "
-            "Verifique as permissões e a montagem do volume. Erros: " + "; ".join(failures)
+            "Migração de permissões de /data incompleta. "
+            "A aplicação não será iniciada e o marcador não será criado. "
+            "Verifique a montagem e as permissões do volume. "
+            + "; ".join(failures)
         )
 
 
+def _write_marker(uid: int, gid: int) -> None:
+    temp = DATA / (MARKER.name + ".tmp")
+    try:
+        temp.unlink(missing_ok=True)
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write("1\\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chown(temp, uid, gid, follow_symlinks=False)
+        os.replace(temp, MARKER)
+        dir_fd = os.open(DATA, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except Exception:
+        temp.unlink(missing_ok=True)
+        MARKER.unlink(missing_ok=True)
+        raise
+
+
 def main():
+    if len(sys.argv) < 2:
+        raise SystemExit("Comando de inicialização não informado.")
     if os.geteuid() == 0:
         DATA.mkdir(parents=True, exist_ok=True)
         uid = pwd.getpwnam(USER).pw_uid
         gid = grp.getgrnam(GROUP).gr_gid
         if not MARKER.exists():
-            temp_marker = DATA / (MARKER.name + ".tmp")
-            try:
-                temp_marker.unlink(missing_ok=True)
-                migrate_permissions(DATA, uid, gid)
-                fd = os.open(temp_marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    handle.write("1\n")
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.chown(temp_marker, uid, gid)
-                os.replace(temp_marker, MARKER)
-                os.chown(MARKER, uid, gid)
-            except Exception:
-                temp_marker.unlink(missing_ok=True)
-                raise
+            migrate_permissions(DATA, uid, gid)
+            _write_marker(uid, gid)
         os.setgroups([])
         os.setgid(gid)
         os.setuid(uid)

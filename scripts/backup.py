@@ -25,7 +25,6 @@ def backup_database(source: Path, target: Path) -> None:
     finally:
         dst.close()
         src.close()
-    os.chmod(target, 0o600)
 
 
 def main() -> int:
@@ -41,7 +40,6 @@ def main() -> int:
     if final_dir.exists():
         raise FileExistsError(f'O destino do backup já existe: {final_dir}')
     staging = Path(tempfile.mkdtemp(prefix='.lonely-wallet-staging-', dir=backup_root))
-    os.chmod(staging, 0o700)
     try:
         copied = []
         for name in ('ativos.db', 'carteira.db', 'tokens.db'):

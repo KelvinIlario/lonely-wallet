@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.7
+# Lonely Wallet v4.2.8
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.7
+- **Versão:** 4.2.8
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -19,20 +19,14 @@ O Lonely Wallet é uma aplicação pessoal para registrar e acompanhar investime
 
 **O Lonely Wallet não é corretora, custodiante, banco, consultoria ou serviço de recomendação de investimentos.** Os valores dependem dos lançamentos cadastrados, dos saldos importados e da disponibilidade, cobertura, frequência e regras dos provedores externos. Confira extratos, notas de corretagem e documentos oficiais antes de tomar decisões ou preparar declarações fiscais.
 
-## 2. Novidades da versão 4.2.7
+## 2. Novidades da versão 4.2.8
 
-Esta versão é uma atualização corretiva baseada na v4.2.6, preservando a interface e os recursos existentes.
+Esta versão é uma atualização corretiva baseada no pacote v4.2.5 enviado pelo usuário. O código funcional e a interface foram preservados; as alterações concentram-se na migração de permissões, documentação e política CSP.
 
-- Migração de permissões de `/data` validada: o marcador só é criado após a conclusão da varredura.
-- Falhas relevantes de acesso interrompem a inicialização com mensagem explícita, em vez de deixar o volume parcialmente migrado.
-- O backup protege arquivos SQLite com permissões `600` e diretório temporário com permissões `700`.
-- A rota inicial do dashboard passou a usar dados locais persistidos, sem executar sincronizações externas de proventos durante a abertura.
-- Consultas de cotações individuais foram removidas do caminho crítico do dashboard.
-- A sincronização automática da Pluggy deixou de iniciar junto com o primeiro carregamento; pode ser iniciada ao acessar a área APIs.
-- CSP restringe conexões iniciadas pelo navegador à própria origem (`connect-src 'self'`).
+- O backup manual agora inclui `quotes_last_valid.json`, além dos bancos SQLite.
 - O cache de cotações é validado como JSON antes de ser incluído no backup.
 - O arquivo de cache é copiado com permissões restritas no diretório de backup.
-- Corrigidas as referências de versão no guia de atualização e no Compose para 4.2.7.
+- Atualizadas as referências de versão para 4.2.8.
 - Documentação reorganizada com procedimentos de instalação, atualização, restauração, segurança e perguntas frequentes.
 
 ### Como interpretar a última cotação salva
@@ -52,7 +46,7 @@ Quando os provedores não retornam um preço válido, o sistema pode usar a últ
 ### Instalação inicial
 
 1. Extraia o ZIP em uma pasta de projeto no servidor.
-2. Confira o `docker-compose.yml`. O ícone utiliza caminho relativo e não depende de um endereço IP específico.
+2. Confira o `docker-compose.yml`. O ícone do catálogo usa caminho relativo e não depende de endereço IP fixo.
 3. Confirme que a pasta persistente existe: `/DATA/AppData/lonely-wallet/data`.
 4. Na pasta que contém o Compose, execute:
 
@@ -67,12 +61,12 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.2.7`.
+O retorno deve indicar `ok: true` e `version: 4.2.8`.
 
 ### Atualização de uma versão anterior
 
 1. Faça um backup antes de substituir os arquivos.
-2. Extraia o pacote 4.2.7 em uma pasta de projeto.
+2. Extraia o pacote 4.2.8 em uma pasta de projeto.
 3. **Mantenha exatamente o volume de dados existente**. O Compose padrão utiliza:
 
 ```yaml
@@ -195,7 +189,7 @@ Ao registrar uma venda retroativa, a validação considera a posição disponív
 - O bloqueio de tentativas reduz tentativas automatizadas, mas não substitui proteção de rede.
 - Evite expor a porta `8085` diretamente à internet. Para acesso remoto, prefira VPN ou proxy reverso com HTTPS e autenticação apropriada.
 - Não compartilhe tokens de APIs, arquivos `.key`, bancos ou backups sem proteção.
-- O entrypoint inicia como root somente para migrar permissões do volume `/data` na primeira inicialização. Depois, o Gunicorn executa como usuário `app` (UID/GID 10001). Se a migração falhar, a aplicação não inicia e o marcador não é criado.
+- O entrypoint inicia como root somente para migrar permissões do volume `/data` quando o marcador ainda não existe. Após essa etapa, o Gunicorn executa como `app` (UID/GID 10001).
 
 ## 12. Diagnóstico e solução de problemas
 
@@ -221,7 +215,7 @@ Aguarde o período de bloqueio e tente novamente. Se houver outros dispositivos 
 
 ### O healthcheck falha
 
-Consulte `docker compose logs --tail=200 lonely-wallet` e acesse `/api/health`. Verifique se a aplicação iniciou, se os bancos estão acessíveis e se a versão informada é `4.2.7`.
+Consulte `docker compose logs --tail=200 lonely-wallet` e acesse `/api/health`. Verifique se a aplicação iniciou, se os bancos estão acessíveis e se a versão informada é `4.2.5`.
 
 ### A importação B3 apresenta duplicatas ou ignora operações
 
@@ -240,7 +234,7 @@ Sim, desde que mantenha o mesmo diretório persistente e faça backup antes da a
 Não deve conter o banco pessoal do servidor. Os dados persistentes ficam no volume `/data`. Nunca compartilhe um ZIP que tenha sido modificado para incluir bancos ou segredos.
 
 **O backup inclui as últimas cotações?**  
-Na versão 4.2.7, sim. O script inclui `quotes_last_valid.json` quando o arquivo existe e valida seu JSON antes de copiar.
+Na versão 4.2.8, sim. O script inclui `quotes_last_valid.json` quando o arquivo existe e valida seu JSON antes de copiar.
 
 **O backup inclui as chaves de criptografia?**  
 Não por padrão. Use `--include-keys` somente quando necessário e guarde o backup em local criptografado e restrito.
@@ -271,10 +265,9 @@ Execute `docker compose logs --tail=200 lonely-wallet` na pasta do Compose.
 
 ## 14. Limitações conhecidas
 
-- O entrypoint precisa iniciar como root para migrar permissões na primeira inicialização; o processo Gunicorn roda como `app` (UID/GID 10001).
-- O carregamento inicial do dashboard utiliza dados locais; sincronizações externas de proventos são realizadas sob demanda na área Proventos. Isso pode fazer eventos ainda não sincronizados aparecerem somente após atualização manual.
-- Chart.js permanece dependente de CDN; sem conectividade, gráficos podem não carregar.
-- Não há CSP estrita nesta versão porque o frontend ainda utiliza handlers inline.
+- O entrypoint inicia como root somente para migrar permissões do volume `/data`; após essa etapa, o Gunicorn executa como `app` (UID/GID 10001).
+- Chart.js permanece dependente do caminho versionado do jsDelivr; sem conectividade, gráficos podem não carregar.
+- A CSP restringe conexões à própria origem e scripts externos ao caminho versionado do Chart.js 4.4.4. `unsafe-inline` permanece temporariamente habilitado devido aos handlers inline; a migração para listeners JavaScript será gradual.
 - A cobertura de cotações depende dos provedores, tickers, planos e limites de API.
 - Rentabilidade, benchmarks e reconciliação completa de snapshots exigem validação com dados reais representativos.
 - Backups preventivos de exclusões ficam em `/data/backups/pre-exclusao-*`; monitore o espaço e defina retenção.
@@ -324,35 +317,5 @@ Ao pedir ajuda, informe:
 
 ---
 
-**Lonely Wallet v4.2.7**  
-Guia do usuário e referência de operação. Valores e informações são auxiliares e devem ser conferidos com as fontes oficiais aplicáveis.
-
-## Atualização 4.2.7
-
-Esta versão parte da linha 4.2.2 e mantém os bancos e arquivos persistentes em `/data`.
-
-### Segurança do container
-
-- O processo Gunicorn é executado como `app` (UID/GID 10001), sem privilégios de root.
-- O entrypoint inicia como root apenas para migrar a propriedade do volume `/data` uma única vez. O marcador `/data/.lonely-wallet-permissions-v1` evita repetir a varredura em inicializações seguintes.
-- Na primeira inicialização após esta atualização, a migração de propriedade pode levar algum tempo em volumes grandes. Não interrompa o container durante essa etapa.
-- A migração altera a propriedade dos arquivos e diretórios dentro de `/data` para UID/GID 10001. Faça backup antes da atualização.
-
-### Backup
-
-- Os backups são montados em uma pasta temporária no próprio destino.
-- Bancos SQLite são copiados pela API de backup e passam por `PRAGMA integrity_check`.
-- O cache `quotes_last_valid.json` é validado como objeto JSON antes de ser incluído.
-- Um manifesto `manifest.json` registra data, arquivos incluídos e se as chaves foram exportadas.
-- A pasta definitiva só aparece após a conclusão bem-sucedida. Falhas removem a pasta temporária.
-- Para o destino ser gravável pelo usuário `app`, monte uma pasta de backup com permissões para UID/GID 10001.
-- As chaves continuam excluídas por padrão. Use `--include-keys` somente em destino privado e protegido.
-
-### Cabeçalhos de segurança e ícone
-
-- A aplicação envia Content Security Policy com restrições para objetos, origem base, formulários e enquadramento. `unsafe-inline` permanece temporariamente habilitado por causa dos handlers inline existentes; portanto, não é uma CSP estrita.
-- O ícone do catálogo usa caminho relativo `/static/lonely-wallet-logo.png`, sem dependência de IP específico.
-
-### Atualização no ZimaOS
-
-Preserve o mapeamento persistente `/DATA/AppData/lonely-wallet/data:/data`. Faça uma cópia de segurança antes de atualizar. A primeira inicialização pode demorar devido à migração de propriedade do volume.
+**Lonely Wallet v4.2.8**  
+Guia do usuário e referência de operação. Valores e informações são auxiliares e devem ser conferidos com as fontes oficiais aplicáveis.\n
