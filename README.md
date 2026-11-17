@@ -239,3 +239,18 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - A preferência de intervalo permanece salva em `app_settings` no SQLite e é carregada ao abrir o aplicativo.
 - O intervalo configurado também é respeitado pelo controle de frequência do endpoint de sincronização.
 - A sincronização automática pelo navegador funciona enquanto o aplicativo estiver aberto em uma aba do navegador.
+
+
+## v3.3.26 · Organização da Pluggy
+- Credenciais Pluggy voltaram à página principal da API, como antes, com salvar, testar, ativar/desativar e remover.
+- Cadastro de conexões, sincronização manual, lista de conexões e acesso ao MeuPluggy permanecem na página principal.
+- A janela **Gerenciar API** agora contém somente o intervalo de sincronização automática e a exclusão dos dados importados.
+- O seletor de conexão para exclusão permanece dentro da janela, permitindo limpar uma conexão específica ou todas.
+
+
+## v3.3.27 · Personalização visual e navegação
+- Tooltip da coluna **% Ideal** agora usa o mesmo estilo visual do tooltip de variação: fundo, tipografia, borda e sombra consistentes, com cores de destaque positivas/negativas.
+- Ordem das páginas **Lançamentos** e **Distribuição** invertida no menu.
+- Criada a página **Configurações** ao lado de APIs.
+- Adicionado seletor de idioma (Português Brasil, English e Español), com preferência salva localmente.
+- Adicionado catálogo de oito cores de destaque (Oceano, Lavanda, Esmeralda, Âmbar, Rosa, Rubi, Ciano e Dourado), com aplicação imediata e preferência salva.

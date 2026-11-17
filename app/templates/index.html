@@ -2001,6 +2001,24 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 .variation-money-floating-tooltip.is-positive { border-color: var(--green, #12c98b) !important; }
 .variation-money-floating-tooltip.is-negative { border-color: var(--red, #ff5b78) !important; }
 
+
+
+/* v3.3.27 - configurações de idioma e catálogo de cores */
+.settings-panel{margin-bottom:16px}
+.settings-language-field{max-width:360px;padding:16px}
+.settings-language-field select{width:100%;min-height:40px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.theme-catalog{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:12px;padding:16px}
+.theme-swatch{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);text-align:left}
+.theme-swatch span{width:25px;height:25px;flex:0 0 25px;border-radius:50%;background:var(--swatch);box-shadow:0 0 0 3px color-mix(in srgb,var(--swatch) 20%,transparent)}
+.theme-swatch.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.theme-swatch b{font-size:12px;font-weight:600}
+body{--accent:var(--blue)}
+.primary{background:var(--accent,var(--blue))}
+.nav button.active{color:var(--accent,var(--blue))}
+
+
+.settings-panel{min-width:0}
+@media(max-width:600px){.theme-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
@@ -2008,7 +2026,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
 <button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar tabela da B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
-<nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="apis">⌘ APIs</button></nav>
+<nav class="nav" id="nav"><button class="active" data-page="resumo">◉ Resumo</button><button data-page="proventos">▤ Proventos</button><button data-page="patrimonio">◒ Patrimônio</button><button data-page="lancamentos">☷ Lançamentos</button><button data-page="distribuicao">◔ Distribuição</button><button data-page="apis">⌘ APIs</button><button data-page="configuracoes">⚙ Configurações</button></nav>
 <main>
 <section id="page-resumo" class="page"><div class="pagehead summary-pagehead"><div><h1>Visão geral da carteira</h1><div class="sub">Acompanhe seu patrimônio e seus investimentos em um só lugar.</div></div><div class="toolbar"><button class="ghost" onclick="refresh()">↻ Atualizar</button><button class="primary" onclick="openModal('op')">＋ Adicionar lançamento</button></div></div>
 <div class="grid stats summary-investor10" id="stats"></div><div class="grid charts"><div class="panel"><div class="panelhead"><h2>Evolução do patrimônio</h2><div class="toolbar"><select id="aportePeriod" aria-label="Período da evolução" onchange="renderEvolutionChart()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option><option value="all">Todo o período</option></select><select id="aporteType" aria-label="Tipo de ativo da evolução" onchange="renderEvolutionChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div></div><div class="chartbox"><canvas id="aporteChart"></canvas></div><div class="chart-footnote">Patrimônio mensal calculado com histórico de preços dos ativos, incluindo ganhos e prejuízos.</div></div><div class="panel allocation-panel"><div class="panelhead"><h2>Ativos na carteira</h2><select id="allocationType" aria-label="Filtrar ativos na carteira" onchange="renderAllocationChart()"><option value="todos">Todos os tipos</option><option value="acao">Ações</option><option value="fii">FIIs</option><option value="bdr">BDRs</option><option value="etf">ETFs</option><option value="internacional">ETFs Internacionais</option><option value="renda_fixa">Renda Fixa</option><option value="stocks">Stocks</option><option value="reit">REITs</option><option value="cripto">Criptomoedas</option><option value="tesouro">Tesouro Direto</option><option value="fundo">Fundos de Investimentos</option><option value="outros">Outros</option></select></div><div class="allocation-content"><div class="chartbox small"><canvas id="allocationChart"></canvas></div><div id="allocationLegend" class="allocation-legend"></div></div></div></div>
@@ -2088,6 +2106,27 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <div class="panel section"><div class="panelhead"><h2>Lançamentos por tipo de ativo</h2><span class="mini">Cada classe tem sua própria tabela. Os registros originais foram preservados.</span></div><div id="operationGroups" class="operation-groups"></div></div>
 </section>
 <div id="goalRows" class="hidden"></div><section id="page-apis" class="page hidden"><div class="pagehead"><div><h1>Integrações e APIs</h1><div class="sub">Gerencie fontes de cotações, séries históricas, proventos e indicadores econômicos.</div></div><button class="ghost" type="button" onclick="loadAPIProviders()">↻ Atualizar status</button></div><div class="api-security-note"><b>Segurança:</b> os tokens cadastrados são enviados somente ao servidor e armazenados criptografados no volume local do aplicativo. Eles nunca são devolvidos à interface em texto aberto. Não informe senha de corretora, código de autenticação ou credenciais bancárias nesta página. Como o app não possui login próprio, mantenha-o restrito à sua rede confiável ou atrás de uma camada de autenticação; não exponha a porta diretamente à internet.</div><h2 class="api-section-title">Open Finance · Pluggy</h2><div class="mini" style="margin:-3px 0 10px">Integração bancária e de investimentos. Gerencie as credenciais e conexões independentemente das fontes de cotações.</div><div id="apiPluggyGrid" class="api-grid"><div class="panel">Carregando Pluggy…</div></div><h2 class="api-section-title">APIs de mercado e indicadores</h2><div id="apiProvidersGrid" class="api-grid"><div class="panel">Carregando provedores…</div></div></section>
+
+<section id="page-configuracoes" class="page hidden">
+ <div class="pagehead"><div><h1 id="settingsPageTitle">Configurações</h1><div class="sub" id="settingsPageSubtitle">Personalize o idioma e as cores da interface.</div></div></div>
+ <div class="panel section settings-panel">
+  <div class="panelhead"><h2 id="settingsLanguageTitle">Idioma</h2></div>
+  <div class="field settings-language-field"><label for="appLanguage" id="settingsLanguageLabel">Idioma da interface</label><select id="appLanguage" onchange="saveAppLanguage(this.value)"><option value="pt-BR">Português (Brasil)</option><option value="en">English</option><option value="es">Español</option></select></div>
+ </div>
+ <div class="panel section settings-panel">
+  <div class="panelhead"><h2 id="settingsThemeTitle">Cores do tema</h2><span class="mini" id="settingsThemeSubtitle">Escolha uma cor de destaque para a interface.</span></div>
+  <div id="themeCatalog" class="theme-catalog">
+   <button type="button" class="theme-swatch" data-theme-color="blue" onclick="applyAccentTheme('blue')" aria-label="Azul"><span style="--swatch:#78b7f5"></span><b>Oceano</b></button>
+   <button type="button" class="theme-swatch" data-theme-color="purple" onclick="applyAccentTheme('purple')" aria-label="Roxo"><span style="--swatch:#a78bfa"></span><b>Lavanda</b></button>
+   <button type="button" class="theme-swatch" data-theme-color="green" onclick="applyAccentTheme('green')" aria-label="Verde"><span style="--swatch:#34d399"></span><b>Esmeralda</b></button>
+   <button type="button" class="theme-swatch" data-theme-color="orange" onclick="applyAccentTheme('orange')" aria-label="Laranja"><span style="--swatch:#fb923c"></span><b>Âmbar</b></button>
+   <button type="button" class="theme-swatch" data-theme-color="pink" onclick="applyAccentTheme('pink')" aria-label="Rosa"><span style="--swatch:#f472b6"></span><b>Rosa</b></button>
+   <button type="button" class="theme-swatch" data-theme-color="red" onclick="applyAccentTheme('red')" aria-label="Vermelho"><span style="--swatch:#f87171"></span><b>Rubi</b></button>
+   <button type="button" class="theme-swatch" data-theme-color="cyan" onclick="applyAccentTheme('cyan')" aria-label="Ciano"><span style="--swatch:#22d3ee"></span><b>Ciano</b></button>
+   <button type="button" class="theme-swatch" data-theme-color="gold" onclick="applyAccentTheme('gold')" aria-label="Dourado"><span style="--swatch:#d5a85e"></span><b>Dourado</b></button>
+  </div>
+ </div>
+</section>
 
 <div class="footer">Lonely Wallet · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
@@ -2655,7 +2694,7 @@ function showIdealBalanceTooltip(event,el){
   document.body.appendChild(tip);
  }
  const action=el?.dataset?.action||'neutral';
- tip.className='ideal-balance-floating-tooltip '+(action==='sell'?'is-sell':action==='buy'?'is-buy':'is-neutral');
+ tip.className='variation-money-floating-tooltip '+(action==='sell'?'is-negative':action==='buy'?'is-positive':'is-neutral');
  tip.textContent=text;
  tip.style.visibility='hidden';
  tip.style.display='block';
@@ -4093,25 +4132,23 @@ function renderAPIProviders(){
  const card=p=>`<article class="panel api-provider-card ${p.id==='pluggy'?'api-pluggy':''}" data-api-provider="${p.id}">
   <div class="api-provider-head"><div><h3>${escapeHTML(p.name)}</h3><div class="api-provider-category">${escapeHTML(p.category||'')}</div></div><span class="api-status-pill ${p.configured&&p.enabled?'configured':p.configured?'warning':''}">${p.configured?(p.enabled?'Ativa · credenciais cadastradas':'Desativada · token preservado'):'Credenciais não configuradas'}</span></div>
   <div class="api-provider-desc">${escapeHTML(p.description||'')}</div>
-  ${p.id==='pluggy'?`<div class="mini">Open Finance. Gerencie credenciais e conexões bancárias em uma área dedicada.</div>
-  <div class="api-provider-actions"><button class="primary" type="button" onclick="openPluggyManager()">Gerenciar API</button></div>
+  ${p.id==='pluggy'?`<div class="mini">Open Finance. As credenciais são usadas exclusivamente no servidor; a vinculação de bancos e corretoras requer o fluxo Pluggy Connect.</div>
+  <div class="api-credential-fields"><label class="mini" for="apiClientId_pluggy">Client ID<input type="text" id="apiClientId_pluggy" autocomplete="off" placeholder="${p.client_id_masked?'Cadastrado: '+p.client_id_masked:'Client ID da Pluggy'}"></label><label class="mini" for="apiClientSecret_pluggy">Client Secret<input type="password" id="apiClientSecret_pluggy" autocomplete="new-password" placeholder="${p.configured?'Cadastrado: ••••••••':'Client Secret da Pluggy'}"></label></div>
+  <div class="api-provider-actions"><button class="primary" type="button" onclick="savePluggyCredentials()">Salvar credenciais</button><button class="ghost" type="button" onclick="testAPIProvider('pluggy')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('pluggy',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('pluggy')">Remover</button>`:''}</div>
+  <div class="api-status" id="apiStatus_pluggy">${p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
+  <div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4>
+  <div class="mini">No plano pessoal, conecte suas instituições no MeuPluggy e cadastre aqui o itemId de cada conexão.</div>
+  <div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div>
+  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button class="ghost" type="button" onclick="openPluggyManager()">Gerenciar API</button></div>
+  <div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>
   <div id="pluggyManageModal" class="pluggy-manager-overlay" style="display:none" onclick="if(event.target===this)closePluggyManager()">
    <div class="pluggy-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="pluggyManagerTitle">
-    <div class="pluggy-manager-header"><div><h3 id="pluggyManagerTitle">Gerenciar API Pluggy</h3><div class="mini">Credenciais, conexões e sincronização automática</div></div><button class="ghost" type="button" onclick="closePluggyManager()" aria-label="Fechar">✕</button></div>
+    <div class="pluggy-manager-header"><div><h3 id="pluggyManagerTitle">Gerenciar API Pluggy</h3><div class="mini">Sincronização automática e exclusão de dados importados</div></div><button class="ghost" type="button" onclick="closePluggyManager()" aria-label="Fechar">✕</button></div>
     <div class="pluggy-manager-content">
-     <div class="mini">Open Finance. As credenciais são usadas exclusivamente no servidor; a vinculação de bancos e corretoras requer o fluxo Pluggy Connect.</div><div class="api-credential-fields"><label class="mini" for="apiClientId_pluggy">Client ID<input type="text" id="apiClientId_pluggy" autocomplete="off" placeholder="${p.client_id_masked?'Cadastrado: '+p.client_id_masked:'Client ID da Pluggy'}"></label><label class="mini" for="apiClientSecret_pluggy">Client Secret<input type="password" id="apiClientSecret_pluggy" autocomplete="new-password" placeholder="${p.configured?'Cadastrado: ••••••••':'Client Secret da Pluggy'}"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="savePluggyCredentials()">Salvar credenciais</button><button class="ghost" type="button" onclick="testAPIProvider('pluggy')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('pluggy',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('pluggy')">Remover</button>`:''}</div>
-     <div class="divider" style="margin:16px 0"></div><h4>Conexões MeuPluggy</h4>
-     <div class="mini">No plano pessoal, conecte suas instituições no MeuPluggy e cadastre aqui o itemId de cada conexão.</div>
-     <div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div>
-     <div class="api-provider-actions">
-      <button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button>
-      <button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button>
-      <label class="mini pluggy-auto-sync-control">Sincronizar automaticamente<select id="pluggyAutoSyncInterval" aria-label="Intervalo de sincronização automática" onchange="savePluggyAutoSyncInterval(this.value)"><option value="0">Desativado</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60">A cada hora</option><option value="240">A cada 4 horas</option><option value="720">A cada 12 horas</option><option value="1440">Uma vez ao dia</option></select></label>
-      <select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select>
-      <button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button>
-      <a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a>
-     </div>
-     <div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>
+     <label class="mini pluggy-auto-sync-control">Sincronizar automaticamente<select id="pluggyAutoSyncInterval" aria-label="Intervalo de sincronização automática" onchange="savePluggyAutoSyncInterval(this.value)"><option value="0">Desativado</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60">A cada hora</option><option value="240">A cada 4 horas</option><option value="720">A cada 12 horas</option><option value="1440">Uma vez ao dia</option></select></label>
+     <div class="divider" style="margin:16px 0"></div><h4>Excluir dados importados</h4>
+     <div class="mini">Escolha uma conexão específica ou todas as conexões para remover os dados importados.</div>
+     <div class="api-provider-actions"><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:240px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button></div>
     </div>
    </div>
   </div>`:
@@ -4154,7 +4191,8 @@ async function addPluggyItem(){
 function openPluggyManager(){
  const modal=document.getElementById('pluggyManageModal');if(modal)modal.style.display='flex';
  if(typeof loadPluggyState==='function')loadPluggyState();
- startPluggyAutoSync();
+ initializePersonalization();
+startPluggyAutoSync();
 }
 function closePluggyManager(){const modal=document.getElementById('pluggyManageModal');if(modal)modal.style.display='none';}
 let pluggyAutoSyncTimer=null;
@@ -4271,7 +4309,49 @@ async function deleteAPIProvider(id){
  catch(error){toast(error.message);}
 }
 
-function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',lancamentos:'Lançamentos',apis:'APIs'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon.png';}
+function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',lancamentos:'Lançamentos',apis:'APIs',configuracoes:'Configurações'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon.png';}
+
+const ACCENT_THEMES={
+ blue:{accent:'#78b7f5',gold:'#d5a85e'},purple:{accent:'#a78bfa',gold:'#c4b5fd'},
+ green:{accent:'#34d399',gold:'#a3e635'},orange:{accent:'#fb923c',gold:'#fbbf24'},
+ pink:{accent:'#f472b6',gold:'#f9a8d4'},red:{accent:'#f87171',gold:'#fca5a5'},
+ cyan:{accent:'#22d3ee',gold:'#67e8f9'},gold:{accent:'#d5a85e',gold:'#facc15'}
+};
+function applyAccentTheme(name){
+ const theme=ACCENT_THEMES[name]||ACCENT_THEMES.blue;
+ document.documentElement.style.setProperty('--blue',theme.accent);
+ document.documentElement.style.setProperty('--accent',theme.accent);
+ document.documentElement.style.setProperty('--gold',theme.gold);
+ try{localStorage.setItem('lonelyWalletAccentTheme',name)}catch(e){}
+ document.querySelectorAll('.theme-swatch').forEach(b=>b.classList.toggle('active',b.dataset.themeColor===name));
+}
+const APP_TRANSLATIONS={
+ 'pt-BR':{nav:['Resumo','Proventos','Patrimônio','Lançamentos','Distribuição','APIs','Configurações'],settings:'Configurações',subtitle:'Personalize o idioma e as cores da interface.',language:'Idioma',languageLabel:'Idioma da interface',colors:'Cores do tema',colorsSub:'Escolha uma cor de destaque para a interface.',summary:'Visão geral da carteira',earnings:'Proventos',wealth:'Patrimônio',launches:'Lançamentos',distribution:'Distribuição',apis:'Integrações e APIs'},
+ en:{nav:['Overview','Income','Net worth','Transactions','Allocation','APIs','Settings'],settings:'Settings',subtitle:'Customize the interface language and colors.',language:'Language',languageLabel:'Interface language',colors:'Theme colors',colorsSub:'Choose an accent color for the interface.',summary:'Portfolio overview',earnings:'Income',wealth:'Net worth',launches:'Transactions',distribution:'Allocation',apis:'Integrations and APIs'},
+ es:{nav:['Resumen','Dividendos','Patrimonio','Movimientos','Distribución','APIs','Configuración'],settings:'Configuración',subtitle:'Personaliza el idioma y los colores de la interfaz.',language:'Idioma',languageLabel:'Idioma de la interfaz',colors:'Colores del tema',colorsSub:'Elige un color de acento para la interfaz.',summary:'Resumen de la cartera',earnings:'Dividendos',wealth:'Patrimonio',launches:'Movimientos',distribution:'Distribución',apis:'Integraciones y APIs'}
+};
+function saveAppLanguage(lang){
+ try{localStorage.setItem('lonelyWalletLanguage',lang)}catch(e){}
+ applyAppLanguage(lang);
+}
+function applyAppLanguage(lang){
+ const t=APP_TRANSLATIONS[lang]||APP_TRANSLATIONS['pt-BR'];
+ const nav=document.querySelectorAll('#nav button[data-page]');
+ const navPages=['resumo','proventos','patrimonio','lancamentos','distribuicao','apis','configuracoes'];
+ nav.forEach((b,i)=>{if(t.nav[i]){const icon=(b.textContent.match(/^[^\s]+/)||[''])[0];b.textContent=icon+' '+t.nav[i]}});
+ const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value};
+ set('settingsPageTitle',t.settings);set('settingsPageSubtitle',t.subtitle);
+ set('settingsLanguageTitle',t.language);set('settingsLanguageLabel',t.languageLabel);
+ set('settingsThemeTitle',t.colors);set('settingsThemeSubtitle',t.colorsSub);
+ const headings={'page-resumo h1':t.summary,'page-proventos h1':t.earnings,'page-patrimonio h1':t.wealth,'page-lancamentos h1':t.launches,'page-distribuicao h1':t.distribution,'page-apis h1':t.apis};
+ Object.entries(headings).forEach(([selector,value])=>{const el=document.querySelector(selector);if(el)el.textContent=value});
+}
+function initializePersonalization(){
+ let lang='pt-BR',theme='blue';
+ try{lang=localStorage.getItem('lonelyWalletLanguage')||lang;theme=localStorage.getItem('lonelyWalletAccentTheme')||theme}catch(e){}
+ const selector=document.getElementById('appLanguage');if(selector)selector.value=lang;
+ applyAppLanguage(lang);applyAccentTheme(theme);
+}
 function showPage(name){if(!document.getElementById('page-'+name))name='resumo';document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();if(name==='apis')loadAPIProviders();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
 function renderSpecificFields(type){
  const host=document.getElementById('assetSpecificFields'); if(!host)return;
