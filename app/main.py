@@ -1,4 +1,5 @@
 import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil, secrets, hmac, math
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
@@ -9,7 +10,7 @@ from openpyxl import load_workbook, Workbook
 from flask import Flask, g, jsonify, render_template, request, send_file, session, redirect, url_for
 
 app = Flask(__name__)
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '0').lower() in ('1', 'true', 'yes'), PERMANENT_SESSION_LIFETIME=timedelta(minutes=30))
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '0').lower() in ('1', 'true', 'yes'), PERMANENT_SESSION_LIFETIME=timedelta(minutes=30), MAX_CONTENT_LENGTH=16 * 1024 * 1024)
 # Dados da carteira ficam em um banco próprio; segredos de APIs ficam em tokens.db.
 DB_PATH = os.environ.get('ASSETS_DB_PATH', '/data/ativos.db')
 LEGACY_DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
@@ -28,6 +29,17 @@ SGS_CACHE = {}
 SGS_CACHE_TTL = 12 * 3600
 BENCHMARK_CACHE = {'time': 0, 'data': {}}
 BENCHMARK_CACHE_TTL = 6 * 3600
+
+
+
+
+@app.after_request
+def security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    return response
 
 
 def db():
@@ -74,6 +86,9 @@ def prepare_database_files():
     )''')
     auth_cols = {row[1] for row in con.execute('PRAGMA table_info(app_auth)').fetchall()}
     if 'enabled' not in auth_cols: con.execute('ALTER TABLE app_auth ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1')
+    con.execute('''CREATE TABLE IF NOT EXISTS auth_attempts (
+        client_ip TEXT PRIMARY KEY, failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+    )''')
     con.execute('''CREATE TABLE IF NOT EXISTS api_credentials (
         provider TEXT PRIMARY KEY, token_encrypted TEXT NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
@@ -438,22 +453,49 @@ def pin_digest(pin, salt):
     return hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), bytes.fromhex(salt), 310000).hex()
 
 
-def _auth_failure(con, row, now=None):
+def _auth_client_ip():
+    # Usa o IP observado pelo Flask; não confia em X-Forwarded-For sem proxy confiável configurado.
+    return str(request.remote_addr or 'unknown')[:64]
+
+
+def _auth_failure(con, row=None, now=None):
     now = time.time() if now is None else now
-    attempts = int(row['failed_attempts'] or 0) + 1
+    ip = _auth_client_ip()
+    current = con.execute('SELECT failed_attempts,updated_at FROM auth_attempts WHERE client_ip=?', (ip,)).fetchone()
+    attempts = 0
+    if current:
+        try:
+            age = (datetime.now(TZ) - datetime.fromisoformat(str(current['updated_at']))).total_seconds()
+        except Exception:
+            age = 10**9
+        attempts = int(current['failed_attempts'] or 0) if age <= 900 else 0
+    attempts += 1
     locked_until = now + 300 if attempts >= 5 else 0
-    con.execute('UPDATE app_auth SET failed_attempts=?,locked_until=? WHERE id=1',
-                (0 if locked_until else attempts, locked_until))
+    con.execute("""INSERT INTO auth_attempts(client_ip,failed_attempts,locked_until,updated_at) VALUES(?,?,?,?)
+        ON CONFLICT(client_ip) DO UPDATE SET failed_attempts=excluded.failed_attempts,
+        locked_until=excluded.locked_until,updated_at=excluded.updated_at""",
+        (ip, 0 if locked_until else attempts, locked_until, datetime.now(TZ).isoformat()))
+    # Limpa o contador legado global para que uma origem não bloqueie todos os usuários.
+    con.execute('UPDATE app_auth SET failed_attempts=0,locked_until=0 WHERE id=1')
     con.commit()
     return locked_until
 
 
-def _auth_lock_response(row, now=None):
+def _auth_lock_response(row=None, now=None, con=None):
     now = time.time() if now is None else now
-    if float(row['locked_until'] or 0) > now:
-        wait = max(1, int(float(row['locked_until']) - now))
-        return jsonify(ok=False, error=f'Muitas tentativas. Aguarde {wait} segundos.'), 429
+    if con is not None:
+        state = con.execute('SELECT locked_until FROM auth_attempts WHERE client_ip=?', (_auth_client_ip(),)).fetchone()
+        locked_until = float(state[0] or 0) if state else 0
+    else:
+        locked_until = 0
+    if locked_until > now:
+        wait = max(1, int(locked_until - now))
+        return jsonify(ok=False, error=f'Muitas tentativas deste endereço. Aguarde {wait} segundos.'), 429
     return None
+
+
+def _auth_reset_client(con):
+    con.execute('DELETE FROM auth_attempts WHERE client_ip=?', (_auth_client_ip(),))
 
 
 def _origin_is_same_host():
@@ -545,7 +587,7 @@ def auth_disable():
         con.execute('BEGIN IMMEDIATE')
         row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
         if row and row['pin_hash']:
-            lock_response = _auth_lock_response(row)
+            lock_response = _auth_lock_response(row, con=con)
             if lock_response:
                 return lock_response
             current = str(payload.get('pin') or '')
@@ -555,6 +597,7 @@ def auth_disable():
                 if locked_until:
                     return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
                 return jsonify(ok=False, error='PIN incorreto. Não foi possível desativar a proteção.'), 401
+            _auth_reset_client(con)
             con.execute('UPDATE app_auth SET enabled=0,failed_attempts=0,locked_until=0,updated_at=? WHERE id=1',
                         (datetime.now(TZ).isoformat(),))
             con.commit()
@@ -581,7 +624,7 @@ def auth_login():
         if not row:
             return jsonify(ok=False, setup_required=True, error='Configure seu PIN de acesso.'), 409
         now = time.time()
-        lock_response = _auth_lock_response(row, now)
+        lock_response = _auth_lock_response(row, now, con)
         if lock_response:
             return lock_response
         candidate = pin_digest(pin, row['pin_salt']) if re.fullmatch(r'\d{6,12}', pin) else ''
@@ -590,6 +633,7 @@ def auth_login():
             if lock_until:
                 return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
             return jsonify(ok=False, error='PIN incorreto.'), 401
+        _auth_reset_client(con)
         con.execute('UPDATE app_auth SET failed_attempts=0,locked_until=0 WHERE id=1')
         con.commit()
     finally:
@@ -614,7 +658,7 @@ def auth_change_pin():
         row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
         if not row:
             return jsonify(ok=False, error='PIN não configurado.'), 409
-        lock_response = _auth_lock_response(row)
+        lock_response = _auth_lock_response(row, con=con)
         if lock_response:
             return lock_response
         candidate = pin_digest(current, row['pin_salt']) if re.fullmatch(r'\d{6,12}', current) else ''
@@ -625,6 +669,7 @@ def auth_change_pin():
             return jsonify(ok=False, error='PIN atual incorreto.'), 401
         if not re.fullmatch(r'\d{6,12}', new_pin):
             return jsonify(ok=False, error='O novo PIN deve ter de 6 a 12 números.'), 400
+        _auth_reset_client(con)
         salt = secrets.token_bytes(16).hex()
         con.execute('UPDATE app_auth SET pin_salt=?,pin_hash=?,failed_attempts=0,locked_until=0,updated_at=? WHERE id=1',
                     (salt, pin_digest(new_pin, salt), datetime.now(TZ).isoformat()))
@@ -1517,7 +1562,7 @@ def api_integrations_test(provider):
                 raise ValueError(data.get('message') or 'A Pluggy não retornou uma API Key.')
             return jsonify({'ok':True,'message':'Credenciais autenticadas. API Key válida; o fluxo pessoal MeuPluggy usa itemIds cadastrados manualmente.'})
         except (requests.RequestException, ValueError) as exc:
-            return jsonify({'ok':False,'message':str(exc)[:240] or 'Falha ao autenticar na Pluggy.'}), 400
+            return jsonify({'ok':False,'message':'Não foi possível autenticar na Pluggy. Confira as credenciais e tente novamente.'}), 400
     token = _get_api_token(provider)
     if not token:
         return jsonify({'ok':False,'message':'Cadastre um token antes de testar.'}), 400
@@ -1543,7 +1588,7 @@ def api_integrations_test(provider):
             raise ValueError('A chave ainda não liberou o histórico completo. Verifique a chave e tente novamente.')
         return jsonify({'ok':True,'message':'Conexão autenticada. A cobertura de cada ticker e endpoint ainda depende do plano e do provedor.'})
     except (requests.RequestException, ValueError) as exc:
-        message = str(exc)[:240] or 'Não foi possível validar a integração.'
+        message = 'Não foi possível validar a integração. Confira as credenciais, a disponibilidade do provedor e tente novamente.'
         return jsonify({'ok':False,'message':message}), 400
 
 
@@ -2003,6 +2048,25 @@ def imported_balance(ticker, reference_date=None):
     return dict(row) if row else None
 
 
+def asset_type_for_ticker(ticker, reference_date=None):
+    key = str(ticker or '').strip().upper()
+    row = db().execute('SELECT tipo FROM operacoes WHERE upper(ticker)=? ORDER BY data,id LIMIT 1', (key,)).fetchone()
+    if row:
+        return str(row['tipo'] or '').lower()
+    balance = imported_balance(key, reference_date)
+    if balance and balance.get('tipo'):
+        return str(balance['tipo']).lower()
+    row = db().execute('SELECT asset_type FROM pluggy_position_snapshots WHERE upper(ticker)=? ORDER BY snapshot_at DESC LIMIT 1', (key,)).fetchone()
+    if row and row['asset_type']:
+        return str(row['asset_type']).lower()
+    row = db().execute('SELECT investment_type,subtype FROM pluggy_investments WHERE upper(code)=? OR upper(name)=? ORDER BY updated_at DESC LIMIT 1', (key, key)).fetchone()
+    if row:
+        raw = str(row['subtype'] or row['investment_type'] or '').lower()
+        mapping = {'stock':'acao','equity':'acao','fii':'fii','reit':'reit','etf':'etf','fixed_income':'renda_fixa','bond':'renda_fixa','treasury':'tesouro','crypto':'cripto'}
+        return mapping.get(raw, raw if raw in ('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros') else 'outros')
+    return None
+
+
 def posicao(ticker, as_of=None):
     """Calcula posição usando o último saldo-base e apenas operações posteriores.
 
@@ -2085,13 +2149,19 @@ def process_due_operations():
 def scheduler_loop():
     # Promove operações agendadas automaticamente quando chega o horário previsto.
     while True:
+        con = None
         try:
             now=datetime.now(TZ).isoformat(timespec='minutes')
             con=sqlite3.connect(DB_PATH,timeout=10)
             con.execute("UPDATE operacoes SET status='executada', data=substr(data_execucao,1,10) WHERE status='agendada' AND data_execucao<=?",(now,))
-            con.commit(); con.close()
+            con.commit()
         except Exception:
-            pass
+            if con is not None:
+                try: con.rollback()
+                except Exception: pass
+        finally:
+            if con is not None:
+                con.close()
         time.sleep(30)
 
 
@@ -2109,12 +2179,14 @@ def valid_operation(data):
         if not ticker or len(ticker)>80 or tipo not in allowed_types: raise ValueError()
         if lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
         if lado=='venda':
-            existing_type=db().execute("SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1",(ticker,)).fetchone()
-            if not existing_type or str(existing_type['tipo']).lower()!=tipo:
+            existing_type=asset_type_for_ticker(ticker, dt)
+            if not existing_type or existing_type!=tipo:
                 return None,'O ativo selecionado não pertence à categoria informada. Escolha o ativo dentro da categoria correta.'
-            available,_=posicao(ticker)
-            reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada'",(ticker,)).fetchone()[0])
-            if qtd>available-reserved+1e-8: return None,'A quantidade vendida é maior que a posição disponível, considerando vendas já agendadas.'
+            available,_=posicao(ticker, as_of=dt)
+            reserved=0.0
+            if dt >= datetime.now(TZ).date().isoformat():
+                reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada'",(ticker,)).fetchone()[0])
+            if qtd>available-reserved+1e-8: return None,'A quantidade vendida é maior que a posição disponível na data da operação, considerando vendas já agendadas.'
         raw=str(data.get('data_hora') or (dt+'T10:00'))
         requested=datetime.fromisoformat(raw)
         if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
@@ -2143,7 +2215,7 @@ def health():
     try:
         db().execute('SELECT 1').fetchone()
         token_db().execute('SELECT 1').fetchone()
-        return jsonify(ok=True, status='healthy', version='4.1.8'), 200
+        return jsonify(ok=True, status='healthy', version=(Path(__file__).resolve().parents[1] / 'VERSION').read_text(encoding='utf-8').strip()), 200
     except Exception:
         app.logger.exception('Healthcheck failed')
         return jsonify(ok=False, status='unhealthy'), 503
@@ -2300,6 +2372,29 @@ def cleanup_pluggy_asset_refs(scope, tipo='', ticker='', operation_ids=None, inv
     return {'pluggy_investments': len(inv_ids), 'pluggy_transactions': int(deleted_tx), 'pluggy_events': int(deleted_events)}
 
 
+def create_predelete_backup():
+    """Cria cópias SQLite consistentes antes de exclusões em massa."""
+    backup_root = Path(os.environ.get('BACKUP_DIR', '/data/backups'))
+    backup_root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(TZ).strftime('%Y%m%d-%H%M%S-%f')
+    folder = backup_root / f'pre-exclusao-{stamp}'
+    folder.mkdir(mode=0o700)
+    try:
+        for source, connection in ((Path(DB_PATH), db()), (Path(TOKEN_DB_PATH), token_db())):
+            target = folder / source.name
+            dest = sqlite3.connect(str(target), timeout=30)
+            try:
+                connection.backup(dest)
+                if dest.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+                    raise RuntimeError('Falha ao validar backup preventivo.')
+            finally:
+                dest.close()
+        return str(folder)
+    except Exception:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+
+
 @app.route('/api/operacoes/gerenciar', methods=['DELETE'])
 def excluir_operacoes_em_massa():
     con=db()
@@ -2319,7 +2414,10 @@ def excluir_operacoes_em_massa():
         ids=[int(r['id']) for r in asset_rows if not is_pluggy_operation(r)]
     else:
         return json_error('Escopo de exclusão inválido.')
+    if payload.get('confirmar') is not True:
+        return json_error('Confirme explicitamente a exclusão para continuar.', 409)
     try:
+        backup_path = create_predelete_backup()
         pluggy_investment_ids = []
         if ids:
             for start in range(0, len(ids), 500):
@@ -2359,7 +2457,7 @@ def excluir_operacoes_em_massa():
     except Exception:
         con.rollback()
         raise
-    return jsonify(ok=True,excluidos=len(ids),pluggy_removidos=pluggy_removed)
+    return jsonify(ok=True,excluidos=len(ids),pluggy_removidos=pluggy_removed,backup=backup_path)
 
 
 @app.route('/api/operacoes/<int:op_id>', methods=['DELETE','PUT'])
@@ -2389,15 +2487,17 @@ def delete_operacao(op_id):
             raise ValueError('Valores financeiros precisam ser finitos.')
         if not ticker or len(ticker)>80 or tipo not in allowed_types or lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
         if lado=='venda':
-            existing_type=db().execute("SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1",(ticker,)).fetchone()
-            if not existing_type or str(existing_type['tipo']).lower()!=tipo:
+            existing_type=asset_type_for_ticker(ticker, dt)
+            if not existing_type or existing_type!=tipo:
                 return json_error('O ativo selecionado não pertence à categoria informada. Escolha o ativo dentro da categoria correta.')
-            available,_=posicao(ticker)
-            if ticker==current['ticker'] and current['lado']=='venda' and current['status']!='agendada':
+            available,_=posicao(ticker, as_of=dt)
+            if ticker==current['ticker'] and current['lado']=='venda' and current['status']!='agendada' and current['data']<=dt:
                 available+=float(current['quantidade'] or 0)
-            reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada' AND id<>?",(ticker,op_id)).fetchone()[0])
+            reserved=0.0
+            if dt >= datetime.now(TZ).date().isoformat():
+                reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada' AND id<>?",(ticker,op_id)).fetchone()[0])
             if qtd>available-reserved+1e-8:
-                return json_error('A quantidade vendida é maior que a posição disponível, considerando vendas já agendadas.')
+                return json_error('A quantidade vendida é maior que a posição disponível na data da operação, considerando vendas já agendadas.')
         raw=str(j.get('data_hora') or (dt+'T10:00'))
         requested=datetime.fromisoformat(raw)
         if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
@@ -2430,7 +2530,7 @@ def proventos():
     j = request.get_json(silent=True) or {}
     try:
         ticker = str(j['ticker']).strip().upper(); valor = float(j['valor_total']); dt = str(j['data']); date.fromisoformat(dt)
-        if not ticker or valor <= 0: raise ValueError()
+        if not ticker or not math.isfinite(valor) or valor <= 0: raise ValueError()
     except Exception: return json_error('Confira ticker, valor e data.')
     db().execute('INSERT INTO proventos(ticker,valor_total,data) VALUES(?,?,?)', (ticker,valor,dt)); db().commit()
     return jsonify(ok=True)
@@ -2451,13 +2551,17 @@ def _b3_number(value):
     if value is None or value == '-':
         return 0.0
     if isinstance(value, (int, float)):
-        return float(value)
-    raw = str(value).strip().replace('R$', '').replace(' ', '')
-    if not raw or raw == '-':
-        return 0.0
-    if ',' in raw:
-        raw = raw.replace('.', '').replace(',', '.')
-    return float(raw)
+        number = float(value)
+    else:
+        raw = str(value).strip().replace('R$', '').replace(' ', '')
+        if not raw or raw == '-':
+            return 0.0
+        if ',' in raw:
+            raw = raw.replace('.', '').replace(',', '.')
+        number = float(raw)
+    if not math.isfinite(number):
+        raise ValueError('A planilha B3 contém um valor numérico não finito.')
+    return number
 
 
 def _b3_date(value):
@@ -2603,24 +2707,27 @@ def excluir_lote_b3(lote_id):
 
 
 def _b3_semantic_duplicate(item):
+    """Detecta duplicatas apenas contra registros já persistidos, na mesma data.
+
+    Não aproxima datas em uma janela de dias: execuções parciais e aportes iguais
+    em dias diferentes são operações legítimas. A deduplicação do mesmo arquivo
+    continua sendo feita pelo fingerprint exato da linha B3.
+    """
     rec=item['registro']
     if item['categoria']=='operacao':
         row=db().execute(
             """SELECT id FROM operacoes WHERE upper(ticker)=? AND lower(tipo)=? AND lower(lado)=?
-               AND date(data) BETWEEN date(?,'-3 day') AND date(?,'+3 day')
-               AND ABS(quantidade-?)<=MAX(0.00001,?*0.001)
-               AND (ABS(preco-?)<=MAX(0.03,?*0.001)
-                    OR ABS((quantidade*preco)-?)<=MAX(1.00,?*0.01)) LIMIT 1""",
+               AND date(data)=date(?)
+               AND ABS(quantidade-?)<=0.00000001
+               AND ABS(preco-?)<=0.00000001 LIMIT 1""",
             (str(rec['ticker']).upper(),str(rec['tipo']).lower(),str(rec['lado']).lower(),
-             rec['data'],rec['data'],float(rec['quantidade']),float(rec['quantidade']),
-             float(rec['preco']),float(rec['preco']),
-             float(rec['quantidade'])*float(rec['preco']),float(rec['quantidade'])*float(rec['preco']))
+             rec['data'],float(rec['quantidade']),float(rec['preco']))
         ).fetchone()
         return row['id'] if row else None
     row=db().execute(
         """SELECT id FROM proventos WHERE upper(ticker)=? AND date(data)=date(?)
-           AND ABS(valor_total-?)<=MAX(0.05,?*0.001) LIMIT 1""",
-        (str(rec['ticker']).upper(),rec['data'],float(rec['valor_total']),float(rec['valor_total']))
+           AND ABS(valor_total-?)<=0.00000001 LIMIT 1""",
+        (str(rec['ticker']).upper(),rec['data'],float(rec['valor_total']))
     ).fetchone()
     return row['id'] if row else None
 
@@ -2634,6 +2741,8 @@ def importar_b3():
         mode=request.form.get('modo','preview')
         existing={r['fingerprint'] for r in db().execute('SELECT fingerprint FROM b3_importados').fetchall()}
         new_rows=[]; semantic_duplicates=0
+        # A fotografia de duplicatas é tomada antes de inserir qualquer linha do lote.
+        # Assim, duas execuções legítimas e iguais no mesmo arquivo não se eliminam.
         for item in parsed:
             if item['fingerprint'] in existing or _b3_semantic_duplicate(item):
                 semantic_duplicates+=1
@@ -2652,8 +2761,10 @@ def importar_b3():
         imported_at=datetime.now(TZ).isoformat(timespec='seconds')
         con.execute('INSERT INTO b3_import_lotes(id,arquivo,importado_em,operacoes,proventos) VALUES(?,?,?,?,?)',
                     (lote_id,filename,imported_at,0,0))
-        for item in parsed:
-            if con.execute('SELECT 1 FROM b3_importados WHERE fingerprint=?',(item['fingerprint'],)).fetchone() or _b3_semantic_duplicate(item):
+        for item in new_rows:
+            # Fingerprints já existentes foram filtrados antes da transação; a
+            # restrição PRIMARY KEY permanece como última defesa contra reimportação.
+            if con.execute('SELECT 1 FROM b3_importados WHERE fingerprint=?',(item['fingerprint'],)).fetchone():
                 duplicates+=1; continue
             rec=item['registro']
             if item['categoria']=='operacao':
@@ -2686,7 +2797,7 @@ def metas():
     try:
         nome = str(j['nome']).strip(); objetivo = float(j['objetivo']); aporte = float(j.get('aporte',0)); tipo = str(j.get('tipo','patrimonio'))
         categoria = str(j.get('categoria','')); ticker = str(j.get('ticker','')).strip().upper(); variacao = float(j.get('variacao_anual',0)); classes = j.get('classes','[]')
-        if not nome or objetivo <= 0 or aporte < 0 or not -100 <= variacao <= 1000: raise ValueError()
+        if not all(math.isfinite(v) for v in (objetivo, aporte, variacao)) or not nome or objetivo <= 0 or aporte < 0 or not -100 <= variacao <= 1000: raise ValueError()
         if isinstance(classes, list): classes = json.dumps(classes, ensure_ascii=False)
         else:
             parsed = json.loads(str(classes or '[]'))
@@ -4684,101 +4795,107 @@ def _tax_year():
 
 
 def build_irpf_summary(year):
-    """Organiza posições e vendas a partir do histórico cadastrado; não calcula imposto."""
+    """Resumo fiscal anual com saldos-base e operações posteriores.
+
+    Saldos importados são fotografias completas: inicializam ou redefinem as
+    posições na data-base, evitando zerar vendas de ativos sem compras locais.
+    O custo fiscal inclui custos informados nas compras e é reduzido
+    proporcionalmente nas vendas.
+    """
+    year_start = date(year, 1, 1).isoformat()
     year_end = date(year, 12, 31).isoformat()
-    ops = db().execute(
-        "SELECT * FROM operacoes WHERE status='executada' AND data<=? ORDER BY data,id",
+    snapshots = db().execute(
+        'SELECT DISTINCT data_base FROM saldos_importados WHERE data_base<=? ORDER BY data_base',
         (year_end,)
     ).fetchall()
+    snapshot_dates = [str(r['data_base']) for r in snapshots]
+    opening_snapshot = max((d for d in snapshot_dates if d < year_start), default=None)
+    in_year_snapshots = [d for d in snapshot_dates if year_start <= d <= year_end]
+
     holdings = {}
+    def reset_from_snapshot(snapshot_date):
+        holdings.clear()
+        rows = db().execute('SELECT * FROM saldos_importados WHERE data_base=?', (snapshot_date,)).fetchall()
+        for row in rows:
+            ticker = str(row['ticker']).upper()
+            qty = max(0.0, float(row['quantidade'] or 0))
+            avg = max(0.0, float(row['preco_medio'] or 0))
+            holdings[ticker] = {'ticker': ticker, 'tipo': str(row['tipo'] or 'outros'),
+                                'quantidade': qty, 'custo_total': qty * avg}
+
+    if opening_snapshot:
+        reset_from_snapshot(opening_snapshot)
+        ops_start = opening_snapshot
+    else:
+        ops_start = '0001-01-01'
+
+    ops = db().execute(
+        "SELECT * FROM operacoes WHERE status='executada' AND data>? AND data<=? ORDER BY data,id",
+        (ops_start, year_end)
+    ).fetchall()
     sales = {}
+    snapshot_set = set(in_year_snapshots)
+    # Agrupa por data para aplicar a fotografia somente após todas as operações do dia.
+    by_date = {}
     for op in ops:
-        ticker = str(op['ticker']).upper()
-        kind = str(op['tipo'] or 'outros')
-        qty = max(0.0, float(op['quantidade'] or 0))
-        price = max(0.0, float(op['preco'] or 0))
-        costs = max(0.0, float(op['custos'] or 0))
-        item = holdings.setdefault(ticker, {
-            'ticker': ticker, 'tipo': kind, 'quantidade': 0.0, 'custo_total': 0.0,
-            'preco_medio': 0.0
-        })
-        if op['lado'] == 'compra':
-            item['quantidade'] += qty
-            item['custo_total'] += qty * price + costs
-        else:
-            available = item['quantidade']
-            sold = min(qty, available)
-            if sold > 0:
-                average = item['custo_total'] / available if available > 0 else 0.0
-                basis = average * sold
-                proceeds = max(0.0, sold * price - costs)
-                profit = proceeds - basis
-                month = str(op['data'])[:7]
-                group = 'fiis' if kind in ('fii', 'reit') else 'comuns'
-                bucket = sales.setdefault((group, month), {
-                    'grupo': group, 'mes': month, 'vendas': 0.0, 'custo': 0.0,
-                    'resultado': 0.0, 'operacoes': 0
-                })
-                bucket['vendas'] += proceeds
-                bucket['custo'] += basis
-                bucket['resultado'] += profit
-                bucket['operacoes'] += 1
-                item['quantidade'] -= sold
-                item['custo_total'] = max(0.0, item['custo_total'] - basis)
-        item['preco_medio'] = item['custo_total'] / item['quantidade'] if item['quantidade'] > 1e-8 else 0.0
+        by_date.setdefault(str(op['data'])[:10], []).append(op)
+    for op_date in sorted(set(by_date) | snapshot_set):
+        for op in by_date.get(op_date, []):
+            ticker = str(op['ticker']).upper()
+            kind = str(op['tipo'] or 'outros')
+            qty = max(0.0, float(op['quantidade'] or 0))
+            price = max(0.0, float(op['preco'] or 0))
+            costs = max(0.0, float(op['custos'] or 0))
+            item = holdings.setdefault(ticker, {'ticker': ticker, 'tipo': kind, 'quantidade': 0.0, 'custo_total': 0.0})
+            item['tipo'] = kind or item['tipo']
+            if op['lado'] == 'compra':
+                item['quantidade'] += qty
+                item['custo_total'] += qty * price + costs
+            else:
+                available = item['quantidade']
+                sold = min(qty, available)
+                if sold > 0:
+                    average = item['custo_total'] / available if available > 0 else 0.0
+                    basis = average * sold
+                    proceeds = max(0.0, sold * price - costs)
+                    profit = proceeds - basis
+                    if year_start <= op_date <= year_end:
+                        month = op_date[:7]
+                        group = 'fiis' if kind in ('fii', 'reit') else 'comuns'
+                        bucket = sales.setdefault((group, month), {'grupo': group, 'mes': month, 'vendas': 0.0,
+                            'custo': 0.0, 'resultado': 0.0, 'operacoes': 0})
+                        bucket['vendas'] += proceeds
+                        bucket['custo'] += basis
+                        bucket['resultado'] += profit
+                        bucket['operacoes'] += 1
+                    item['quantidade'] -= sold
+                    item['custo_total'] = max(0.0, item['custo_total'] - basis)
+        if op_date in snapshot_set:
+            reset_from_snapshot(op_date)
+            snapshot_set.remove(op_date)
 
     positions = []
-    snapshot_for_year = snapshot_date_for(year_end)
-    if snapshot_for_year:
-        # O saldo-base substitui as posições acumuladas antes da captura;
-        # operações posteriores até 31/12 continuam sendo aplicadas por posicao().
-        snapshot_tickers = {str(row[0]).upper() for row in db().execute(
-            'SELECT ticker FROM saldos_importados WHERE data_base=?', (snapshot_for_year,)
-        ).fetchall()}
-        post_snapshot_tickers = {str(row[0]).upper() for row in db().execute(
-            "SELECT DISTINCT ticker FROM operacoes WHERE status='executada' AND data>? AND data<=?",
-            (snapshot_for_year, year_end)
-        ).fetchall()}
-        for ticker in sorted(snapshot_tickers | post_snapshot_tickers):
-            qty, average = posicao(ticker, as_of=year_end)
-            if qty <= 1e-8:
-                continue
-            imported = imported_balance(ticker, year_end)
-            first = db().execute('SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1',(ticker,)).fetchone()
-            kind = (imported.get('tipo') if imported else None) or (first['tipo'] if first else 'outros')
-            positions.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,8),'preco_medio':round(average,4),'custo_total':round(qty*average,2)})
-    else:
-        for item in holdings.values():
-            if item['quantidade'] <= 1e-8:
-                continue
-            positions.append({
-                'ticker': item['ticker'], 'tipo': item['tipo'],
-                'quantidade': round(item['quantidade'], 8),
-                'preco_medio': round(item['preco_medio'], 4),
-                'custo_total': round(item['custo_total'], 2)
-            })
+    # Usa a posição fiscal reconstruída acima (inclui custos de compra), em vez
+    # de posicao(), cuja regra operacional de preço médio exclui custos.
+    for item in holdings.values():
+        if item['quantidade'] <= 1e-8:
+            continue
+        positions.append({'ticker':item['ticker'],'tipo':item['tipo'],
+            'quantidade':round(item['quantidade'],8),
+            'preco_medio':round(item['custo_total']/item['quantidade'],4),
+            'custo_total':round(item['custo_total'],2)})
+
     positions.sort(key=lambda x: (x['tipo'], x['ticker']))
 
     incomes = [dict(row) for row in db().execute(
-        "SELECT * FROM irpf_lancamentos WHERE substr(data,1,4)=? ORDER BY data DESC,id DESC",
-        (str(year),)
-    ).fetchall()]
+        "SELECT * FROM irpf_lancamentos WHERE substr(data,1,4)=? ORDER BY data DESC,id DESC", (str(year),)).fetchall()]
     exempt = sum(float(x['valor']) for x in incomes if x['grupo'] == 'isento')
     exclusive = sum(float(x['valor']) for x in incomes if x['grupo'] == 'exclusiva')
     monthly_sales = [dict(v, vendas=round(v['vendas'], 2), custo=round(v['custo'], 2), resultado=round(v['resultado'], 2))
                      for _, v in sorted(sales.items(), key=lambda pair: pair[0][1])]
-    return {
-        'ano': year,
-        'posicoes': positions,
-        'rendimentos': incomes,
-        'operacoes': monthly_sales,
-        'resumo': {
-            'bens': round(sum(x['custo_total'] for x in positions), 2),
-            'isentos': round(exempt, 2),
-            'exclusivos': round(exclusive, 2),
-            'resultado_vendas': round(sum(x['resultado'] for x in monthly_sales), 2),
-        }
-    }
+    return {'ano': year, 'posicoes': positions, 'rendimentos': incomes, 'operacoes': monthly_sales,
+        'resumo': {'bens': round(sum(x['custo_total'] for x in positions), 2), 'isentos': round(exempt, 2),
+                   'exclusivos': round(exclusive, 2), 'resultado_vendas': round(sum(x['resultado'] for x in monthly_sales), 2)}}
 
 
 @app.route('/api/irpf/resumo')
@@ -4811,7 +4928,7 @@ def irpf_lancamentos():
         data_registro = str(payload.get('data', ''))
         observacoes = str(payload.get('observacoes', '')).strip()
         date.fromisoformat(data_registro)
-        if grupo not in ('isento', 'exclusiva') or not natureza or not fonte or valor <= 0:
+        if not math.isfinite(valor) or grupo not in ('isento', 'exclusiva') or not natureza or not fonte or valor <= 0:
             raise ValueError()
         if len(natureza) > 100 or len(fonte) > 160 or len(documento) > 40 or len(observacoes) > 1000:
             raise ValueError()
@@ -4844,7 +4961,7 @@ def irpf_lancamento_item(item_id):
         data_registro = str(payload.get('data', current['data']))
         observacoes = str(payload.get('observacoes', current['observacoes'] or '')).strip()
         date.fromisoformat(data_registro)
-        if grupo not in ('isento', 'exclusiva') or not natureza or not fonte or valor <= 0:
+        if not math.isfinite(valor) or grupo not in ('isento', 'exclusiva') or not natureza or not fonte or valor <= 0:
             raise ValueError()
         if len(natureza) > 100 or len(fonte) > 160 or len(documento) > 40 or len(observacoes) > 1000:
             raise ValueError()
@@ -4884,7 +5001,7 @@ def darfs():
         date.fromisoformat(vencimento)
         if pago_em:
             date.fromisoformat(pago_em)
-        if not codigo or len(codigo) > 20 or valor <= 0 or status not in ('pendente', 'pago'):
+        if not math.isfinite(valor) or not codigo or len(codigo) > 20 or valor <= 0 or status not in ('pendente', 'pago'):
             raise ValueError()
         if status == 'pago' and not pago_em:
             raise ValueError()
@@ -4925,7 +5042,7 @@ def darf_item(darf_id):
         date.fromisoformat(vencimento)
         if pago_em:
             date.fromisoformat(pago_em)
-        if not codigo or len(codigo) > 20 or valor <= 0 or status not in ('pendente', 'pago'):
+        if not math.isfinite(valor) or not codigo or len(codigo) > 20 or valor <= 0 or status not in ('pendente', 'pago'):
             raise ValueError()
         if status == 'pago' and not pago_em:
             raise ValueError()

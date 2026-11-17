@@ -2643,7 +2643,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   const widthKeys=[...shown.map(([key])=>key),'opcoes'];
   const widthTotal=widthKeys.reduce((sum,key)=>sum+(columnWeights[key]||.9),0);
   const proportionalCols=`<colgroup>${widthKeys.map(key=>`<col style="width:${((columnWeights[key]||.9)/widthTotal*100).toFixed(3)}%">`).join('')}</colgroup>`;
-  const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table ${summaryMode&&cat.key==='renda_fixa'?'data-fixed-income-summary="true"':''}>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick="openAssetMenu(event,'${escapeHTML(i.ticker)}')">•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">${summaryMode&&allCategoryItems.length?"Os ativos desta classe estão em outra página.":"Nenhum ativo cadastrado nesta categoria."}</div>`;
+  const body=items.length?`<div class="tablewrap"><table class="data proportional-assets-table" data-position-table ${summaryMode&&cat.key==='renda_fixa'?'data-fixed-income-summary="true"':''}>${proportionalCols}<thead><tr>${shown.map(([key,label])=>{const sort=positionSortState[cat.key]||{key:'valor_atual',direction:'desc'};const active=sort.key===key;const arrow=active?(sort.direction==='desc'?'▼':'▲'):'';return `<th data-col="${key}" class="position-sort-th"><button type="button" class="position-sort-button ${active?'is-sorted':''}" onclick="sortPositionAssets('${cat.key}','${key}')" title="Ordenar por ${escapeHTML(label)}">${label}<span class="position-sort-indicator" aria-hidden="true">${arrow}</span></button></th>`;}).join('')}<th data-col="opcoes">Opções</th></tr></thead><tbody>${items.map(i=>`<tr>${shown.map(([,label,renderCell])=>renderCell(i)).join('')}<td data-col="opcoes" class="asset-options-cell"><button type="button" class="asset-options-trigger" aria-label="Opções de ${escapeHTML(i.ticker)}" onclick='openAssetMenu(event,${jsArg(i.ticker)})'>•••</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty">${summaryMode&&allCategoryItems.length?"Os ativos desta classe estão em outra página.":"Nenhum ativo cadastrado nesta categoria."}</div>`;
   const categoryMetrics=`<span class="asset-category-title"><span class="asset-category-icon">${cat.icon}</span>${cat.name}</span><span class="asset-category-metric">Ativos<b>${allCategoryItems.length}</b></span><span class="asset-category-metric">Valor total<b>${brl(total)}</b></span>${cat.key==='renda_fixa'?'<span class="asset-category-metric category-metric-placeholder" aria-hidden="true"><span>Variação</span><b>—</b></span>':`<span class="asset-category-metric">Variação<b class="${allCategoryItems.length?'metric-change '+(variation>=0?'green':'red'):'category-empty-value'}">${allCategoryItems.length?`${variation>=0?'▲':'▼'} ${pct(variation)}`:'-'}</b></span>`}<span class="asset-category-metric">Rentabilidade<b>${allCategoryItems.length?`<span class="variation-pill ${profitability>=0?'positive':'negative'}">${profitability>=0?'↗':'↘'} ${pct(profitability)}</span>`:'<span class="category-empty-pill">-</span>'}</b></span><span class="asset-category-metric">% na carteira<b>${Math.round(portfolioPct)}% / ${Math.round(ideal)}%</b></span><span class="asset-category-chevron">⌄</span>`;
   const moveControls=`<div class="position-category-move">${categoryIndex>0?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para cima" aria-label="Mover ${cat.name} para cima" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',-1)">↑</button>`:''}${categoryIndex<visibleCategories.length-1?`<button type="button" class="position-category-arrow" title="Mover ${cat.name} para baixo" aria-label="Mover ${cat.name} para baixo" onclick="event.stopPropagation();${summaryMode?'moveSummaryCategory':'movePositionCategory'}('${cat.key}',1)">↓</button>`:''}</div>`;
   const header=summaryMode
@@ -2767,12 +2767,12 @@ function openAssetMenu(event,ticker){
  menu.dataset.ticker=String(ticker||'').toUpperCase();
  menu.id='assetActionMenu';menu.className='asset-action-menu';
  menu.innerHTML=`
-  <button type="button" onclick="assetMenuAction('add','${escapeHTML(ticker)}')"><span>＋</span>Adicionar Lançamento</button>
-  <button type="button" onclick="assetMenuAction('transactions','${escapeHTML(ticker)}')"><span>☷</span>Ver lançamentos</button>
-  <button type="button" onclick="assetMenuAction('notes','${escapeHTML(ticker)}')"><span>▱</span>Minhas observações</button>
-  <button type="button" onclick="assetMenuAction('columns','${escapeHTML(ticker)}')"><span>▤</span>Editar colunas</button>
+  <button type="button" onclick='assetMenuAction("add",${jsArg(ticker)})'><span>＋</span>Adicionar Lançamento</button>
+  <button type="button" onclick='assetMenuAction("transactions",${jsArg(ticker)})'><span>☷</span>Ver lançamentos</button>
+  <button type="button" onclick='assetMenuAction("notes",${jsArg(ticker)})'><span>▱</span>Minhas observações</button>
+  <button type="button" onclick='assetMenuAction("columns",${jsArg(ticker)})'><span>▤</span>Editar colunas</button>
   <div class="asset-menu-divider"></div>
-  <button type="button" class="danger" onclick="assetMenuAction('delete','${escapeHTML(ticker)}')"><span>♜</span>Excluir</button>`;
+  <button type="button" class="danger" onclick='assetMenuAction("delete",${jsArg(ticker)})'><span>♜</span>Excluir</button>`;
  document.body.appendChild(menu);
  const rect=event.currentTarget.getBoundingClientRect();
  const width=228, height=menu.offsetHeight;
@@ -2914,7 +2914,7 @@ function noteStorageKey(ticker){return 'lonelyWalletNotesV2:'+ticker.toUpperCase
 function openAssetNotes(ticker){
  const data=readAssetNoteData(ticker),today=new Date().toLocaleDateString('pt-BR');
  document.getElementById('notesModalTitle').textContent='Observações ('+ticker+')';
- document.getElementById('notesModalContent').innerHTML=`<div class="note-entry"><p class="mini">A avaliação do ativo é calculada automaticamente com os fundamentos disponíveis nas APIs conectadas. Este espaço é apenas para suas observações.</p><strong>${today}</strong><textarea id="assetNoteText" rows="5" placeholder="Escreva suas observações sobre ${escapeHTML(ticker)}...">${escapeHTML(data.entries[today]||'')}</textarea><div class="note-actions"><button class="primary" type="button" onclick="saveAssetNote('${escapeHTML(ticker)}')">Salvar observações</button></div></div>`;
+ document.getElementById('notesModalContent').innerHTML=`<div class="note-entry"><p class="mini">A avaliação do ativo é calculada automaticamente com os fundamentos disponíveis nas APIs conectadas. Este espaço é apenas para suas observações.</p><strong>${today}</strong><textarea id="assetNoteText" rows="5" placeholder="Escreva suas observações sobre ${escapeHTML(ticker)}...">${escapeHTML(data.entries[today]||'')}</textarea><div class="note-actions"><button class="primary" type="button" onclick='saveAssetNote(${jsArg(ticker)})'>Salvar observações</button></div></div>`;
  document.getElementById('notesModalBack').style.display='flex';
 }
 function saveAssetNote(ticker){
@@ -2943,7 +2943,7 @@ async function openAssetTransactions(ticker,page=1){
    <div class="tablewrap"><table class="data transaction-modal-table"><thead><tr><th>Tipo de ordem</th><th>Data do lançamento</th><th>Quantidade</th><th>Preço unitário</th><th>Valor total</th><th>Fonte</th><th>Opções</th></tr></thead><tbody>
    ${visible.length?visible.map(op=>`<tr><td><span class="transaction-side ${op.lado==='compra'?'green':'red'}">${op.lado==='compra'?'↻':'↗'} ${op.lado==='compra'?'Compra':'Venda'}</span></td><td>${dateBR(op.data_execucao||op.data)}</td><td>${Number(op.quantidade).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4})}</td><td>${money(op.preco)}</td><td>${money(Number(op.quantidade)*Number(op.preco)+Number(op.custos||0))}</td><td><span class="source-tag">Manual</span></td><td><button class="icon-action" title="Editar" onclick="editAssetOperation(${op.id})">♢</button><button class="icon-action danger" title="Excluir" onclick="deleteAssetOperation(${op.id})">♜</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhum lançamento encontrado para este ativo.</td></tr>'}
    </tbody></table></div>
-   ${totalPages>1?`<div class="modal-pagination"><button ${assetTransactionsPage===1?'disabled':''} onclick="openAssetTransactions('${escapeHTML(ticker)}',${assetTransactionsPage-1})">Anterior</button>${Array.from({length:totalPages},(_,i)=>`<button class="${assetTransactionsPage===i+1?'active':''}" onclick="openAssetTransactions('${escapeHTML(ticker)}',${i+1})">${i+1}</button>`).join('')}<button ${assetTransactionsPage===totalPages?'disabled':''} onclick="openAssetTransactions('${escapeHTML(ticker)}',${assetTransactionsPage+1})">Próximo</button></div>`:''}`;
+   ${totalPages>1?`<div class="modal-pagination"><button ${assetTransactionsPage===1?'disabled':''} onclick='openAssetTransactions(${jsArg(ticker)},${assetTransactionsPage-1})'>Anterior</button>${Array.from({length:totalPages},(_,i)=>`<button class="${assetTransactionsPage===i+1?'active':''}" onclick='openAssetTransactions(${jsArg(ticker)},${i+1})'>${i+1}</button>`).join('')}<button ${assetTransactionsPage===totalPages?'disabled':''} onclick='openAssetTransactions(${jsArg(ticker)},${assetTransactionsPage+1})'>Próximo</button></div>`:''}`;
  }catch(e){document.getElementById('transactionsModalContent').innerHTML='<div class="empty">Não foi possível carregar os lançamentos.</div>';}
 }
 async function deleteAssetOperation(id){
@@ -3034,7 +3034,7 @@ function openFixedIncomeSalePicker(){
  fixedIncomeSelectedTicker=null;
  const body=document.getElementById('fixedIncomeSaleRows');
  body.innerHTML=holdings.length?holdings.map((item,index)=>`
-  <tr class="fixed-sale-row" data-ticker="${escapeHTML(item.ticker)}" onclick="selectFixedIncomeSale('${escapeHTML(item.ticker)}')">
+  <tr class="fixed-sale-row" data-ticker="${escapeHTML(item.ticker)}" onclick='selectFixedIncomeSale(${jsArg(item.ticker)})'>
    <td><label class="fixed-sale-choice"><input type="radio" name="fixedIncomeSaleChoice" value="${escapeHTML(item.ticker)}" onchange="selectFixedIncomeSale('${escapeHTML(item.ticker)}')"><span>${escapeHTML(item.nome||item.ticker)}</span></label></td>
    <td>${brl(item.valor_atual??(Number(item.quantidade)*Number(item.preco_medio)))}</td><td class="muted">›</td>
   </tr>`).join(''):rowEmpty(3,'Nenhum investimento de renda fixa disponível para venda.');
@@ -4334,7 +4334,7 @@ async function loadPluggyState(){
   window.pluggyConnections=data.items||[];
   const clearSelect=document.getElementById('pluggyClearItemSelect');if(clearSelect){const previous=clearSelect.value;clearSelect.innerHTML='<option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option>'+window.pluggyConnections.map(item=>`<option value="${escapeHTML(item.item_id)}">${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</option>`).join('');if(previous==='__all__'||window.pluggyConnections.some(item=>item.item_id===previous))clearSelect.value=previous;}
   if(!data.items||!data.items.length){host.innerHTML='Nenhuma conexão cadastrada. Adicione o itemId do MeuPluggy.';return;}
-  host.innerHTML=data.items.map(item=>{const investments=Number(item.investments_count||0),investmentTransactions=Number(item.investment_transactions_count||0),hasData=investments+investmentTransactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização executada · nenhum dado retornado':'Item cadastrado · ainda não sincronizado',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${investments} investimentos · ${investmentTransactions} movimentações de investimento${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem('${item.item_id}')">Remover</button></div>`;}).join('');
+  host.innerHTML=data.items.map(item=>{const investments=Number(item.investments_count||0),investmentTransactions=Number(item.investment_transactions_count||0),hasData=investments+investmentTransactions>0,synced=Boolean(item.last_synced_at),diagnostic=hasData?'Dados recebidos':synced?'Sincronização executada · nenhum dado retornado':'Item cadastrado · ainda não sincronizado',statusClass=hasData?'configured':synced?'':'warning';return `<div class="pluggy-item-row"><div><strong>${escapeHTML(item.label||item.connector_name||'MeuPluggy')}</strong><div><span class="api-status-pill ${statusClass}">${diagnostic}</span></div><div class="mini">Status da conexão: ${escapeHTML(item.status||'Desconhecido')} · ${investments} investimentos · ${investmentTransactions} movimentações de investimento${synced?' · Última sincronização '+new Date(item.last_synced_at).toLocaleString('pt-BR'):''}</div></div><button class="ghost" type="button" onclick="removePluggyItem(this.dataset.itemId)" data-item-id="${escapeHTML(item.item_id)}">Remover</button></div>`;}).join('');
   const invHost=document.getElementById('pluggyInvestments');
   if(invHost){
    const inv=data.investments||[];
@@ -4691,6 +4691,7 @@ let assetSearchTimer=null, assetSearchController=null, selectedAsset=null, sella
 function escapeHTML(value){
  return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+function jsArg(value){return JSON.stringify(String(value??'')).replace(/[<>&']/g,c=>({'<':'\\u003c','>':'\\u003e','&':'\\u0026',"'":'\\u0027'}[c]));}
 function closeSuggestions(){suggestions.classList.add('hidden');suggestions.innerHTML='';}
 function moneyInput(value){
  const n=Number(value);
@@ -5141,7 +5142,7 @@ async function confirmDeleteManaged(scope){
  const title=scope==='todas'?'Excluir todos os lançamentos':'Excluir lançamentos do ativo';
  const protectedCount=selected.length-rows.length;const message=scope==='todas'?`Você está prestes a excluir ${rows.length} lançamento(s) editável(is). ${protectedCount} lançamento(s) da Pluggy serão preservados como somente leitura. Esta ação não pode ser desfeita.`:`Você está prestes a excluir ${rows.length} lançamento(s) editável(is) de ${ticker}. ${protectedCount} lançamento(s) da Pluggy serão preservados. Esta ação não pode ser desfeita.`;
  if(!await appConfirm(title,message,scope==='todas'?'Excluir tudo':'Excluir lançamentos'))return;
- try{const result=await api('/api/operacoes/gerenciar',{method:'DELETE',body:JSON.stringify(scope==='todas'?{escopo:'todas'}:{escopo:'ativo',tipo,ticker}),skipAutoRefresh:true});await refresh();await loadOperationManager();toast(`${result.excluidos||0} lançamento(s) excluído(s).`);}catch(e){toast(e.message||'Não foi possível excluir os lançamentos.');}
+ try{const result=await api('/api/operacoes/gerenciar',{method:'DELETE',body:JSON.stringify(scope==='todas'?{escopo:'todas',confirmar:true}:{escopo:'ativo',tipo,ticker,confirmar:true}),skipAutoRefresh:true});await refresh();await loadOperationManager();toast(`${result.excluidos||0} lançamento(s) excluído(s).`);}catch(e){toast(e.message||'Não foi possível excluir os lançamentos.');}
 }
 
 let b3PreviewReady=false;
@@ -5380,7 +5381,7 @@ async function securityLogout(){try{await fetch('/api/auth/logout',{method:'POST
 </script>
 
 <style>
-/* v4.1.10: hover uniforme nas linhas da tabela de ativos.
+/* v4.2.0: hover uniforme nas linhas da tabela de ativos.
    A célula de Variação acompanha o mesmo fundo das demais colunas. */
 .asset-category .data.proportional-assets-table tbody tr:hover > td,
 .asset-category .data.proportional-assets-table tbody tr:hover > td[data-col="variacao_dia"],

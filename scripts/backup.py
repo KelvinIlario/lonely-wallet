@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Create a consistent SQLite backup of Lonely Wallet databases and key files."""
+"""Create consistent SQLite backups; encryption keys are excluded by default."""
 import argparse
 import os
-import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -27,24 +26,29 @@ def backup_database(source: Path, target: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--destination', default='/backup', help='Diretório de destino')
+    parser.add_argument('--include-keys', action='store_true', help='Inclui chaves de criptografia/sessão; guarde o backup em local criptografado e separado')
     args = parser.parse_args()
     data_dir = Path(os.environ.get('DATA_DIR', '/data'))
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     destination = Path(args.destination) / f'lonely-wallet-{stamp}'
-    destination.mkdir(parents=True, exist_ok=False)
-
+    destination.mkdir(parents=True, exist_ok=False, mode=0o700)
     for name in ('ativos.db', 'carteira.db', 'tokens.db'):
         backup_database(data_dir / name, destination / name)
-    for name in ('.api-credentials.key', '.lonely-wallet-session.key'):
-        source = data_dir / name
-        if source.exists():
-            shutil.copy2(source, destination / name)
-            os.chmod(destination / name, 0o600)
-
+    if args.include_keys:
+        secret_dir = destination / 'secrets'
+        secret_dir.mkdir(mode=0o700)
+        for name in ('.api-credentials.key', '.lonely-wallet-session.key'):
+            source = data_dir / name
+            if source.exists():
+                target = secret_dir / name
+                target.write_bytes(source.read_bytes())
+                os.chmod(target, 0o600)
     if not any(destination.iterdir()):
         destination.rmdir()
         raise RuntimeError('Nenhum arquivo de dados encontrado para backup.')
     print(f'Backup concluído: {destination}')
+    if not args.include_keys:
+        print('Atenção: chaves não incluídas. Credenciais criptografadas exigem a chave original para restauração.')
     return 0
 
 
