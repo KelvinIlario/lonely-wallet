@@ -2132,7 +2132,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 
 
-<div class="footer">Lonely Wallet v4.2.8 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
+<div class="footer">Lonely Wallet v4.2.9 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
 <div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
@@ -4426,10 +4426,13 @@ function renderAPIProviders(){
    <div class="pluggy-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="pluggyManagerTitle">
     <div class="pluggy-manager-header"><div><h3 id="pluggyManagerTitle">Gerenciar API Pluggy</h3><div class="mini">Sincronização automática e exclusão de dados importados</div></div><button class="ghost" type="button" onclick="closePluggyManager()" aria-label="Fechar">✕</button></div>
     <div class="pluggy-manager-content">
-     <label class="mini pluggy-auto-sync-control">Sincronizar automaticamente<select id="pluggyAutoSyncInterval" aria-label="Intervalo de sincronização automática" onchange="savePluggyAutoSyncInterval(this.value)"><option value="0">Desativado</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60">A cada hora</option><option value="240">A cada 4 horas</option><option value="720">A cada 12 horas</option><option value="1440">Uma vez ao dia</option></select></label>
-     <div class="divider" style="margin:16px 0"></div><h4>Excluir dados importados</h4>
-     <div class="mini">Escolha uma conexão específica ou todas as conexões para remover os dados importados.</div>
-     <div class="api-provider-actions"><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:240px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button></div>
+     <section class="pluggy-manager-section pluggy-sync-section">
+      <label class="mini pluggy-auto-sync-control" for="pluggyAutoSyncInterval"><span>Sincronizar automaticamente</span><select id="pluggyAutoSyncInterval" aria-label="Intervalo de sincronização automática" onchange="savePluggyAutoSyncInterval(this)"><option value="0">Desativado</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60">A cada hora</option><option value="240">A cada 4 horas</option><option value="720">A cada 12 horas</option><option value="1440">Uma vez ao dia</option></select></label>
+     </section>
+     <section class="pluggy-manager-section pluggy-clear-section">
+      <div class="pluggy-clear-copy"><h4>Excluir dados importados</h4><div class="mini">Escolha uma conexão específica ou todas as conexões para remover os dados importados.</div></div>
+      <div class="pluggy-clear-actions"><select id="pluggyClearItemSelect" aria-label="Conexão para limpar"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button></div>
+     </section>
     </div>
    </div>
   </div>`:
@@ -4477,19 +4480,57 @@ function openPluggyManager(){
 function closePluggyManager(){const modal=document.getElementById('pluggyManageModal');if(modal)modal.style.display='none';}
 let pluggyAutoSyncTimer=null;
 let pluggyAutoSyncRunning=false;
-async function savePluggyAutoSyncInterval(value){
- const interval=Number(value);
+let pluggyAutoSyncIntervalMinutes=30;
+let pluggyAutoSyncSettingsLoaded=false;
+async function loadPluggyAutoSyncSettings(){
  try{
-  await api('/api/pluggy/settings',{method:'POST',body:JSON.stringify({interval_minutes:interval})});
-  toast(interval===0?'Sincronização automática desativada.':'Sincronização automática configurada.');
-  if(pluggyAutoSyncTimer)clearInterval(pluggyAutoSyncTimer);
-  startPluggyAutoSync();
- }catch(error){toast(error.message||'Não foi possível salvar o intervalo.');}
+  const settings=await api('/api/pluggy/settings',{skipAutoRefresh:true,cache:'no-store'});
+  const interval=Number(settings.interval_minutes);
+  if([0,15,30,60,240,720,1440].includes(interval))pluggyAutoSyncIntervalMinutes=interval;
+  pluggyAutoSyncSettingsLoaded=true;
+ }catch(error){
+  console.warn('Não foi possível carregar a frequência salva da Pluggy:',error);
+ }
+ const select=document.getElementById('pluggyAutoSyncInterval');
+ if(select)select.value=String(pluggyAutoSyncIntervalMinutes);
+ configurePluggyAutoSyncTimer();
+ return pluggyAutoSyncIntervalMinutes;
+}
+function configurePluggyAutoSyncTimer(){
+ if(pluggyAutoSyncTimer){clearInterval(pluggyAutoSyncTimer);pluggyAutoSyncTimer=null;}
+ if(pluggyAutoSyncIntervalMinutes>0){
+  runPluggyAutoSync();
+  pluggyAutoSyncTimer=setInterval(runPluggyAutoSync,60000);
+ }
+}
+async function savePluggyAutoSyncInterval(selectOrValue){
+ const select=selectOrValue&&typeof selectOrValue==='object'?selectOrValue:document.getElementById('pluggyAutoSyncInterval');
+ const interval=Number(select&&select.value!==undefined?select.value:selectOrValue);
+ const previous=pluggyAutoSyncIntervalMinutes;
+ if(![0,15,30,60,240,720,1440].includes(interval)){
+  if(select)select.value=String(previous);
+  toast('Escolha um intervalo de sincronização válido.');
+  return;
+ }
+ if(select)select.disabled=true;
+ try{
+  const saved=await api('/api/pluggy/settings',{method:'POST',body:JSON.stringify({interval_minutes:interval}),skipAutoRefresh:true});
+  if(!saved||saved.ok!==true||Number(saved.interval_minutes)!==interval)throw new Error('O servidor não confirmou a frequência selecionada.');
+  pluggyAutoSyncIntervalMinutes=interval;
+  pluggyAutoSyncSettingsLoaded=true;
+  if(select)select.value=String(interval);
+  configurePluggyAutoSyncTimer();
+  toast(interval===0?'Sincronização automática desativada.':'Sincronização automática configurada e salva.');
+ }catch(error){
+  if(select)select.value=String(previous);
+  toast(error.message||'Não foi possível salvar o intervalo.');
+ }finally{
+  if(select)select.disabled=false;
+ }
 }
 async function runPluggyAutoSync(){
  if(pluggyAutoSyncRunning||document.hidden)return;
- const select=document.getElementById('pluggyAutoSyncInterval');
- const interval=Number(select?.value||0);
+ const interval=Number(pluggyAutoSyncIntervalMinutes||0);
  if(!interval)return;
  let last=0;try{last=Number(localStorage.getItem('lonelyWalletPluggyAutoSyncAt')||0)}catch(e){}
  if(Date.now()-last<interval*60000)return;
@@ -4505,17 +4546,7 @@ async function runPluggyAutoSync(){
  }finally{pluggyAutoSyncRunning=false;}
 }
 async function startPluggyAutoSync(){
- const select=document.getElementById('pluggyAutoSyncInterval');
- if(!select)return;
- try{
-  const settings=await api('/api/pluggy/settings');
-  select.value=String(settings.interval_minutes??30);
- }catch(e){select.value='30';}
- if(pluggyAutoSyncTimer)clearInterval(pluggyAutoSyncTimer);
- if(Number(select.value)>0){
-  runPluggyAutoSync();
-  pluggyAutoSyncTimer=setInterval(runPluggyAutoSync,60000);
- }
+ await loadPluggyAutoSyncSettings();
 }
 async function syncPluggyConnection(itemId,button){
  const id=String(itemId||'').trim();
@@ -5898,14 +5929,21 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 }
 
 <style>
-.pluggy-manager-overlay{position:fixed;inset:0;z-index:10050;background:rgba(5,8,14,.76);display:flex;align-items:center;justify-content:center;padding:22px;overflow:auto}
-.pluggy-manager-dialog{width:min(920px,96vw);max-height:90vh;overflow:auto;background:var(--panel,#20232c);border:1px solid var(--line,#343b4b);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.48);padding:20px}
+.pluggy-manager-overlay{position:fixed;inset:0;z-index:10050;background:rgba(5,8,14,.76);display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto}
+.pluggy-manager-dialog{width:min(1500px,calc(100vw - 24px));max-width:none;max-height:90vh;overflow:auto;background:var(--panel,#20232c);border:1px solid var(--line,#343b4b);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.48);padding:20px}
 .pluggy-manager-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line,#343b4b);padding-bottom:14px;margin-bottom:16px}
-.pluggy-manager-header h3{margin:0 0 5px}.pluggy-manager-content>.api-credential-fields{margin-top:12px}
-.pluggy-manager-content .api-provider-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0}
-.pluggy-manager-content .pluggy-auto-sync-control{display:flex;align-items:center;gap:8px}
-.pluggy-manager-content .pluggy-auto-sync-control select{min-width:170px}
-@media(max-width:650px){.pluggy-manager-overlay{padding:8px}.pluggy-manager-dialog{width:100%;max-height:96vh;padding:14px}.pluggy-manager-content .api-credential-fields{grid-template-columns:1fr}}
+.pluggy-manager-header h3{margin:0 0 5px}
+.pluggy-manager-content{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(0,1.4fr);align-items:stretch;gap:16px}
+.pluggy-manager-section{min-width:0;display:flex;align-items:center;gap:16px;padding:14px 16px;border:1px solid var(--line,#343b4b);border-radius:12px;background:color-mix(in srgb,var(--panel2,#20232c) 52%,transparent)}
+.pluggy-manager-content .pluggy-auto-sync-control{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;font-size:13px}
+.pluggy-manager-content .pluggy-auto-sync-control select{min-width:175px;max-width:230px}
+.pluggy-clear-section{justify-content:space-between;flex-wrap:wrap}
+.pluggy-clear-copy{min-width:220px;flex:1 1 260px}
+.pluggy-clear-copy h4{margin:0 0 5px}
+.pluggy-clear-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 1 auto;min-width:0}
+.pluggy-clear-actions select{width:220px;max-width:100%;min-width:0}
+@media(max-width:760px){.pluggy-manager-content{grid-template-columns:minmax(0,1fr)}.pluggy-clear-section{align-items:flex-start}.pluggy-clear-actions{justify-content:flex-start;flex-wrap:wrap}}
+@media(max-width:520px){.pluggy-manager-overlay{padding:8px}.pluggy-manager-dialog{width:100%;max-height:96vh;padding:14px}.pluggy-manager-section{padding:12px;align-items:stretch}.pluggy-manager-content .pluggy-auto-sync-control{align-items:flex-start;flex-direction:column}.pluggy-manager-content .pluggy-auto-sync-control select{width:100%;max-width:none}.pluggy-clear-actions{width:100%;flex-direction:column;align-items:stretch}.pluggy-clear-actions select,.pluggy-clear-actions button{width:100%}}
 </style>
 
 <style>

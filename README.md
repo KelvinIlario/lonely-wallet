@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.8
+# Lonely Wallet v4.2.9
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.8
+- **Versão:** 4.2.9
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -19,6 +19,15 @@
 - A confirmação dos valores atuais é separada da sincronização complementar de proventos e do histórico de rentabilidade, que continuam em segundo plano.
 - A lista de oportunidades de compra exige preço atual abaixo do preço médio e participação atual abaixo da participação ideal.
 - O rodapé e os metadados do Compose identificam a versão 4.2.7.
+
+## Atualização 4.2.9
+
+- Reorganização do modal **Gerenciar API Pluggy** em duas áreas horizontais: frequência de sincronização e exclusão de dados importados.
+- Modal ampliado para aproveitar a largura disponível, mantendo adaptação para telas menores.
+- Salvamento da frequência com confirmação de leitura após a gravação no SQLite.
+- Requisição de salvamento isolada da atualização geral do dashboard para evitar que a interface seja recriada durante a alteração.
+- Configuração carregada do servidor na inicialização e ao abrir o modal, com cache HTTP desativado para essa preferência.
+- O seletor retorna à última frequência salva quando ocorre erro no salvamento.
 
 ## Atualização 4.2.8
 
@@ -84,7 +93,7 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.2.5`.
+O retorno deve indicar `ok: true` e `version: 4.2.9`.
 
 ### Atualização de uma versão anterior
 

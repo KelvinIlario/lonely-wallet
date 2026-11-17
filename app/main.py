@@ -1319,7 +1319,9 @@ def _pluggy_sync_interval():
 @app.route('/api/pluggy/settings', methods=['GET', 'POST'])
 def pluggy_settings():
     if request.method == 'GET':
-        return jsonify(interval_minutes=_pluggy_sync_interval())
+        response = jsonify(interval_minutes=_pluggy_sync_interval())
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        return response
     payload = request.get_json(silent=True) or {}
     try:
         interval = int(payload.get('interval_minutes', 30))
@@ -1327,9 +1329,26 @@ def pluggy_settings():
         return json_error('Intervalo inválido.')
     if interval not in (0, 15, 30, 60, 240, 720, 1440):
         return json_error('Escolha um intervalo disponível.')
-    db().execute("INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(interval),))
-    db().commit()
-    return jsonify(ok=True, interval_minutes=interval)
+    connection = db()
+    try:
+        with connection:
+            connection.execute(
+                "INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(interval),)
+            )
+            saved = connection.execute(
+                "SELECT value FROM app_settings WHERE key='pluggy_sync_interval'"
+            ).fetchone()
+        saved_interval = int(saved['value']) if saved else None
+    except (sqlite3.Error, TypeError, ValueError) as exc:
+        app.logger.exception('Falha ao salvar a frequência de sincronização Pluggy: %s', exc)
+        return json_error('Não foi possível gravar a frequência de sincronização.')
+    if saved_interval != interval:
+        return json_error('A frequência não foi confirmada no banco de dados.')
+    response = jsonify(ok=True, interval_minutes=saved_interval)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 
 
 @app.route('/api/pluggy/state', methods=['GET'])
