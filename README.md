@@ -1,4 +1,4 @@
-# Lonely Wallet v4.1.5
+# Lonely Wallet v4.1.6
 
 ## Ajustes de acesso
 - A tela de acesso pré-carrega recursos visuais (logotipo e biblioteca de gráficos) enquanto o PIN é digitado.
@@ -23,3 +23,17 @@
 - Ajustes visuais da página Segurança para ocupar a largura disponível.
 - Botões e campos da página Segurança padronizados com o tema Lonely Wallet.
 - Cor de fundo crítica definida desde o início do carregamento para evitar flash branco na transição após autenticação.
+
+
+## v4.1.6
+
+### Correção da transição após autenticação
+- Corrigida a exibição rápida dos títulos “Minhas observações”, “Lançamentos do ativo” e “Editar colunas” após inserir o PIN.
+- Os três modais foram movidos para dentro do `<body>`, evitando que o navegador renderize seu conteúdo antes da aplicação dos estilos.
+- Os modais continuam disponíveis normalmente quando acionados dentro da carteira.
+- Nenhuma alteração na autenticação, no PIN, nos bancos de dados ou nos dados persistidos.
+
+### Atualização
+- Preserve o volume `/DATA/AppData/lonely-wallet/data:/data`.
+- Faça backup da pasta de dados antes de atualizar.
+- Reconstrua a imagem com `docker compose up -d --build`.
