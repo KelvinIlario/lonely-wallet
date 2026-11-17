@@ -2168,7 +2168,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 <div class="modalback" id="profitPositionsBack" onclick="if(event.target===this)closeProfitPositionsModal()">
  <div class="modal profit-positions-modal">
   <div class="modalhead"><h2>Posições no lucro</h2><button class="close" onclick="closeProfitPositionsModal()">×</button></div>
-  <div class="opportunity-note">ⓘ <span>Consideramos a rentabilidade para fornecer a informação dos ativos no lucro e no prejuízo.</span></div>
+  <div class="opportunity-note">ⓘ <span>Consideramos a rentabilidade total, incluindo proventos. Renda fixa e ativos sem cotação atual são excluídos.</span></div>
   <div class="profit-filter"><button type="button" id="profitWinnersTab" class="active" onclick="setProfitPositionsFilter('lucro')">No lucro ▲</button><button type="button" id="profitLosersTab" onclick="setProfitPositionsFilter('prejuizo')">No prejuízo ▼</button></div>
   <div class="tablewrap"><table class="data"><thead><tr><th>Ativo</th><th>Valor</th><th>Variação</th><th>Rentabilidade</th></tr></thead><tbody id="profitPositionsRows"></tbody></table></div>
   <div id="profitPositionsPagination" class="opportunity-pagination"></div>
@@ -2326,9 +2326,12 @@ function renderPositionInsights(rows){
  const returnValue=x=>x&&x.pluggy_retorno_valor!==null&&x.pluggy_retorno_valor!==undefined?Number(x.pluggy_retorno_valor):Number(x?.lucro||0);
  const sorted=rows.filter(x=>Number.isFinite(returnPct(x))).slice().sort((a,b)=>returnPct(b)-returnPct(a));
  const best=sorted[0],worst=sorted[sorted.length-1];
- const winners=rows.filter(x=>Number(x.lucro_pct||0)>0).length;
- const losers=rows.filter(x=>Number(x.lucro_pct||0)<0).length;
- const total=rows.length,positivePct=total?(winners/total)*100:0;
+ // A classificação considera rentabilidade total (inclui proventos), mas
+ // somente ativos de renda variável com cotação atual válida chegam a este ponto.
+ const countableRows=rows.filter(x=>Number(x.preco_atual)>0&&Number(x.valor_atual)>0);
+ const winners=countableRows.filter(x=>returnPct(x)>0).length;
+ const losers=countableRows.filter(x=>returnPct(x)<0).length;
+ const total=countableRows.length,positivePct=total?(winners/total)*100:0;
  const opportunities=rows.filter(x=>Number(x.preco_atual)>0&&Number(x.preco_medio)>0&&Number(x.preco_atual)<Number(x.preco_medio));
  const recentAssets=[];
  const recentByAsset=new Map();
@@ -2358,7 +2361,7 @@ function renderPositionInsights(rows){
    </div>
   </article>
   <article class="insight-card">
-   <div class="insight-title">Posições no lucro<span class="info-tip" tabindex="0" aria-label="Sobre posições no lucro" data-tip="Consideramos a rentabilidade para fornecer a informação dos ativos no lucro e no prejuízo.">i</span></div>
+   <div class="insight-title">Posições no lucro<span class="info-tip" tabindex="0" aria-label="Sobre posições no lucro" data-tip="A classificação considera a rentabilidade total, incluindo proventos. Renda fixa e ativos sem cotação atual não entram na contagem.">i</span></div>
    <div class="insight-profit-summary"><div class="insight-main">${winners} de ${total}</div><small style="font-size:13px;color:var(--muted);font-weight:650">${total?Math.round(positivePct)+'%':'—'}</small></div>
    <div class="insight-bar"><span class="positive" style="width:${positivePct}%"></span><span class="negative" style="width:${total?losers/total*100:0}%"></span></div>
    <div class="insight-profit-counts insight-profit-links"><button type="button" class="green" onclick="openProfitPositionsModal('lucro')">${winners} no lucro ▲</button><button type="button" class="red" onclick="openProfitPositionsModal('prejuizo')">${losers} no prejuízo ▼</button></div>
@@ -2982,10 +2985,19 @@ function closeOpportunityModal(){document.getElementById('opportunityBack').styl
 
 
 let profitPositionsFilter='lucro',profitPositionsPage=1,fixedIncomeSelectedTicker=null;
+function profitPositionReturnPct(item){
+ return item&&item.pluggy_retorno_pct!==null&&item.pluggy_retorno_pct!==undefined
+  ?Number(item.pluggy_retorno_pct):Number(item?.lucro_pct||0);
+}
+function isVariableQuotedPosition(item){
+ const variableTypes=new Set(['acao','fii','stocks','bdr','reit','etf','internacional','cripto']);
+ return variableTypes.has(String(item?.tipo||'').toLowerCase())
+  &&Number(item?.preco_atual)>0&&Number(item?.valor_atual)>0;
+}
 function getProfitPositionRows(){
- const rows=(state.itens||[]).filter(item=>Number(item.valor_atual||0)>0);
- return rows.filter(item=>profitPositionsFilter==='lucro'?Number(item.lucro||0)>0:Number(item.lucro||0)<0)
-  .sort((a,b)=>profitPositionsFilter==='lucro'?Number(b.lucro_pct||0)-Number(a.lucro_pct||0):Number(a.lucro_pct||0)-Number(b.lucro_pct||0));
+ const rows=(state.itens||[]).filter(isVariableQuotedPosition);
+ return rows.filter(item=>profitPositionsFilter==='lucro'?profitPositionReturnPct(item)>0:profitPositionReturnPct(item)<0)
+  .sort((a,b)=>profitPositionsFilter==='lucro'?profitPositionReturnPct(b)-profitPositionReturnPct(a):profitPositionReturnPct(a)-profitPositionReturnPct(b));
 }
 function renderProfitPositionsModal(){
  document.querySelector('#profitPositionsBack .modalhead h2').textContent=profitPositionsFilter==='lucro'?'Posições no lucro':'Posições no prejuízo';
@@ -2997,7 +3009,7 @@ function renderProfitPositionsModal(){
   const route=routes[item.tipo],ticker=String(item.ticker||'').toLowerCase();
   const name=route?`<a class="asset-market-link" href="https://investidor10.com.br/${route}/${encodeURIComponent(ticker)}/" target="_blank" rel="noopener noreferrer">${escapeHTML(item.ticker)}</a>`:escapeHTML(item.ticker);
   const variation=Number(item.preco_medio)>0&&Number(item.preco_atual)>0?(Number(item.preco_atual)/Number(item.preco_medio)-1)*100:null;
-  return `<tr><td class="ticker">${name}</td><td>${brl(item.valor_atual)}</td><td><span class="value-pill ${Number(variation||0)>=0?'positive':'negative'}">${variation==null?'—':pct(variation)} ${variation==null?'':variation>=0?'▲':'▼'}</span></td><td><span class="value-pill ${Number(item.lucro_pct)>=0?'positive':'negative'}">${pct(item.lucro_pct)} ${Number(item.lucro_pct)>=0?'↗':'↘'}</span></td></tr>`;
+  return `<tr><td class="ticker">${name}</td><td>${brl(item.valor_atual)}</td><td><span class="value-pill ${Number(variation||0)>=0?'positive':'negative'}">${variation==null?'—':pct(variation)} ${variation==null?'':variation>=0?'▲':'▼'}</span></td><td><span class="value-pill ${profitPositionReturnPct(item)>=0?'positive':'negative'}">${pct(profitPositionReturnPct(item))} ${profitPositionReturnPct(item)>=0?'↗':'↘'}</span></td></tr>`;
  }).join(''):rowEmpty(4,profitPositionsFilter==='lucro'?'Nenhuma posição no lucro.':'Nenhuma posição no prejuízo.');
  document.getElementById('profitWinnersTab').classList.toggle('active',profitPositionsFilter==='lucro');
  document.getElementById('profitLosersTab').classList.toggle('active',profitPositionsFilter==='prejuizo');
