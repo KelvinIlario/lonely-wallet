@@ -9,7 +9,7 @@ from openpyxl import load_workbook, Workbook
 from flask import Flask, g, jsonify, render_template, request, send_file, session, redirect, url_for
 
 app = Flask(__name__)
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', PERMANENT_SESSION_LIFETIME=timedelta(hours=12))
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', PERMANENT_SESSION_LIFETIME=timedelta(minutes=30))
 # Dados da carteira ficam em um banco próprio; segredos de APIs ficam em tokens.db.
 DB_PATH = os.environ.get('ASSETS_DB_PATH', '/data/ativos.db')
 LEGACY_DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
@@ -419,6 +419,11 @@ def load_session_secret():
 
 app.secret_key = load_session_secret()
 
+# A new boot identifier is generated on every application process start.
+# Sessions created by a previous process are rejected after a Docker restart.
+BOOT_ID = os.environ.get('LONELY_WALLET_BOOT_ID') or secrets.token_urlsafe(24)
+IDLE_TIMEOUT_SECONDS = 30 * 60
+
 
 def auth_record():
     con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
@@ -438,14 +443,29 @@ def require_pin_authentication():
     if request.endpoint in ('auth_status', 'auth_setup', 'auth_login', 'auth_disable', 'static') or request.path.startswith('/static/'):
         return None
     record = auth_record()
-    if not record or not record['enabled']:
+    if not record or not record['enabled'] or not record['pin_hash']:
         return None
-    if request.path == '/' and not session.get('authenticated'):
-        return render_template('auth.html')
-    if not session.get('authenticated'):
-        if request.path.startswith('/api/'):
-            return jsonify(ok=False, error='Autenticação necessária.', auth_required=True), 401
-        return render_template('auth.html'), 401
+
+    now = time.time()
+    authenticated = bool(session.get('authenticated'))
+    same_process = session.get('boot_id') == BOOT_ID
+    last_activity = float(session.get('last_activity') or 0)
+    within_idle_limit = last_activity > 0 and (now - last_activity) <= IDLE_TIMEOUT_SECONDS
+
+    if authenticated and (not same_process or not within_idle_limit):
+        session.clear()
+        authenticated = False
+
+    if not authenticated:
+        if request.path == '/' or not request.path.startswith('/api/'):
+            return render_template('auth.html')
+        return jsonify(ok=False, error='Autenticação necessária.', auth_required=True), 401
+
+    # Sliding inactivity timeout: activity renews the 30-minute idle window.
+    session['last_activity'] = now
+    session['boot_id'] = BOOT_ID
+    session.permanent = True
+
     # Same-origin check for state-changing browser requests. SameSite cookies add a second layer.
     if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
         origin = request.headers.get('Origin')
@@ -461,7 +481,7 @@ def auth_status():
     row = auth_record()
     configured = bool(row and row['pin_hash'])
     enabled = bool(row and row['enabled'] and configured)
-    return jsonify(configured=configured, enabled=enabled, authenticated=bool(session.get('authenticated')))
+    return jsonify(configured=configured, enabled=enabled, authenticated=bool(session.get('authenticated')), idle_timeout_minutes=30)
 
 
 @app.route('/api/auth/setup', methods=['POST'])
@@ -470,8 +490,8 @@ def auth_setup():
     pin = str(payload.get('pin') or '')
     confirm = str(payload.get('confirm') or '')
     existing = auth_record()
-    if existing is not None and existing['pin_hash']:
-        return jsonify(ok=False, error='O PIN já foi configurado.'), 409
+    if existing is not None and existing['pin_hash'] and existing['enabled']:
+        return jsonify(ok=False, error='O PIN já está ativo. Use a opção de alteração.'), 409
     if not re.fullmatch(r'\d{6,12}', pin) or pin != confirm:
         return jsonify(ok=False, error='Use um PIN de 6 a 12 números e confirme corretamente.'), 400
     salt = secrets.token_bytes(16).hex()
@@ -487,7 +507,7 @@ def auth_setup():
         return jsonify(ok=False, error='O PIN já foi configurado.'), 409
     finally:
         con.close()
-    session.clear(); session['authenticated'] = True; session.permanent = True
+    session.clear(); session['authenticated'] = True; session['boot_id'] = BOOT_ID; session['last_activity'] = time.time(); session.permanent = True
     return jsonify(ok=True)
 
 
@@ -513,7 +533,8 @@ def auth_disable():
             con.commit()
         finally:
             con.close()
-    session.clear()
+    if not session.get('authenticated'):
+        session.clear()
     return jsonify(ok=True)
 
 
@@ -542,7 +563,7 @@ def auth_login():
         con.commit()
     finally:
         con.close()
-    session.clear(); session['authenticated'] = True; session.permanent = True
+    session.clear(); session['authenticated'] = True; session['boot_id'] = BOOT_ID; session['last_activity'] = time.time(); session.permanent = True
     return jsonify(ok=True)
 
 
