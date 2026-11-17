@@ -181,6 +181,7 @@ def init_db():
       id TEXT PRIMARY KEY, arquivo TEXT NOT NULL DEFAULT '', importado_em TEXT NOT NULL,
       operacoes INTEGER NOT NULL DEFAULT 0, proventos INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS pluggy_items (
       item_id TEXT PRIMARY KEY,
       label TEXT NOT NULL DEFAULT '',
@@ -896,6 +897,32 @@ def _pluggy_import_investment_transaction(item_id, investment, movement, now_tex
          json.dumps(movement, ensure_ascii=False), now_text)
     )
     return state
+
+
+
+def _pluggy_sync_interval():
+    row = db().execute("SELECT value FROM app_settings WHERE key='pluggy_sync_interval'").fetchone()
+    try:
+        value = int(row['value']) if row else 30
+    except (TypeError, ValueError):
+        value = 30
+    return value if value in (0, 15, 30, 60, 240, 720, 1440) else 30
+
+
+@app.route('/api/pluggy/settings', methods=['GET', 'POST'])
+def pluggy_settings():
+    if request.method == 'GET':
+        return jsonify(interval_minutes=_pluggy_sync_interval())
+    payload = request.get_json(silent=True) or {}
+    try:
+        interval = int(payload.get('interval_minutes', 30))
+    except (TypeError, ValueError):
+        return json_error('Intervalo inválido.')
+    if interval not in (0, 15, 30, 60, 240, 720, 1440):
+        return json_error('Escolha um intervalo disponível.')
+    db().execute("INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(interval),))
+    db().commit()
+    return jsonify(ok=True, interval_minutes=interval)
 
 
 @app.route('/api/pluggy/state', methods=['GET'])

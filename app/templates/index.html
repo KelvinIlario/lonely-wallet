@@ -3697,7 +3697,7 @@ const RETURN_BENCHMARKS = ['CDI','IPCA','IFIX','IBOV','SMLL','IDIV','IVVB11'];
 const RETURN_BENCHMARK_COLORS = {CDI:'#f5bd45',IPCA:'#78c56b',IFIX:'#b0a0e8',IBOV:'#ed6b75',SMLL:'#e2a16b',IDIV:'#48b9ae',IVVB11:'#5bb8d8'};
 let returnBenchmarkData = null;
 let returnBenchmarkPromise = null;
-let returnVisibleSeries = new Set(['portfolio']);
+let returnVisibleSeries = new Set(['portfolio',...RETURN_BENCHMARKS]);
 let returnBenchmarkRequestKey = '';
 
 function returnBenchmarkSelectHTML(cardKey){
@@ -3846,13 +3846,18 @@ function renderRentabilidadePage(){
  // A ausência temporária de dados não deve bloquear a interação da legenda.
  const datasets=[];
  if(returnVisibleSeries.has('portfolio'))datasets.push({label:allTypesSelected?'Rentabilidade consolidada atual':'Rentabilidade da classe',data:values,borderColor:'#8da8ed',backgroundColor:'rgba(141,168,237,.12)',fill:true,tension:.22,pointRadius:2.5,pointHoverRadius:5,pointBackgroundColor:'#8da8ed',borderWidth:2,spanGaps:false});
- if(!allTypesSelected)RETURN_BENCHMARKS.forEach(code=>{
+ RETURN_BENCHMARKS.forEach(code=>{
   if(!returnVisibleSeries.has(code))return;
-  const series=returnIndexSeries(code),map=new Map(series.map(x=>[x.mes,Number(x.valor)]));
-  const priorIndex=series.filter(x=>x.mes<visibleFirstKey).slice(-1)[0];
-  const indexBase=priorIndex?1+Number(priorIndex.valor)/100:1;
-  const data=visible.map(x=>{const key=x.year+'-'+String(x.month).padStart(2,'0');return map.has(key)?Number((((1+map.get(key)/100)/indexBase-1)*100).toFixed(4)):null;});
-  if(data.some(x=>x!==null))datasets.push({label:code,data,borderColor:RETURN_BENCHMARK_COLORS[code],backgroundColor:'transparent',fill:false,tension:.18,pointRadius:2,pointHoverRadius:4,borderWidth:2,spanGaps:true});
+  const series=returnIndexSeries(code);
+  if(!series.length)return;
+  const map=new Map(series.map(x=>[x.mes,Number(x.valor)]));
+  const chartMonths=allTypesSelected?chartRows.map(row=>String(row.mes)):visible.map(x=>x.year+'-'+String(x.month).padStart(2,'0'));
+  const firstKey=chartMonths[0]||'';
+  const priorIndex=series.filter(x=>x.mes<firstKey).slice(-1)[0];
+  const firstIndex=map.get(firstKey);
+  const indexBase=priorIndex?1+Number(priorIndex.valor)/100:(Number.isFinite(firstIndex)?1+firstIndex/100:1);
+  const data=chartMonths.map(key=>map.has(key)?Number((((1+map.get(key)/100)/indexBase-1)*100).toFixed(4)):null);
+  if(data.some(x=>x!==null))datasets.push({label:code,data,borderColor:RETURN_BENCHMARK_COLORS[code],backgroundColor:'transparent',fill:false,tension:.18,pointRadius:2,pointHoverRadius:4,borderWidth:2,spanGaps:false});
  });
  const singleConsolidatedPoint=allTypesSelected&&values.length===1;
  const singleValue=singleConsolidatedPoint?values[0]:null;
@@ -3869,9 +3874,8 @@ function renderRentabilidadePage(){
   const availableSeries=code==='portfolio'||returnIndexSeries(code).length>0;
   const meta=returnBenchmarkData?.meta?.[code];
   button.title=code==='portfolio'?'Clique para exibir ou ocultar a rentabilidade da carteira':meta?'Fonte: '+meta.source+' · último dado: '+(meta.last_available||'indisponível')+(meta.sample?' · amostra recente':''):availableSeries?'Clique para exibir ou ocultar esta série':'Sem dados históricos disponíveis no momento; clique para exibir quando a fonte responder';
-  const unavailableForConsolidated=allTypesSelected&&code!=='portfolio';
-  button.disabled=unavailableForConsolidated;button.setAttribute('aria-disabled',String(unavailableForConsolidated));
-  if(unavailableForConsolidated)button.title='Comparação desativada: a curva histórica consolidada ainda não tem cobertura completa.';
+  button.disabled=false;button.setAttribute('aria-disabled','false');
+  if(allTypesSelected&&code!=='portfolio'&&!chartRows.length)button.title='Aguardando histórico da carteira para alinhar o período da comparação.';
  });
  const yearGroups=new Map();
  monthly.forEach(row=>{if(!yearGroups.has(row.year))yearGroups.set(row.year,[]);yearGroups.get(row.year).push(row);});
@@ -3889,8 +3893,11 @@ function renderRentabilidadePage(){
  const tableNote=document.getElementById('returnTableNote');
  if(tableNote)tableNote.textContent=typeSelect.value==='todos'?'Retornos mensais calculados a partir dos ativos com histórico de preços disponível; o indicador total considera o resultado consolidado de toda a carteira.':'Retornos mensais da classe selecionada.';
  updateReturnCardComparisons();
- const startKey=monthly.length?monthly[0].year+'-'+String(monthly[0].month).padStart(2,'0'):'';
- if(startKey&&(!returnBenchmarkData||returnBenchmarkRequestKey!==startKey)&&!returnBenchmarkPromise){
+ const startKey=monthly.length?monthly[0].year+'-'+String(monthly[0].month).padStart(2,'0'):
+  (chartRows.length?String(chartRows[0].mes):'');
+ if(!returnBenchmarkData&&!returnBenchmarkPromise){
+  loadReturnBenchmarks(startKey||'').then(()=>{if(document.getElementById('page-rentabilidade')&&!document.getElementById('page-rentabilidade').classList.contains('hidden'))renderRentabilidadePage();});
+ }else if(startKey&&returnBenchmarkRequestKey!==startKey&&!returnBenchmarkPromise){
   loadReturnBenchmarks(startKey).then(()=>{if(document.getElementById('page-rentabilidade')&&!document.getElementById('page-rentabilidade').classList.contains('hidden'))renderRentabilidadePage();});
  }
 }
@@ -4102,7 +4109,7 @@ function renderAPIProviders(){
   p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar; cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
   `<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.':'Não é necessário cadastrar token.'}</span></div>`}
   <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
-  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte suas instituições financeiras em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
+  ${p.id==='pluggy'?`<div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4><div class="mini">No plano pessoal gratuito, conecte suas instituições financeiras em Meu Pluggy e depois adicione o conector MeuPluggy na página Demo do Dashboard. Copie o itemId de cada conexão e cadastre abaixo.</div><div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div><div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><label class="mini pluggy-auto-sync-control">Sincronizar automaticamente<select id="pluggyAutoSyncInterval" aria-label="Intervalo de sincronização automática" onchange="savePluggyAutoSyncInterval(this.value)"><option value="0">Desativado</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60">A cada hora</option><option value="240">A cada 4 horas</option><option value="720">A cada 12 horas</option><option value="1440">Uma vez ao dia</option></select></label><select id="pluggyClearItemSelect" aria-label="Conexão para limpar" style="max-width:190px"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a></div><div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>`:''}
   <div class="api-provider-links"><a href="${p.url}" target="_blank" rel="noopener noreferrer">Obter acesso</a><a href="${p.docs}" target="_blank" rel="noopener noreferrer">Documentação</a></div>
  </article>`;
  host.innerHTML=credentialed.map(card).join('');if(pluggyHost)pluggyHost.innerHTML=pluggy.map(card).join('')||'<div class="panel empty">Pluggy indisponível.</div>'; 
@@ -4133,6 +4140,49 @@ async function addPluggyItem(){
   document.getElementById('pluggyItemId').value='';document.getElementById('pluggyItemLabel').value='';
   await loadPluggyState();toast('Conexão MeuPluggy adicionada.');
  }catch(error){toast(error.message||'Não foi possível adicionar a conexão.');}
+}
+
+let pluggyAutoSyncTimer=null;
+let pluggyAutoSyncRunning=false;
+async function savePluggyAutoSyncInterval(value){
+ const interval=Number(value);
+ try{
+  await api('/api/pluggy/settings',{method:'POST',body:JSON.stringify({interval_minutes:interval})});
+  toast(interval===0?'Sincronização automática desativada.':'Sincronização automática configurada.');
+  if(pluggyAutoSyncTimer)clearInterval(pluggyAutoSyncTimer);
+  startPluggyAutoSync();
+ }catch(error){toast(error.message||'Não foi possível salvar o intervalo.');}
+}
+async function runPluggyAutoSync(){
+ if(pluggyAutoSyncRunning||document.hidden)return;
+ const select=document.getElementById('pluggyAutoSyncInterval');
+ const interval=Number(select?.value||0);
+ if(!interval)return;
+ let last=0;try{last=Number(localStorage.getItem('lonelyWalletPluggyAutoSyncAt')||0)}catch(e){}
+ if(Date.now()-last<interval*60000)return;
+ pluggyAutoSyncRunning=true;
+ try{
+  await api('/api/pluggy/sync',{method:'POST',body:JSON.stringify({force:true}),skipAutoRefresh:true});
+  try{localStorage.setItem('lonelyWalletPluggyAutoSyncAt',String(Date.now()))}catch(e){}
+  if(typeof loadPluggyState==='function')await loadPluggyState();
+  if(typeof refresh==='function')refresh();
+ }catch(error){
+  const host=document.getElementById('pluggyState');
+  if(host)host.textContent='Falha na sincronização automática: '+(error.message||'erro desconhecido');
+ }finally{pluggyAutoSyncRunning=false;}
+}
+async function startPluggyAutoSync(){
+ const select=document.getElementById('pluggyAutoSyncInterval');
+ if(!select)return;
+ try{
+  const settings=await api('/api/pluggy/settings');
+  select.value=String(settings.interval_minutes??30);
+ }catch(e){select.value='30';}
+ if(pluggyAutoSyncTimer)clearInterval(pluggyAutoSyncTimer);
+ if(Number(select.value)>0){
+  runPluggyAutoSync();
+  pluggyAutoSyncTimer=setInterval(runPluggyAutoSync,60000);
+ }
 }
 async function syncPluggy(){
  if(!await appConfirm('Sincronizar Pluggy','A sincronização consultará somente investimentos e movimentações de investimento para atualizar sua carteira.','Sincronizar agora'))return;
@@ -5090,6 +5140,8 @@ document.addEventListener('click',function(event){
   window.closeAllProventosMenus();
  }
 },true);
+
+startPluggyAutoSync();
 </script>
 </body></html>
 <style>

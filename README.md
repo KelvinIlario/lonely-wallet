@@ -1,4 +1,24 @@
-# Lonely Wallet v3.3.15
+# Lonely Wallet v3.3.22
+
+## v3.3.22
+
+- Adicionada configuração persistente do intervalo de sincronização automática da Pluggy: desativado, 15 ou 30 minutos, 1 hora, 4 horas, 12 horas ou 1 vez ao dia.
+- A sincronização automática é executada pelo navegador enquanto o Lonely Wallet estiver aberto; a preferência fica salva no banco local.
+- A sincronização continua consultando somente investimentos e movimentações de investimento, sem transações bancárias.
+- A página Rentabilidade inicia com as séries da carteira e dos índices CDI, IPCA, IFIX, IBOV, SMLL, IDIV e IVVB11 selecionadas.
+- As séries de índices são alinhadas ao período disponível da carteira, sem inventar pontos históricos. Comparações dependem de dados reais e períodos coincidentes.
+- A série da carteira continua baseada no histórico de operações e cotações disponível, incluindo operações importadas da Pluggy. O saldo atual da Pluggy, isoladamente, não é tratado como histórico mensal.
+
+## Dados e atualização
+
+Preserve integralmente o volume persistente `/DATA/AppData/lonely-wallet/data:/data`, incluindo `/data/carteira.db` e `/data/.api-credentials.key`. Não apague nem recrie esses arquivos ao atualizar.
+
+Porta externa recomendada no ZimaOS: `8085`, apontando para a porta interna `8080`. Fuso: `America/Sao_Paulo`.
+
+## Limites de validação
+
+Compilação Python, sintaxe dos scripts JavaScript e integridade do ZIP verificadas. A sincronização automática depende do navegador permanecer aberto. Não foram realizadas chamadas reais às APIs neste ambiente; a cobertura do gráfico depende do histórico efetivamente retornado pelos provedores e das operações disponíveis na carteira.
+
 
 Aplicativo pessoal para acompanhamento de carteira de investimentos.
 
