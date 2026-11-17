@@ -1,3 +1,13 @@
+# Lonely Wallet v3.3.38
+
+## v3.3.38
+
+- Corrigido o gráfico Evolução do Patrimônio para incluir posições sem histórico de cotação, que antes eram excluídas do cálculo.
+- Ativos sem histórico usam o custo médio como referência nos meses anteriores, sem atribuir ganho ou prejuízo histórico não comprovado.
+- No mês corrente, o gráfico usa o valor atual da posição quando disponível, permitindo conciliar o patrimônio com os cards de Meus ativos.
+- A correção vale para Ações, FIIs e demais classes; o cálculo específico de Renda Fixa foi preservado.
+- A nota do gráfico informa quando há ativos sem cotação histórica e explica o critério de referência utilizado.
+
 # Lonely Wallet v3.3.22
 
 ## v3.3.22

@@ -3239,7 +3239,7 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
     PORTFOLIO_HISTORY_CACHE[cache_key] = {'time': now, 'data': response_data}
     return response_data
 
-def build_portfolio_performance(operations, dividends, history=None, imported_positions=None, snapshot_date=None):
+def build_portfolio_performance(operations, dividends, history=None, imported_positions=None, snapshot_date=None, current_positions=None):
     """Calcula a rentabilidade mensal da parcela da carteira com histórico disponível.
 
     Compras e vendas são tratadas como fluxos externos ponderados pelo tempo (Modified Dietz).
@@ -3284,18 +3284,23 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
             if all(bool(point.get('ajustado')) for point in valid):
                 adjusted_tickers.add(str(ticker).upper())
 
-    available_tickers = set(normalized) | fixed_income_symbols
-    missing_symbols = sorted(set(all_tickers) - available_tickers)
+    # Ativos sem série histórica também entram na composição patrimonial.
+    # Para eles, usamos custo médio como referência nos meses passados e a
+    # cotação/valor atual do próprio portfólio no mês corrente.
+    historical_tickers = set(normalized) | fixed_income_symbols
+    available_tickers = set(all_tickers) | fixed_income_symbols
+    missing_symbols = sorted(set(all_tickers) - historical_tickers)
     empty = {
         'series_12m': [], 'series_total': [], 'rentabilidade_12m': None,
         'rentabilidade_total': None, 'meses_disponiveis': 0,
         'primeiro_mes': None, 'historico_completo': False,
         'ativos_sem_historico': missing_symbols,
-        'ativos_com_historico': len(available_tickers), 'total_ativos': len(all_tickers),
+        'ativos_com_historico': len(historical_tickers), 'total_ativos': len(all_tickers),
         'fontes_historico': history_sources,
         'historico_parcial': bool(missing_symbols) or bool(snapshot_date)
     }
     snapshot_map = {str(row.get('ticker') or '').upper(): row for row in imported_positions if row.get('ticker')}
+    current_map = {str(row.get('ticker') or '').upper(): row for row in (current_positions or []) if row.get('ticker')}
 
     def snapshot_only_result():
         snapshot_cost = sum(float(row.get('quantidade') or 0) * float(row.get('preco_medio') or 0) for row in imported_positions)
@@ -3310,7 +3315,7 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
             'historico_parcial': True, 'ativos_com_historico': 0, 'total_ativos': len(all_tickers)
         }
 
-    if not normalized and not fixed_income_symbols:
+    if not normalized and not fixed_income_symbols and not all_tickers:
         return snapshot_only_result()
     if not operations and not snapshot_map:
         return empty
@@ -3433,6 +3438,49 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
 
     portfolio_value_cache = {}
 
+    def fallback_cost_value(ticker, cutoff, quantity):
+        """Estima apenas o valor patrimonial de ativos sem cotação histórica pelo custo médio.
+
+        Não cria ganho fictício: o resultado desses ativos fica zerado até existir
+        uma cotação histórica confiável. O mês corrente usa o valor atual do portfólio.
+        """
+        if cutoff >= today:
+            current = current_map.get(ticker) or {}
+            try:
+                current_value = float(current.get('valor_atual') or 0)
+                if current_value > 0:
+                    return current_value
+            except (TypeError, ValueError):
+                pass
+
+        qty = 0.0
+        cost = 0.0
+        base = snapshot_map.get(ticker)
+        if base and base_day and cutoff >= base_day:
+            qty = max(0.0, float(base.get('quantidade') or 0))
+            cost = qty * max(0.0, float(base.get('preco_medio') or 0))
+            relevant_ops = [op for op in executed if op['_ticker'] == ticker and base_day < op['_date'] <= cutoff]
+        else:
+            relevant_ops = [op for op in executed if op['_ticker'] == ticker and op['_date'] <= cutoff]
+
+        for op in relevant_ops:
+            amount = op['_quantity'] * op['_price']
+            if op.get('lado') == 'compra':
+                qty += op['_quantity']
+                cost += amount + op['_costs']
+            elif qty > 1e-8:
+                sold = min(qty, op['_quantity'])
+                average = cost / qty
+                qty -= sold
+                cost -= average * sold
+        if qty <= 1e-8:
+            # Para saldos-base anteriores à primeira operação conhecida, conserva
+            # o custo médio do saldo-base em vez de apagar a posição do gráfico.
+            if base and quantity > 0:
+                return quantity * max(0.0, float(base.get('preco_medio') or 0))
+            return 0.0
+        return max(0.0, cost)
+
     def portfolio_value(cutoff):
         cache_key = cutoff.isoformat()
         if cache_key in portfolio_value_cache:
@@ -3449,12 +3497,13 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
                 continue
             points = normalized.get(ticker) or []
             previous = next((point for point in reversed(points) if point['data'] <= cutoff), None)
-            # Cotação ausente/antiga para um ativo não elimina o histórico dos outros.
-            # O retorno passa a representar explicitamente a parcela coberta pela fonte.
             price = float(previous['preco']) if previous and (cutoff - previous['data']).days <= 45 else 0.0
-            if price <= 0:
-                continue
-            total += qty * price
+            if price > 0:
+                total += qty * price
+            else:
+                # Não excluir a posição inteira por falta de histórico. O custo
+                # médio mantém o patrimônio aplicado visível sem inventar retorno.
+                total += fallback_cost_value(ticker, cutoff, qty)
             priced_positions += 1
         if holdings and not priced_positions:
             portfolio_value_cache[cache_key] = None
@@ -4241,7 +4290,7 @@ def dashboard():
         for item in detailed if _is_income_event(item.get('tipo_evento'))
     ]
     performance_history = fetch_portfolio_price_history(ops, imported_rows)
-    performance = build_portfolio_performance(ops, performance_dividends, history=performance_history, imported_positions=imported_rows, snapshot_date=base_date)
+    performance = build_portfolio_performance(ops, performance_dividends, history=performance_history, imported_positions=imported_rows, snapshot_date=base_date, current_positions=portfolio.get('itens', []))
     # Séries por classe permitem que o filtro da página Rentabilidade altere
     # os indicadores e o gráfico sem misturar classes diferentes.
     return_types = sorted({str(row.get('tipo') or '').strip().lower() for row in [*ops, *imported_rows] if row.get('tipo')})
@@ -4253,7 +4302,8 @@ def dashboard():
         type_dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in type_tickers]
         performance_by_type[asset_type] = build_portfolio_performance(
             type_ops, type_dividends, history=performance_history,
-            imported_positions=type_positions, snapshot_date=base_date
+            imported_positions=type_positions, snapshot_date=base_date,
+            current_positions=[row for row in portfolio.get('itens', []) if str(row.get('tipo') or '').strip().lower() == asset_type]
         )
     return jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
         saldos_importados=imported_rows, data_base_snapshot=base_date,
