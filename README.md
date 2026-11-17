@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.9
+# Lonely Wallet v4.2.10
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.9
+- **Versão:** 4.2.10
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -12,6 +12,19 @@
 - **Diretório persistente:** `/DATA/AppData/lonely-wallet/data` no host, montado em `/data` no container
 
 ---
+
+## Atualização 4.2.10
+
+Versão de correção sobre a 4.2.9; bancos e arquivos em `/data` são preservados.
+
+- **Segurança (XSS):** valores dinâmicos em handlers inline (`onclick` etc.) passam por `jsArg()`, que serializa como string JSON e escapa o atributo. Antes, um ticker como `');alert(1);//` (vindo de planilha ou cadastro manual) escapava da string JavaScript.
+- **Migração de permissões:** `scripts/entrypoint.py` agora aborta se não conseguir ajustar a propriedade de qualquer arquivo de `/data` e só grava o marcador depois de concluir toda a migração (de forma atômica). Antes, uma falha era ignorada e o marcador impedia nova tentativa, deixando bancos como root e o app sem conseguir gravar.
+- **Vendas retroativas:** além da posição na data da venda, o sistema confere se ela deixaria a posição negativa em datas posteriores (criação e edição). Mensagem: "Esta venda retroativa deixaria a posição negativa...".
+- **CSP mais restrita:** `connect-src`, `style-src` e `font-src` não aceitam mais `https:` genérico. O Chart.js é carregado de `/static/chart.umd.min.js` quando existir, com fallback para o jsDelivr. Para servir localmente (recomendado), execute uma vez `python scripts/vendor_chartjs.py` em um computador com internet e reconstrua a imagem; o script imprime o hash SRI.
+- **Backups preventivos:** `pre-exclusao-*` mantém apenas os 10 mais recentes (`PREDELETE_BACKUPS_KEEP`).
+- **Mensagens de erro:** erros de Pluggy/proventos passam por `safe_error_text`, que remove URLs.
+- **Testes:** suíte isolada (limpa saldos e operações entre testes) e novos testes para venda retroativa, edição de venda, importação B3 com execuções idênticas, handlers inline, backups e mensagens de erro.
+- Removida a duplicata da seção 4.2.8 e a pasta `.pytest_cache` do pacote.
 
 ## Atualização 4.2.7
 
@@ -36,14 +49,6 @@
 - O bloqueio de carregamento cobre toda a janela e impede rolagem enquanto não houver valores confirmados.
 - Cada conexão MeuPluggy recebeu um botão individual de sincronização, além do botão de sincronização geral.
 - O timeout das requisições de sincronização Pluggy foi ampliado e o Gunicorn passou a aceitar solicitações longas.
-
-## Atualização 4.2.8
-
-- O último dashboard totalmente processado é salvo em `/data/dashboard_cache.json` e reaproveitado no F5 quando bancos, credenciais e arquivo de cotações não mudaram.
-- Na primeira abertura sem cache válido, os valores permanecem ocultos até terminar a geração completa de cotações, indexadores, proventos e histórico.
-- O bloqueio de carregamento cobre toda a janela e impede rolagem enquanto não houver valores confirmados.
-- Cada conexão MeuPluggy recebeu um botão individual de sincronização, além do botão de sincronização geral.
-- O tempo limite de sincronização Pluggy foi ampliado no navegador e no servidor.
 
 ## 1. O que é o Lonely Wallet
 
@@ -375,7 +380,7 @@ Esta versão parte da linha 4.2.2 e mantém os bancos e arquivos persistentes em
 
 ### Cabeçalhos de segurança e ícone
 
-- A aplicação envia Content Security Policy com restrições para objetos, origem base, formulários e enquadramento. `unsafe-inline` permanece temporariamente habilitado por causa dos handlers inline existentes; portanto, não é uma CSP estrita.
+- A aplicação envia Content Security Policy com restrições para objetos, origem base, formulários e enquadramento. `unsafe-inline` permanece habilitado para scripts por causa do JavaScript inline do template; portanto, não é uma CSP estrita (a proteção contra XSS vem do escape de handlers, a partir da 4.2.10).
 - O ícone do catálogo usa caminho relativo `/static/lonely-wallet-logo.png`, evitando dependência do IP `192.168.31.79`.
 
 ### Atualização no ZimaOS

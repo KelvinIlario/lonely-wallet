@@ -146,7 +146,7 @@ def security_headers(response):
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-    response.headers.setdefault('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https:; font-src 'self' data: https:")
+    response.headers.setdefault('Content-Security-Policy', "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self'; font-src 'self' data:")
     return response
 
 
@@ -1398,7 +1398,7 @@ def pluggy_add_item():
         except Exception: pass
         return json_error('Não foi possível validar o itemId na Pluggy. HTTP %s %s' % (code, str(detail)[:140]), 400)
     except Exception as exc:
-        return json_error('Falha ao validar conexão Pluggy: ' + str(exc)[:180], 400)
+        return json_error('Falha ao validar conexão Pluggy: ' + safe_error_text(exc, 180), 400)
 
 
 @app.route('/api/pluggy/items/<item_id>/clear', methods=['POST'])
@@ -1604,13 +1604,13 @@ def pluggy_sync():
         return json_error('Falha ao sincronizar Pluggy (HTTP %s). Confira itemId, autorização MeuPluggy e credenciais.' % code, 400)
     except Exception as exc:
         db().commit()
-        return json_error('Falha na sincronização Pluggy: ' + str(exc)[:220], 400)
+        return json_error('Falha na sincronização Pluggy: ' + safe_error_text(exc, 220), 400)
     # Após atualizar as posições/movimentações, reconcilia proventos dos ativos atuais.
     try:
         current_items = (carteira().json or {}).get('itens', [])
         summary['proventos_sync'] = sync_brapi_proventos(force=False, quote_items=current_items, active_items=current_items)
     except Exception as dividend_exc:
-        summary['warnings'].append('Não foi possível atualizar proventos após a sincronização: ' + str(dividend_exc)[:160])
+        summary['warnings'].append('Não foi possível atualizar proventos após a sincronização: ' + safe_error_text(dividend_exc, 160))
     return jsonify(ok=True, summary=summary, synced_at=now_text)
 
 
@@ -2279,7 +2279,7 @@ def asset_type_for_ticker(ticker, reference_date=None):
     return None
 
 
-def posicao(ticker, as_of=None):
+def posicao(ticker, as_of=None, exclude_id=None):
     """Calcula posição usando o último saldo-base e apenas operações posteriores.
 
     A fotografia é global e completa: ativos ausentes nela começam com saldo zero.
@@ -2292,14 +2292,14 @@ def posicao(ticker, as_of=None):
         qtd = float(balance['quantidade']) if balance else 0.0
         custo = qtd * float(balance['preco_medio'] or 0) if balance else 0.0
         ops = db().execute(
-            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data>? AND data<=? ORDER BY data,id",
-            (str(ticker).upper(), base_date, cutoff)
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data>? AND data<=? AND id<>? ORDER BY data,id",
+            (str(ticker).upper(), base_date, cutoff, exclude_id or 0)
         ).fetchall()
     else:
         qtd = custo = 0.0
         ops = db().execute(
-            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data<=? ORDER BY data,id",
-            (str(ticker).upper(), cutoff)
+            "SELECT * FROM operacoes WHERE ticker=? AND status='executada' AND data<=? AND id<>? ORDER BY data,id",
+            (str(ticker).upper(), cutoff, exclude_id or 0)
         ).fetchall()
     for op in ops:
         q = float(op['quantidade']); valor = q * float(op['preco'])
@@ -2314,8 +2314,35 @@ def posicao(ticker, as_of=None):
     return max(qtd, 0), (custo / qtd if qtd > 0 else 0)
 
 
+def sale_breaks_future_position(ticker, sale_date, quantity, exclude_id=None):
+    """True se uma venda nesta data deixaria a posição negativa em alguma data posterior.
+
+    Vendas retroativas reduzem todas as posições seguintes; conferir apenas a data da
+    venda aceitaria lançamentos que tornam inconsistente o histórico já registrado.
+    """
+    key = str(ticker).upper()
+    today = datetime.now(TZ).date().isoformat()
+    rows = db().execute(
+        "SELECT DISTINCT data FROM operacoes WHERE ticker=? AND status='executada' AND data>? AND id<>?",
+        (key, sale_date, exclude_id or 0)
+    ).fetchall()
+    later = {str(r['data'])[:10] for r in rows}
+    if today > sale_date:
+        later.add(today)
+    for day in sorted(later):
+        position, _ = posicao(key, as_of=day, exclude_id=exclude_id)
+        if position - float(quantity) < -1e-8:
+            return True
+    return False
+
+
 def json_error(message, status=400):
     return jsonify(ok=False, erro=message), status
+
+
+def safe_error_text(exc, limit=180):
+    """Texto de exceção sem URLs (o requests inclui a URL completa, às vezes com chave)."""
+    return re.sub(r'https?://\S+', '[url omitida]', str(exc))[:limit]
 
 
 def easter_sunday(year):
@@ -2399,6 +2426,8 @@ def valid_operation(data):
             if dt >= datetime.now(TZ).date().isoformat():
                 reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada'",(ticker,)).fetchone()[0])
             if qtd>available-reserved+1e-8: return None,'A quantidade vendida é maior que a posição disponível na data da operação, considerando vendas já agendadas.'
+            if sale_breaks_future_position(ticker, dt, qtd):
+                return None,'Esta venda retroativa deixaria a posição negativa em lançamentos posteriores. Ajuste a quantidade ou a data.'
         raw=str(data.get('data_hora') or (dt+'T10:00'))
         requested=datetime.fromisoformat(raw)
         if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
@@ -2584,6 +2613,17 @@ def cleanup_pluggy_asset_refs(scope, tipo='', ticker='', operation_ids=None, inv
     return {'pluggy_investments': len(inv_ids), 'pluggy_transactions': int(deleted_tx), 'pluggy_events': int(deleted_events)}
 
 
+PREDELETE_BACKUPS_KEEP = int(os.environ.get('PREDELETE_BACKUPS_KEEP', '10'))
+
+
+def _prune_predelete_backups(backup_root, keep=None):
+    """Mantém só os backups preventivos mais recentes para não encher o disco."""
+    keep = max(1, PREDELETE_BACKUPS_KEEP if keep is None else keep)
+    folders = sorted(p for p in Path(backup_root).glob('pre-exclusao-*') if p.is_dir())
+    for old in folders[:-keep]:
+        shutil.rmtree(old, ignore_errors=True)
+
+
 def create_predelete_backup():
     """Cria cópias SQLite consistentes antes de exclusões em massa."""
     backup_root = Path(os.environ.get('BACKUP_DIR', '/data/backups'))
@@ -2601,6 +2641,7 @@ def create_predelete_backup():
                     raise RuntimeError('Falha ao validar backup preventivo.')
             finally:
                 dest.close()
+        _prune_predelete_backups(backup_root)
         return str(folder)
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)
@@ -2702,14 +2743,14 @@ def delete_operacao(op_id):
             existing_type=asset_type_for_ticker(ticker, dt)
             if not existing_type or existing_type!=tipo:
                 return json_error('O ativo selecionado não pertence à categoria informada. Escolha o ativo dentro da categoria correta.')
-            available,_=posicao(ticker, as_of=dt)
-            if ticker==current['ticker'] and current['lado']=='venda' and current['status']!='agendada' and current['data']<=dt:
-                available+=float(current['quantidade'] or 0)
+            available,_=posicao(ticker, as_of=dt, exclude_id=op_id)
             reserved=0.0
             if dt >= datetime.now(TZ).date().isoformat():
                 reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada' AND id<>?",(ticker,op_id)).fetchone()[0])
             if qtd>available-reserved+1e-8:
                 return json_error('A quantidade vendida é maior que a posição disponível na data da operação, considerando vendas já agendadas.')
+            if sale_breaks_future_position(ticker, dt, qtd, exclude_id=op_id):
+                return json_error('Esta venda retroativa deixaria a posição negativa em lançamentos posteriores. Ajuste a quantidade ou a data.')
         raw=str(j.get('data_hora') or (dt+'T10:00'))
         requested=datetime.fromisoformat(raw)
         if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
@@ -2995,7 +3036,7 @@ def importar_b3():
             current_items = (carteira().json or {}).get('itens', [])
             dividend_sync = sync_brapi_proventos(force=False, quote_items=current_items, active_items=current_items)
         except Exception as dividend_exc:
-            dividend_sync = {'ok': False, 'mensagem': str(dividend_exc)[:180]}
+            dividend_sync = {'ok': False, 'mensagem': safe_error_text(dividend_exc, 180)}
         return jsonify(ok=True,importadas=inserted_ops+inserted_provs,operacoes=inserted_ops,proventos=inserted_provs,duplicados=duplicates,lote_id=lote_id, sincronizacao_proventos=dividend_sync)
     except Exception as exc:
         return json_error(str(exc) if isinstance(exc,ValueError) else 'Não foi possível ler a planilha B3. Confira o arquivo e tente novamente.')

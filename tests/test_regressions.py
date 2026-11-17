@@ -27,6 +27,11 @@ class RegressionTests(unittest.TestCase):
             con.execute('DELETE FROM app_auth')
             con.execute('DELETE FROM auth_attempts')
             con.commit()
+            # Isolamento: saldos-base são globais e alterariam o resultado de outros testes.
+            data = wallet.db()
+            for table in ('saldos_importados', 'operacoes', 'proventos', 'b3_importados', 'b3_import_lotes'):
+                data.execute(f'DELETE FROM {table}')
+            data.commit()
 
     def test_health_endpoint(self):
         response = self.client.get('/api/health')
@@ -141,6 +146,72 @@ class RegressionTests(unittest.TestCase):
             summary = wallet.build_irpf_summary(2026)
             self.assertGreater(summary['resumo']['resultado_vendas'], 0)
             self.assertTrue(any(x['ticker']=='IRPFBASE4' and x['quantidade']==6 for x in summary['posicoes']))
+
+    # ---- 4.2.10 ----
+    def _op(self, ticker, lado, qtd, preco, data):
+        with wallet.app.app_context():
+            con = wallet.db()
+            con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                        (ticker, 'acao', lado, qtd, preco, data, 0, 'executada', data, data + 'T10:00:00-03:00', '{}'))
+            con.commit()
+
+    def test_retroactive_sale_cannot_break_later_position(self):
+        self._op('RETRO4', 'compra', 10, 10, '2026-01-02')
+        self._op('RETRO4', 'venda', 8, 12, '2026-03-02')
+        with wallet.app.test_request_context('/'):
+            # 5 cabem em 2026-02-01 (posição 10), mas deixariam -3 depois da venda de 8.
+            result, error = wallet.valid_operation({'ticker': 'RETRO4', 'tipo': 'acao', 'lado': 'venda',
+                                                    'quantidade': '5', 'preco': '11', 'data': '2026-02-01'})
+            self.assertIsNone(result)
+            self.assertIn('retroativa', error)
+            result, error = wallet.valid_operation({'ticker': 'RETRO4', 'tipo': 'acao', 'lado': 'venda',
+                                                    'quantidade': '2', 'preco': '11', 'data': '2026-02-01'})
+            self.assertIsNone(error)
+
+    def test_put_sale_does_not_count_itself(self):
+        self._op('PUTSELF4', 'compra', 10, 10, '2026-01-02')
+        self._op('PUTSELF4', 'venda', 10, 12, '2026-02-02')
+        with wallet.app.app_context():
+            op_id = wallet.db().execute("SELECT id FROM operacoes WHERE lado='venda' AND ticker='PUTSELF4'").fetchone()['id']
+        response = self.client.put(f'/api/operacoes/{op_id}', json={'quantidade': 10, 'data': '2026-02-02'})
+        self.assertEqual(response.status_code, 200, response.get_json())
+
+    def test_b3_import_keeps_identical_fills_and_matches_preview(self):
+        import io
+        from openpyxl import Workbook
+        wb = Workbook(); ws = wb.active
+        ws.append(['Entrada/Saída', 'Data', 'Movimentação', 'Produto', 'Instituição', 'Quantidade', 'Preço unitário', 'Valor da Operação'])
+        for day in ('10/11/2026', '10/11/2026', '11/11/2026'):
+            ws.append(['Credito', day, 'Transferência - Liquidação', 'MXRF11 - MAXI RENDA FII', 'XP', 10, 9.6, 96.0])
+        buf = io.BytesIO(); wb.save(buf)
+
+        def send(mode):
+            return self.client.post('/api/importar-b3', data={'arquivo': (io.BytesIO(buf.getvalue()), 'm.xlsx'), 'modo': mode},
+                                    content_type='multipart/form-data').get_json()
+        self.assertEqual(send('preview')['novos'], 3)
+        self.assertEqual(send('importar')['operacoes'], 3)
+        again = send('importar')
+        self.assertEqual(again['operacoes'], 0)  # reimportar o mesmo arquivo não duplica
+
+    def test_inline_handlers_never_embed_raw_values_in_quotes(self):
+        import re
+        html = (Path(__file__).resolve().parents[1] / 'app' / 'templates' / 'index.html').read_text(encoding='utf-8')
+        offenders = re.findall(r"\bon[a-z]+=\"[^\"]*'\$\{[^\"]*\"", html)
+        self.assertEqual(offenders, [])
+        self.assertIn('function jsArg(', html)
+
+    def test_safe_error_text_removes_urls(self):
+        text = wallet.safe_error_text('401 for url: https://api.hgbrasil.com/finance?key=SECRET falhou')
+        self.assertNotIn('SECRET', text)
+        self.assertNotIn('hgbrasil', text)
+
+    def test_predelete_backups_are_rotated(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(15):
+                (Path(tmp) / f'pre-exclusao-2026010{i:02d}').mkdir()
+            wallet._prune_predelete_backups(tmp, keep=10)
+            self.assertEqual(len(list(Path(tmp).glob('pre-exclusao-*'))), 10)
 
 
 if __name__ == '__main__':
