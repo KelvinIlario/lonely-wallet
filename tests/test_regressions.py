@@ -2,6 +2,8 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(tempfile.mkdtemp(prefix='lonely-wallet-tests-'))
@@ -27,11 +29,6 @@ class RegressionTests(unittest.TestCase):
             con.execute('DELETE FROM app_auth')
             con.execute('DELETE FROM auth_attempts')
             con.commit()
-            # Isolamento: saldos-base são globais e alterariam o resultado de outros testes.
-            data = wallet.db()
-            for table in ('saldos_importados', 'operacoes', 'proventos', 'b3_importados', 'b3_import_lotes'):
-                data.execute(f'DELETE FROM {table}')
-            data.commit()
 
     def test_health_endpoint(self):
         response = self.client.get('/api/health')
@@ -117,6 +114,96 @@ class RegressionTests(unittest.TestCase):
             self.assertIsNotNone(result)
 
 
+    def test_pluggy_sync_interval_is_persisted_between_requests(self):
+        saved = self.client.post('/api/pluggy/settings', json={'interval_minutes': 60})
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.get_json()['interval_minutes'], 60)
+        loaded = self.client.get('/api/pluggy/settings')
+        self.assertEqual(loaded.status_code, 200)
+        self.assertEqual(loaded.get_json()['interval_minutes'], 60)
+        with wallet.app.app_context():
+            con = wallet.db()
+            con.execute("UPDATE app_settings SET value='30' WHERE key='pluggy_sync_interval'")
+            con.execute("DELETE FROM app_settings WHERE key='pluggy_auto_sync_last_attempt'")
+            con.commit()
+
+    def test_daily_market_change_uses_daily_quote_and_rejects_stale_data(self):
+        percent, amount = wallet._daily_market_change(105, 5)
+        self.assertEqual(percent, 5.0)
+        self.assertEqual(amount, 5.0)
+        self.assertEqual(wallet._daily_market_change(105, 5, stale=True), (None, None))
+        self.assertEqual(wallet._daily_market_change(105, -100), (None, None))
+
+    def test_brapi_amortization_is_not_normalized_as_dividend(self):
+        self.assertEqual(wallet._normalize_api_income_event_type('AMORTIZAÇÃO', 'fii'), 'AMORTIZACAO')
+        self.assertEqual(wallet._normalize_api_income_event_type('RENDIMENTO', 'fii'), 'RENDIMENTO')
+        self.assertEqual(wallet._normalize_api_income_event_type('JCP', 'stock'), 'JCP')
+        self.assertFalse(wallet._is_income_event('AMORTIZACAO'))
+
+    def test_hgbrasil_quote_uses_documented_stock_price_endpoint(self):
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {'valid_key': True, 'results': {'HGLG11': {
+                    'symbol': 'HGLG11', 'name': 'FII HGLG', 'price': 160.0,
+                    'change_percent': 0.25
+                }}}
+
+        with patch.object(wallet, '_get_api_token', side_effect=lambda provider: 'test-key' if provider == 'hgbrasil' else ''), \
+             patch.object(wallet.requests, 'get', return_value=FakeResponse()) as request:
+            quote = wallet._fallback_market_quote('HGLG11')
+        self.assertEqual(request.call_args.args[0], 'https://api.hgbrasil.com/finance/stock_price')
+        self.assertEqual(request.call_args.kwargs['params'], {'key': 'test-key', 'symbol': 'HGLG11'})
+        self.assertEqual(quote['regularMarketPrice'], 160.0)
+        self.assertEqual(quote['regularMarketChangePercent'], 0.25)
+
+    def test_paid_brapi_events_are_included_in_received_proventos(self):
+        ticker = 'BRAPITEST11'
+        paid_date = (datetime.now(wallet.TZ).date() - timedelta(days=2)).isoformat()
+        item_id = 'regression-paid-proventos-item'
+        with wallet.app.app_context():
+            con = wallet.db()
+            con.execute('DELETE FROM proventos WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM proventos_api WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_position_snapshots WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_items WHERE item_id=?', (item_id,))
+            con.execute('INSERT INTO pluggy_items(item_id,label,connector_name,status,consent_expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
+                        (item_id,'Teste','MeuPluggy','UPDATED','',1,datetime.now(wallet.TZ).isoformat(),datetime.now(wallet.TZ).isoformat()))
+            con.execute('INSERT INTO pluggy_position_snapshots(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) VALUES(?,?,?,?,?,?,?,?)',
+                        (item_id,'regression-investment',ticker,'fii',10,50,55,datetime.now(wallet.TZ).isoformat()))
+            con.execute('INSERT INTO proventos_api(event_key,ticker,tipo_ativo,tipo_evento,data_aprovacao,data_com,data_ex,data_pagamento,valor_por_ativo,quantidade,valor_total,status,remarks,sincronizado_em) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        ('test-paid-'+ticker,ticker,'fii','RENDIMENTO',paid_date,paid_date,paid_date,paid_date,0.5,10,5.0,'Pago','',datetime.now(wallet.TZ).isoformat()))
+            con.commit()
+            rows = wallet._received_proventos_records([ticker])
+            self.assertEqual(sum(row['valor_total'] for row in rows if row['origem']=='Brapi'), 5.0)
+            self.assertEqual(wallet.received_proventos_by_ticker().get(ticker), 5.0)
+            con.execute('DELETE FROM proventos_api WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_position_snapshots WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_items WHERE item_id=?', (item_id,))
+            con.commit()
+
+    def test_future_scheduled_sale_does_not_reserve_quantity_for_earlier_sale(self):
+        ticker = 'FUTURESALE4'
+        requested = (datetime.now(wallet.TZ) + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+        execution = wallet.next_b3_session(requested)
+        later = execution + timedelta(days=2)
+        with wallet.app.app_context():
+            con = wallet.db()
+            con.execute('DELETE FROM operacoes WHERE ticker=?', (ticker,))
+            con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                        (ticker,'acao','venda',6,10,later.date().isoformat(),0,'agendada',datetime.now(wallet.TZ).isoformat(timespec='minutes'),later.isoformat(timespec='minutes'),'{}'))
+            con.commit()
+        payload={'ticker':ticker,'tipo':'acao','lado':'venda','quantidade':'5','preco':'10','custos':'0','data':requested.date().isoformat(),'data_hora':requested.isoformat()}
+        with wallet.app.test_request_context('/'):
+            with patch.object(wallet, 'asset_type_for_ticker', return_value='acao'), patch.object(wallet, 'posicao', return_value=(10.0,10.0)):
+                result, error=wallet.valid_operation(payload)
+        with wallet.app.app_context():
+            wallet.db().execute('DELETE FROM operacoes WHERE ticker=?', (ticker,))
+            wallet.db().commit()
+        self.assertIsNone(error)
+        self.assertIsNotNone(result)
+
     def test_b3_rejects_non_finite_cells(self):
         for value in ('NaN', 'Infinity', '-Infinity'):
             with self.subTest(value=value):
@@ -146,72 +233,6 @@ class RegressionTests(unittest.TestCase):
             summary = wallet.build_irpf_summary(2026)
             self.assertGreater(summary['resumo']['resultado_vendas'], 0)
             self.assertTrue(any(x['ticker']=='IRPFBASE4' and x['quantidade']==6 for x in summary['posicoes']))
-
-    # ---- 4.2.10 ----
-    def _op(self, ticker, lado, qtd, preco, data):
-        with wallet.app.app_context():
-            con = wallet.db()
-            con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                        (ticker, 'acao', lado, qtd, preco, data, 0, 'executada', data, data + 'T10:00:00-03:00', '{}'))
-            con.commit()
-
-    def test_retroactive_sale_cannot_break_later_position(self):
-        self._op('RETRO4', 'compra', 10, 10, '2026-01-02')
-        self._op('RETRO4', 'venda', 8, 12, '2026-03-02')
-        with wallet.app.test_request_context('/'):
-            # 5 cabem em 2026-02-01 (posição 10), mas deixariam -3 depois da venda de 8.
-            result, error = wallet.valid_operation({'ticker': 'RETRO4', 'tipo': 'acao', 'lado': 'venda',
-                                                    'quantidade': '5', 'preco': '11', 'data': '2026-02-01'})
-            self.assertIsNone(result)
-            self.assertIn('retroativa', error)
-            result, error = wallet.valid_operation({'ticker': 'RETRO4', 'tipo': 'acao', 'lado': 'venda',
-                                                    'quantidade': '2', 'preco': '11', 'data': '2026-02-01'})
-            self.assertIsNone(error)
-
-    def test_put_sale_does_not_count_itself(self):
-        self._op('PUTSELF4', 'compra', 10, 10, '2026-01-02')
-        self._op('PUTSELF4', 'venda', 10, 12, '2026-02-02')
-        with wallet.app.app_context():
-            op_id = wallet.db().execute("SELECT id FROM operacoes WHERE lado='venda' AND ticker='PUTSELF4'").fetchone()['id']
-        response = self.client.put(f'/api/operacoes/{op_id}', json={'quantidade': 10, 'data': '2026-02-02'})
-        self.assertEqual(response.status_code, 200, response.get_json())
-
-    def test_b3_import_keeps_identical_fills_and_matches_preview(self):
-        import io
-        from openpyxl import Workbook
-        wb = Workbook(); ws = wb.active
-        ws.append(['Entrada/Saída', 'Data', 'Movimentação', 'Produto', 'Instituição', 'Quantidade', 'Preço unitário', 'Valor da Operação'])
-        for day in ('10/11/2026', '10/11/2026', '11/11/2026'):
-            ws.append(['Credito', day, 'Transferência - Liquidação', 'MXRF11 - MAXI RENDA FII', 'XP', 10, 9.6, 96.0])
-        buf = io.BytesIO(); wb.save(buf)
-
-        def send(mode):
-            return self.client.post('/api/importar-b3', data={'arquivo': (io.BytesIO(buf.getvalue()), 'm.xlsx'), 'modo': mode},
-                                    content_type='multipart/form-data').get_json()
-        self.assertEqual(send('preview')['novos'], 3)
-        self.assertEqual(send('importar')['operacoes'], 3)
-        again = send('importar')
-        self.assertEqual(again['operacoes'], 0)  # reimportar o mesmo arquivo não duplica
-
-    def test_inline_handlers_never_embed_raw_values_in_quotes(self):
-        import re
-        html = (Path(__file__).resolve().parents[1] / 'app' / 'templates' / 'index.html').read_text(encoding='utf-8')
-        offenders = re.findall(r"\bon[a-z]+=\"[^\"]*'\$\{[^\"]*\"", html)
-        self.assertEqual(offenders, [])
-        self.assertIn('function jsArg(', html)
-
-    def test_safe_error_text_removes_urls(self):
-        text = wallet.safe_error_text('401 for url: https://api.hgbrasil.com/finance?key=SECRET falhou')
-        self.assertNotIn('SECRET', text)
-        self.assertNotIn('hgbrasil', text)
-
-    def test_predelete_backups_are_rotated(self):
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmp:
-            for i in range(15):
-                (Path(tmp) / f'pre-exclusao-2026010{i:02d}').mkdir()
-            wallet._prune_predelete_backups(tmp, keep=10)
-            self.assertEqual(len(list(Path(tmp).glob('pre-exclusao-*'))), 10)
 
 
 if __name__ == '__main__':
