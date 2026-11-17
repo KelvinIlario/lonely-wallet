@@ -634,8 +634,10 @@ def _pluggy_average_purchase_price(ticker):
         if movement == 'BUY':
             try: raw = json.loads(row['raw_json'] or '{}')
             except (TypeError, ValueError): raw = {}
+            # Preço médio ponderado: soma dos valores de compra dividida
+            # pela quantidade de cotas, sem incorporar proventos ou taxas.
             quantity += qty
-            cost += qty * price + _pluggy_expenses_total(raw)
+            cost += qty * price
             found_buy = True
         elif movement == 'SELL' and quantity > 0:
             sold = min(qty, quantity)
@@ -1778,9 +1780,10 @@ def posicao(ticker, as_of=None):
         ).fetchall()
     for op in ops:
         q = float(op['quantidade']); valor = q * float(op['preco'])
-        custos = float(op['custos'] or 0) if 'custos' in op.keys() else 0.0
+        # Preço médio = soma dos valores efetivos de compra / quantidade adquirida.
+        # Taxas/custos operacionais não alteram o preço médio unitário solicitado.
         if op['lado'] == 'compra':
-            qtd += q; custo += valor + custos
+            qtd += q; custo += valor
         elif qtd > 0:
             pm = custo / qtd
             vendido = min(q, qtd)

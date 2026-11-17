@@ -292,3 +292,8 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - A série de 12 meses usa até os 12 últimos fechamentos disponíveis, inclusive quando há menos de 12 meses.
 - Remove mensagens de histórico indisponível; quando há ativos sem série mensal, utiliza a fotografia atual como ponto de referência.
 - Proventos permanecem fora do cálculo.
+
+
+## v3.3.44
+- Alinhamento central e espaçamento simétrico no card compacto de Rentabilidade.
+- Preço médio ponderado calculado pela soma dos valores de compra dividida pela quantidade de cotas, sem incluir proventos ou taxas operacionais.
