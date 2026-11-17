@@ -1,4 +1,4 @@
-# Lonely Wallet v4.1.1
+# Lonely Wallet v4.1.3
 
 ## Ajustes de acesso
 - A tela de acesso pré-carrega recursos visuais (logotipo e biblioteca de gráficos) enquanto o PIN é digitado.
@@ -16,3 +16,10 @@
 ## Atualização
 - Manter o volume `/DATA/AppData/lonely-wallet/data:/data`.
 - Fazer backup da pasta de dados antes da atualização.
+
+
+## v4.1.3
+
+- Ajustes visuais da página Segurança para ocupar a largura disponível.
+- Botões e campos da página Segurança padronizados com o tema Lonely Wallet.
+- Cor de fundo crítica definida desde o início do carregamento para evitar flash branco na transição após autenticação.
