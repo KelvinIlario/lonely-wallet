@@ -1969,7 +1969,40 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 .pluggy-transactions td.amount{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pluggy-transactions .empty{padding:12px;color:var(--muted)}
 
-</style></head><body>
+</style><style>
+
+/* v3.3.20: tooltip financeiro global e sem realce da célula de variação. */
+.asset-category .data.proportional-assets-table tr:hover td[data-col="variacao_dia"],
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"],
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"]:hover,
+.asset-category .data.proportional-assets-table tr:hover td[data-col="variacao_dia"]:hover {
+  background: transparent !important; background-color: transparent !important;
+  box-shadow: none !important; filter: none !important;
+}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-money-trigger,
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint {
+  cursor: help !important; background: inherit !important;
+  box-shadow: none !important; filter: none !important;
+}
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint::after,
+.asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-money-trigger::after {
+  content: none !important; display: none !important;
+}
+.variation-money-floating-tooltip {
+  position: fixed !important; z-index: 2147483647 !important;
+  display: block !important; box-sizing: border-box !important;
+  max-width: calc(100vw - 24px) !important; padding: 11px 13px !important;
+  border: 1px solid var(--line, #3b4352) !important; border-radius: 9px !important;
+  background: var(--panel2, #20232c) !important; color: var(--text, #f4f6fa) !important;
+  font-size: 12px !important; line-height: 1.45 !important; font-weight: 600 !important;
+  text-align: left !important; white-space: pre-line !important;
+  box-shadow: 0 12px 30px #0009 !important; pointer-events: none !important;
+}
+.variation-money-floating-tooltip.is-positive { border-color: var(--green, #12c98b) !important; }
+.variation-money-floating-tooltip.is-negative { border-color: var(--red, #ff5b78) !important; }
+
+</style>
+</head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
@@ -2674,11 +2707,11 @@ function variationMoneyHint(item,change){
  return `Resultado de ${pct(change)}${basis} (sem proventos):\n${brl(amount)}`;
 }
  
-function hideVariationMoneyTooltip(){
+window.hideVariationMoneyTooltip=function hideVariationMoneyTooltip(){
  const tip=document.getElementById('variationMoneyFloatingTooltip');
  if(tip)tip.remove();
 }
-function showVariationMoneyTooltip(event,el){
+window.showVariationMoneyTooltip=function showVariationMoneyTooltip(event,el){
  const text=el?.dataset?.hint||'';
  if(!text)return;
  let tip=document.getElementById('variationMoneyFloatingTooltip');
@@ -2696,7 +2729,7 @@ function showVariationMoneyTooltip(event,el){
  top=Math.max(10,Math.min(top,window.innerHeight-box.height-10));
  tip.style.left=left+'px';tip.style.top=top+'px';
 }
-function moveVariationMoneyTooltip(event,el){
+window.moveVariationMoneyTooltip=function moveVariationMoneyTooltip(event,el){
  const tip=document.getElementById('variationMoneyFloatingTooltip');
  if(tip && document.activeElement!==el)showVariationMoneyTooltip(event,el);
 }
@@ -5382,7 +5415,7 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 .asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-pill.value-hint.negative::after{border-color:var(--red)!important}
 </style>
 
-
+<style>
 /* v3.3.17: tooltip da variação em camada global, fora do overflow da tabela. */
 .asset-category .data.proportional-assets-table td[data-col="variacao_dia"] .variation-money-trigger{
  cursor:help!important;

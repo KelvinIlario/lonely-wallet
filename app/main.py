@@ -2887,35 +2887,105 @@ def _is_income_event(event_type):
 
 
 def _received_proventos_records(active_tickers=None):
+    """Retorna somente proventos realizados, priorizando comprovantes Pluggy, B3 e fallback.
+
+    A tabela proventos é compartilhada por lançamentos manuais, importações B3 e
+    eventos Pluggy. A origem é identificada pelos livros de importação, evitando
+    tratar previsões futuras como recebimentos.
+    """
     active_set = None if active_tickers is None else {str(t).upper() for t in active_tickers}
     if active_set is not None and not active_set:
         return []
-    manual = [dict(row) for row in db().execute('SELECT * FROM proventos ORDER BY data,id').fetchall()]
-    api_rows = [dict(row) for row in db().execute("SELECT * FROM proventos_api WHERE status='Pago' ORDER BY data_pagamento,event_key").fetchall()]
-    if active_set is not None:
-        manual = [row for row in manual if str(row.get('ticker') or '').upper() in active_set]
-        api_rows = [row for row in api_rows if str(row.get('ticker') or '').upper() in active_set]
-    manual_keys = {(str(row['ticker']).upper(), str(row['data'])[:10], round(float(row['valor_total'] or 0), 2)) for row in manual}
-    records = []
+
     today = datetime.now(TZ).date()
-    for row in manual:
+    manual_rows = [dict(row) for row in db().execute(
+        'SELECT * FROM proventos ORDER BY data,id'
+    ).fetchall()]
+    if active_set is not None:
+        manual_rows = [r for r in manual_rows if str(r.get('ticker') or '').upper() in active_set]
+
+    # Identifica os registros cuja origem foi efetivamente uma movimentação de
+    # provento retornada pela Pluggy (event ledger), e os registros importados da B3.
+    pluggy_ids = {int(r['target_id']) for r in db().execute(
+        "SELECT target_id FROM pluggy_imported_events WHERE event_type='provento' AND target_id IS NOT NULL"
+    ).fetchall()}
+    b3_ids = {int(r['registro_id']) for r in db().execute(
+        "SELECT registro_id FROM b3_importados WHERE lower(categoria)='provento' AND registro_id IS NOT NULL"
+    ).fetchall()}
+
+    records = []
+    seen = set()
+    def add_manual(row, origin):
         payment_date = _api_date(row.get('data'))
-        # Esta função alimenta apenas os recebidos; lançamentos manuais futuros
-        # são adicionados no dashboard à lista A receber.
-        if not payment_date or date.fromisoformat(payment_date) > today:
-            continue
-        records.append({'ticker':str(row['ticker']).upper(),'tipo':'Provento manual','tipo_ativo':typesafe_asset_type(row['ticker']),'status':'Pago','data_com':None,'data_pagamento':payment_date,'quantidade':None,'valor_por_ativo':None,'valor_total':float(row['valor_total'] or 0),'origem':'Manual','tipo_evento':'PROVENTO'})
-    seen_api_keys = set()
+        if not payment_date:
+            return
+        try:
+            paid_day = date.fromisoformat(payment_date)
+        except ValueError:
+            return
+        if paid_day > today:
+            return
+        ticker = str(row.get('ticker') or '').upper()
+        amount = round(float(row.get('valor_total') or 0), 2)
+        key = (ticker, payment_date[:10], amount)
+        if key in seen:
+            return
+        seen.add(key)
+        records.append({
+            'ticker': ticker, 'tipo': 'Provento', 'tipo_ativo': typesafe_asset_type(ticker),
+            'status': 'Pago', 'data_com': None, 'data_pagamento': payment_date,
+            'quantidade': None, 'valor_por_ativo': None, 'valor_total': amount,
+            'origem': origin, 'tipo_evento': 'PROVENTO'
+        })
+
+    # 1. Pluggy: movimentação de provento efetivamente registrada pela instituição.
+    # 2. B3: proventos importados da tabela oficial, caso não exista evento Pluggy.
+    # 3. Manual: registro explícito do usuário.
+    # As três fontes são deduplicadas por ticker, data de pagamento e valor.
+    for row in manual_rows:
+        row_id = int(row.get('id') or 0)
+        if row_id in pluggy_ids:
+            add_manual(row, 'Pluggy')
+    for row in manual_rows:
+        row_id = int(row.get('id') or 0)
+        if row_id in b3_ids:
+            add_manual(row, 'B3')
+    for row in manual_rows:
+        row_id = int(row.get('id') or 0)
+        if row_id not in pluggy_ids and row_id not in b3_ids:
+            add_manual(row, 'Manual')
+
+    # 4. Outras APIs são fallback. Nunca usa previsões futuras como recebimento.
+    query = "SELECT * FROM proventos_api WHERE status='Pago' ORDER BY data_pagamento,event_key"
+    api_rows = [dict(row) for row in db().execute(query).fetchall()]
+    if active_set is not None:
+        api_rows = [r for r in api_rows if str(r.get('ticker') or '').upper() in active_set]
     for row in api_rows:
         payment_date = _api_date(row.get('data_pagamento'))
-        # O resumo financeiro contabiliza apenas pagamentos efetivamente ocorridos.
-        if not payment_date or date.fromisoformat(payment_date) > today:
+        if not payment_date:
             continue
-        key=(str(row['ticker']).upper(),payment_date[:10],round(float(row['valor_total'] or 0),2))
-        if key in manual_keys or key in seen_api_keys:
+        try:
+            if date.fromisoformat(payment_date) > today:
+                continue
+        except ValueError:
             continue
-        seen_api_keys.add(key)
-        records.append({'ticker':row['ticker'],'tipo':row['tipo_evento'],'tipo_ativo':row['tipo_ativo'],'status':'Pago','data_com':row['data_com'],'data_pagamento':row['data_pagamento'],'quantidade':float(row['quantidade'] or 0),'valor_por_ativo':float(row['valor_por_ativo'] or 0),'valor_total':float(row['valor_total'] or 0),'origem':('Alpha Vantage' if 'Alpha Vantage' in str(row.get('remarks') or '') else 'brapi'),'tipo_evento':row['tipo_evento'],'remarks':row.get('remarks','')})
+        ticker = str(row.get('ticker') or '').upper()
+        amount = round(float(row.get('valor_total') or 0), 2)
+        key = (ticker, payment_date[:10], amount)
+        if key in seen:
+            continue
+        seen.add(key)
+        remarks = str(row.get('remarks') or '')
+        origin = 'Alpha Vantage' if 'Alpha Vantage' in remarks else 'brapi'
+        records.append({
+            'ticker': ticker, 'tipo': row.get('tipo_evento'),
+            'tipo_ativo': row.get('tipo_ativo'), 'status': 'Pago',
+            'data_com': row.get('data_com'), 'data_pagamento': payment_date,
+            'quantidade': float(row.get('quantidade') or 0),
+            'valor_por_ativo': float(row.get('valor_por_ativo') or 0),
+            'valor_total': amount, 'origem': origin,
+            'tipo_evento': row.get('tipo_evento'), 'remarks': remarks
+        })
     return records
 
 
