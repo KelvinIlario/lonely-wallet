@@ -3961,7 +3961,7 @@ function renderReturnSparklines(series12m,seriesTotal,totalFallback){
   const values=rows.map(item=>Number(item.valor));
   if(!values.length){
    svg.innerHTML='';
-   if(parent){parent.classList.add('spark-empty');parent.dataset.empty=emptyText||'Histórico indisponível';}
+   if(parent){parent.classList.add('spark-empty');parent.dataset.empty=emptyText??'Sem ativos na carteira';}
    return;
   }
   if(parent){parent.classList.remove('spark-empty');delete parent.dataset.empty;}
@@ -3985,33 +3985,43 @@ function renderReturnSparklines(series12m,seriesTotal,totalFallback){
   const title=rows.map(row=>{const [year,month]=row.mes.split('-');return `${month}/${year}: ${pct(Number(row.valor))}`;}).join(' | ');
   svg.innerHTML=`<title>${escapeHTML(title)}</title><line x1="0" y1="${baseline}" x2="${width}" y2="${baseline}" stroke="#596273" stroke-opacity=".32" stroke-width="1" stroke-dasharray="2 5"></line><path d="${path}" fill="none" stroke="${color}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path>`;
  };
- draw('return12mChart',series12m,'Histórico de 12 meses indisponível');
- draw('returnTotalChart',seriesTotal,'Histórico total indisponível');
+ draw('return12mChart',series12m,'Sem ativos na carteira');
+ draw('returnTotalChart',seriesTotal,'Sem ativos na carteira');
 }
 
 function renderConsolidatedReturnSparklines(value){
- // Reutiliza exatamente a série mensal consolidada exibida no gráfico Evolução do Patrimônio.
- // O retorno de cada fechamento é o ganho/perda de capital dividido pelo capital aplicado.
- const history=getAllTypesPortfolioHistory().rows
+ // Rentabilidade mensal = (patrimônio - capital aplicado) / capital aplicado.
+ // Usa a mesma série consolidada exibida em Evolução do Patrimônio, sem proventos.
+ let history=getAllTypesPortfolioHistory().rows
   .filter(row=>row&&/^\d{4}-\d{2}$/.test(String(row.mes||''))&&Number(row.aplicado)>0)
   .sort((a,b)=>a.mes.localeCompare(b.mes));
+ // Se há ativos, mas a API ainda não entregou fechamentos, mostra ao menos a
+ // fotografia atual da carteira em vez de declarar o histórico indisponível.
+ if(!history.length&&(state.itens||[]).length){
+  const latest=(state.rentabilidade_historica||{}).series_patrimonio||[];
+  const current=latest.filter(row=>row&&Number(row.aplicado)>0).slice(-1)[0];
+  const summary=state.resumo||{};
+  const applied=Number(current?.aplicado??summary.investido??0);
+  const patrimony=Number(current?.patrimonio??summary.atual??0);
+  const now=new Date();
+  if(applied>0&&patrimony>=0)history=[{mes:current?.mes||`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`,aplicado:applied,patrimonio:patrimony}];
+ }
  const totalSeries=history.map(row=>({
   mes:row.mes,
-  valor:Number((Number(row.ganho||0)/Number(row.aplicado||0)*100).toFixed(4))
+  valor:Number(((Number(row.patrimonio||0)-Number(row.aplicado||0))/Number(row.aplicado||0)*100).toFixed(4))
  }));
- // A série de 12 meses parte do primeiro fechamento disponível na janela e mostra
- // a variação da rentabilidade consolidada ao longo dos fechamentos seguintes.
- const twelveBase=totalSeries.length>12?Number(totalSeries[totalSeries.length-13].valor||0):Number(totalSeries[0]?.valor||0);
- const twelveMonths=totalSeries.slice(-12).map(row=>({
-  mes:row.mes,valor:Number((row.valor-twelveBase).toFixed(4))
- }));
+ // A janela usa os últimos 12 fechamentos disponíveis. Se houver menos,
+ // utiliza todos os pontos existentes, sem exigir 12 meses completos.
+ const twelveMonths=totalSeries.slice(-12).map(row=>({...row}));
  const last12=twelveMonths.length?twelveMonths[twelveMonths.length-1].valor:null;
  const lastTotal=totalSeries.length?totalSeries[totalSeries.length-1].valor:null;
+ const hasAssets=(state.itens||[]).length>0;
  const twelveValue=document.querySelector('#return12mChart')?.parentElement?.querySelector('b');
  const totalValue=document.querySelector('#returnTotalChart')?.parentElement?.querySelector('b');
- if(twelveValue){twelveValue.textContent=last12===null?'Indisponível':pct(last12);twelveValue.className=last12===null?'':last12>=0?'green':'red';}
- if(totalValue){totalValue.textContent=lastTotal===null?'Indisponível':pct(lastTotal);totalValue.className=lastTotal===null?'':lastTotal>=0?'green':'red';}
- renderReturnSparklines(twelveMonths,totalSeries,null);
+ const unavailable=hasAssets?'—':'Sem ativos';
+ if(twelveValue){twelveValue.textContent=last12===null?unavailable:pct(last12);twelveValue.className=last12===null?'':last12>=0?'green':'red';}
+ if(totalValue){totalValue.textContent=lastTotal===null?unavailable:pct(lastTotal);totalValue.className=lastTotal===null?'':lastTotal>=0?'green':'red';}
+ renderReturnSparklines(twelveMonths,totalSeries,hasAssets?'': 'Sem ativos na carteira');
 }
 
 function operationQuantity(value){
@@ -4108,7 +4118,7 @@ document.getElementById('stats').innerHTML=`
  <div class="card stat"><div class="statlabel-row">Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição.">i</span></div><div class="statvalue statvalue-inline">${brl(summaryPatrimony)} <small class="${totalProfit>=0?'green':'red'}" title="Resultado total de ${brl(totalProfit)} sobre ${brl(summaryApplied)} investidos">${pct(portfolioReturn)} ${totalProfit>=0?'▲':'▼'}</small></div><div class="statdetail"><span>Valor investido</span><b>${brl(summaryApplied)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Lucro total<span class="info-tip" tabindex="0" aria-label="Sobre o lucro total" data-tip="Seu resultado acumulado na carteira: ganho de capital (valorização dos ativos) somado aos dividendos e proventos recebidos.">i</span></div><div class="statvalue ${totalProfit>=0?'green':'red'}">${brl(totalProfit)}</div><div class="statdetail"><span>Ganho de capital</span><b>${brl(r.lucro||0)}</b></div><div class="statdetail"><span>Dividendos recebidos</span><b>${brl(r.proventos||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Proventos recebidos (12M)<span class="info-tip" tabindex="0" aria-label="Sobre os proventos recebidos" data-tip="Total de dividendos, JCP e rendimentos recebidos nos últimos 12 meses.">i</span></div><div class="statvalue">${brl(provDash.total_12m||0)}</div><div class="statdetail"><span>Total confirmado</span><b>${brl(provDash.total_12m||0)}</b></div></div>
- <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Rentabilidade calculada com base na evolução mensal do patrimônio e do capital líquido aplicado, usando preços não ajustados. Dividendos, JCP e demais proventos não entram no cálculo. O período de 12 meses só é exibido quando há 12 fechamentos mensais consecutivos disponíveis.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Últimos 12 meses</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade dos últimos 12 meses"></svg><b class="${return12m===null||return12m===undefined?'':Number(return12m)>=0?'green':'red'}">${return12m===null||return12m===undefined?'Indisponível':pct(return12m)}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${portfolioReturn===null?'':portfolioReturn>=0?'green':'red'}">${portfolioReturn===null?'Indisponível':pct(portfolioReturn)}</b></div></div></div>`;
+ <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Rentabilidade calculada com base na evolução mensal do patrimônio e do capital líquido aplicado, usando preços não ajustados. Dividendos, JCP e demais proventos não entram no cálculo. O período de 12 meses utiliza até os 12 fechamentos mensais disponíveis. Se houver menos, utiliza os meses existentes.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Últimos 12 meses</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade dos últimos 12 meses"></svg><b class="${return12m===null||return12m===undefined?'':Number(return12m)>=0?'green':'red'}">${return12m===null||return12m===undefined?'—':pct(return12m)}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${portfolioReturn===null?'':portfolioReturn>=0?'green':'red'}">${portfolioReturn===null?'—':pct(portfolioReturn)}</b></div></div></div>`;
 renderConsolidatedReturnSparklines(portfolioReturn);
 
 

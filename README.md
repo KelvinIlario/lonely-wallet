@@ -279,9 +279,16 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - O gráfico Evolução do Patrimônio usa tooltip escuro com o mês, Patrimônio, Valor aplicado e Ganho de Capital ao passar sobre cada barra.
 - A explicação do card foi atualizada para descrever a ponderação temporal dos aportes e retiradas e o tratamento de proventos sem dupla contagem.
 
-## v3.3.41
+## v3.3.42
 - Os sparklines de rentabilidade do Resumo passam a reutilizar a série mensal consolidada do gráfico Evolução do Patrimônio (Todos os tipos).
 - O indicador Total apresenta ganho/perda de capital dividido pelo capital aplicado em cada fechamento mensal.
 - O indicador Últimos 12 meses apresenta a variação dessa rentabilidade consolidada ao longo da janela de 12 fechamentos.
 - Os valores percentuais exibidos nos cards são atualizados a partir das mesmas séries desenhadas.
+- Proventos permanecem fora do cálculo.
+
+
+## v3.3.42
+- Corrige os gráficos compactos de rentabilidade para usar (patrimônio - valor aplicado) / valor aplicado em cada fechamento mensal.
+- A série de 12 meses usa até os 12 últimos fechamentos disponíveis, inclusive quando há menos de 12 meses.
+- Remove mensagens de histórico indisponível; quando há ativos sem série mensal, utiliza a fotografia atual como ponto de referência.
 - Proventos permanecem fora do cálculo.
