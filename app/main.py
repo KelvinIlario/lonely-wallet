@@ -3550,7 +3550,8 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         if denominator > 1e-8:
             month_return = (end_value - start_value - signed_flows + income) / denominator
             if -0.95 < month_return < 5:
-                monthly_returns.append({'mes': key, 'retorno': month_return})
+                monthly_returns.append({'mes': key, 'retorno': month_return,
+                                'resultado': end_value - start_value - signed_flows + income})
         previous_end = end_date
 
     if not monthly_returns:
@@ -3571,8 +3572,11 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         rolling_factor = 1.0
         for value in rolling_returns:
             rolling_factor *= value
-        series_total.append({'mes': row['mes'], 'valor': round((total_factor - 1.0) * 100, 4)})
-        series_12m.append({'mes': row['mes'], 'valor': round((rolling_factor - 1.0) * 100, 4)})
+        point = {'mes': row['mes'], 'valor': round((total_factor - 1.0) * 100, 4),
+                 'ganho_prejuizo_mes': round(float(row.get('resultado') or 0), 2)}
+        series_total.append(point)
+        series_12m.append({'mes': row['mes'], 'valor': round((rolling_factor - 1.0) * 100, 4),
+                           'ganho_prejuizo_mes': round(float(row.get('resultado') or 0), 2)})
 
     return {
         **empty,

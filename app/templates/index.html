@@ -1360,8 +1360,9 @@ body.light-theme .tax-tabs button.active{background:#fff}
  display:inline-flex;
  align-items:center;
  justify-content:center;
- cursor:help;
- border-bottom:1px dotted currentColor;
+ cursor:default !important;
+ text-decoration:none !important;
+ border-bottom:0 !important;
  position:relative;
 }
 .ideal-balance-hint:focus-visible{
@@ -2220,8 +2221,10 @@ async function refresh(){
    applyPositionColumnPrefs();
    const updated=document.getElementById('updated');
    if(updated)updated.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-   if(!document.getElementById('page-irpf').classList.contains('hidden'))await loadIRPF();
-   if(!document.getElementById('page-darfs').classList.contains('hidden'))await loadDARFs();
+   const irpfPage=document.getElementById('page-irpf');
+   const darfPage=document.getElementById('page-darfs');
+   if(irpfPage&&!irpfPage.classList.contains('hidden'))await loadIRPF();
+   if(darfPage&&!darfPage.classList.contains('hidden'))await loadDARFs();
    return state;
   }catch(e){toast(`Não foi possível carregar a carteira: ${e.message}`);return null;}
   finally{
@@ -3522,7 +3525,7 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
    displayColors:true,boxPadding:5,
    callbacks:{
     title:items=>{const row=visibleHistory[items?.[0]?.dataIndex||0];return row?row.mes.slice(5,7)+'/'+row.mes.slice(2,4):'';},
-    beforeBody:items=>{const row=visibleHistory[items?.[0]?.dataIndex||0];return row?[`Patrimônio: ${brl(Number(row.patrimonio||0))}`]:[];},
+    beforeBody:items=>{const row=visibleHistory[items?.[0]?.dataIndex||0];if(!row)return [];const gain=Number(row.ganho||0);return [`Patrimônio: ${brl(Number(row.patrimonio||0))}`,`Ganho/Prejuízo: ${gain>=0?'+':''}${brl(gain)}`];},
     label:ctx=>`${ctx.dataset.label}: ${brl(ctx.raw||0)}`
    }
   }},scales:{x:{stacked:true,ticks:{color:'#8f99a8'},grid:{display:false}},y:{stacked:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
@@ -3912,44 +3915,40 @@ function renderReturnSparklines(series12m,seriesTotal,totalFallback){
  const draw=(id,series,emptyText)=>{
   const svg=document.getElementById(id);if(!svg)return;
   const parent=svg.parentElement;
-  let values=(Array.isArray(series)?series:[]).map(item=>Number(item.valor)).filter(Number.isFinite);
+  const rows=(Array.isArray(series)?series:[]).filter(item=>item&&/^\d{4}-\d{2}$/.test(String(item.mes||''))&&Number.isFinite(Number(item.valor)));
+  const values=rows.map(item=>Number(item.valor));
   if(!values.length){
    svg.innerHTML='';
    if(parent){parent.classList.add('spark-empty');parent.dataset.empty=emptyText||'Histórico indisponível';}
    return;
   }
   if(parent){parent.classList.remove('spark-empty');delete parent.dataset.empty;}
-  // A single endpoint value is shown from 0% to the observed current return.
-  // This is a visual baseline, not a fabricated monthly time series.
-  if(values.length===1)values=[0,values[0]];
   const width=300,height=40,pad=4;
   const min=Math.min(0,...values),max=Math.max(0,...values);
   const span=Math.max(max-min,0.2);
   const y=value=>Number((height-pad-((value-min)/span)*(height-pad*2)).toFixed(2));
-  const points=values.map((value,index)=>{
-   const x=values.length===1?width/2:Number((index/(values.length-1)*width).toFixed(2));
-   return [x,y(value)];
-  });
+  const points=values.map((value,index)=>[Number((index/(Math.max(1,values.length-1))*width).toFixed(2)),y(value)]);
   const path=points.map((point,index)=>(index?'L':'M')+point[0]+' '+point[1]).join(' ');
   const last=points[points.length-1],color=values[values.length-1]>=0?'#20bd82':'#ef6680';
   const baseline=y(0);
-  svg.innerHTML=`<line x1="0" y1="${baseline}" x2="${width}" y2="${baseline}" stroke="#596273" stroke-opacity=".42" stroke-width="1" stroke-dasharray="3 4"></line><path d="${path}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="${last[0]}" cy="${last[1]}" r="3.1" fill="${color}"></circle>`;
+  const circles=rows.map((row,index)=>{
+   const [year,month]=row.mes.split('-');
+   const label=`${month}/${year}`;
+   const result=Number(row.ganho_prejuizo_mes||0);
+   const sign=result>=0?'+':'';
+   return `<circle cx="${points[index][0]}" cy="${points[index][1]}" r="${index===rows.length-1?3.2:2.1}" fill="${color}" stroke="#20242d" stroke-width="1"><title>${label} · Rentabilidade acumulada: ${pct(Number(row.valor))} · Ganho/Prejuízo no mês: ${sign}${brl(result)}</title></circle>`;
+  }).join('');
+  svg.innerHTML=`<line x1="0" y1="${baseline}" x2="${width}" y2="${baseline}" stroke="#596273" stroke-opacity=".42" stroke-width="1" stroke-dasharray="3 4"></line><path d="${path}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>${circles}`;
  };
  draw('return12mChart',series12m,'Histórico de 12 meses indisponível');
- const totalSeries=Array.isArray(seriesTotal)&&seriesTotal.length?seriesTotal:
-  (Number.isFinite(Number(totalFallback))?[{mes:'Atual · saldo-base',valor:Number(totalFallback)}]:[]);
- draw('returnTotalChart',totalSeries,'Histórico total indisponível');
+ draw('returnTotalChart',seriesTotal,'Histórico total indisponível');
 }
 
 function renderConsolidatedReturnSparklines(value){
- // Usa somente pontos mensais efetivamente calculados pelo backend. Sem histórico,
- // mantém o estado vazio em vez de desenhar uma curva artificial.
  const performance=state.rentabilidade_historica||{};
- const series=Array.isArray(performance.series_total)?performance.series_total
-  .filter(point=>point&&/^\d{4}-\d{2}$/.test(String(point.mes||''))&&Number.isFinite(Number(point.valor))) : [];
- const current=Number(value||0);
- const totalSeries=series;
- const twelveMonths=totalSeries.slice(-12);
+ const valid=rows=>Array.isArray(rows)?rows.filter(point=>point&&/^\d{4}-\d{2}$/.test(String(point.mes||''))&&Number.isFinite(Number(point.valor))):[];
+ const totalSeries=valid(performance.series_total);
+ const twelveMonths=valid(performance.series_12m).slice(-12);
  renderReturnSparklines(twelveMonths,totalSeries,null);
 }
 
@@ -4107,7 +4106,7 @@ function renderAPIProviders(){
  const card=p=>`<article class="panel api-provider-card ${p.id==='pluggy'?'api-pluggy':''}" data-api-provider="${p.id}">
   <div class="api-provider-head"><div><h3>${escapeHTML(p.name)}</h3><div class="api-provider-category">${escapeHTML(p.category||'')}</div></div><span class="api-status-pill ${p.configured&&p.enabled?'configured':p.configured?'warning':''}">${p.configured?(p.enabled?'Ativa · credenciais cadastradas':'Desativada · token preservado'):'Credenciais não configuradas'}</span></div>
   <div class="api-provider-desc">${escapeHTML(p.description||'')}</div>
-  ${p.id==='pluggy'?`<div class="mini">Open Finance. As credenciais são usadas exclusivamente no servidor; a vinculação de bancos e corretoras requer o fluxo Pluggy Connect.</div>
+  ${p.id==='pluggy'?`<div class="api-recommendation" role="note" style="padding:10px 12px;border:1px solid var(--blue);border-radius:8px;background:color-mix(in srgb,var(--blue) 9%,transparent);font-size:12px;line-height:1.5"><strong>Recomendação: altamente indicada.</strong> Mantenha a Pluggy configurada e sincronizada para obter a melhor cobertura possível de contas, posições, movimentações e proventos. A disponibilidade e a atualização dos dados dependem da instituição financeira e das permissões da conexão.</div><div class="mini">Open Finance. As credenciais são usadas exclusivamente no servidor; a vinculação de bancos e corretoras requer o fluxo Pluggy Connect.</div>
   <div class="api-credential-fields"><label class="mini" for="apiClientId_pluggy">Client ID<input type="text" id="apiClientId_pluggy" autocomplete="off" placeholder="${p.client_id_masked?'Cadastrado: '+p.client_id_masked:'Client ID da Pluggy'}"></label><label class="mini" for="apiClientSecret_pluggy">Client Secret<input type="password" id="apiClientSecret_pluggy" autocomplete="new-password" placeholder="${p.configured?'Cadastrado: ••••••••':'Client Secret da Pluggy'}"></label></div>
   <div class="api-provider-actions"><button class="primary" type="button" onclick="savePluggyCredentials()">Salvar credenciais</button><button class="ghost" type="button" onclick="testAPIProvider('pluggy')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('pluggy',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('pluggy')">Remover</button>`:''}</div>
   <div class="api-status" id="apiStatus_pluggy">${p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
