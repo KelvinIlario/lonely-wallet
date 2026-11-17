@@ -1,4 +1,4 @@
-import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil
+import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil, secrets, hmac
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
@@ -6,9 +6,10 @@ from zoneinfo import ZoneInfo
 import requests
 from cryptography.fernet import Fernet, InvalidToken
 from openpyxl import load_workbook, Workbook
-from flask import Flask, g, jsonify, render_template, request, send_file
+from flask import Flask, g, jsonify, render_template, request, send_file, session, redirect, url_for
 
 app = Flask(__name__)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', PERMANENT_SESSION_LIFETIME=timedelta(hours=12))
 # Dados da carteira ficam em um banco próprio; segredos de APIs ficam em tokens.db.
 DB_PATH = os.environ.get('ASSETS_DB_PATH', '/data/ativos.db')
 LEGACY_DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
@@ -31,7 +32,10 @@ BENCHMARK_CACHE_TTL = 6 * 3600
 
 def db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DB_PATH)
+        g.db = sqlite3.connect(DB_PATH, timeout=15)
+        g.db.execute('PRAGMA busy_timeout=15000')
+        g.db.execute('PRAGMA journal_mode=WAL')
+        g.db.execute('PRAGMA synchronous=NORMAL')
         g.db.row_factory = sqlite3.Row
         g.db.execute('PRAGMA foreign_keys=ON')
     return g.db
@@ -40,7 +44,8 @@ def db():
 def token_db():
     if 'token_db' not in g:
         os.makedirs(os.path.dirname(TOKEN_DB_PATH) or '.', exist_ok=True)
-        g.token_db = sqlite3.connect(TOKEN_DB_PATH)
+        g.token_db = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+        g.token_db.execute('PRAGMA busy_timeout=15000')
         g.token_db.row_factory = sqlite3.Row
     return g.token_db
 
@@ -60,7 +65,12 @@ def prepare_database_files():
     if os.path.abspath(DB_PATH) != os.path.abspath(LEGACY_DB_PATH) and not os.path.exists(DB_PATH) and os.path.exists(LEGACY_DB_PATH):
         shutil.copy2(LEGACY_DB_PATH, DB_PATH)
     os.makedirs(os.path.dirname(TOKEN_DB_PATH) or '.', exist_ok=True)
-    con = sqlite3.connect(TOKEN_DB_PATH)
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.execute('PRAGMA busy_timeout=15000')
+    con.execute('''CREATE TABLE IF NOT EXISTS app_auth (
+        id INTEGER PRIMARY KEY CHECK(id=1), pin_salt TEXT NOT NULL, pin_hash TEXT NOT NULL,
+        failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+    )''')
     con.execute('''CREATE TABLE IF NOT EXISTS api_credentials (
         provider TEXT PRIMARY KEY, token_encrypted TEXT NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
@@ -97,7 +107,10 @@ def migrate_api_credentials():
 
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH) or '.', exist_ok=True)
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=15)
+    con.execute('PRAGMA busy_timeout=15000')
+    con.execute('PRAGMA journal_mode=WAL')
+    con.execute('PRAGMA synchronous=NORMAL')
     con.executescript('''
     CREATE TABLE IF NOT EXISTS operacoes (
       id INTEGER PRIMARY KEY AUTOINCREMENT, ticker TEXT NOT NULL,
@@ -275,9 +288,7 @@ def init_db():
       created_at TEXT NOT NULL
     );
     ''')
-    # Lonely Wallet is investment-only: remove bank-account/transaction cache from older versions.
-    con.execute('DELETE FROM pluggy_transactions')
-    con.execute('DELETE FROM pluggy_accounts')
+    # Preserve all Pluggy history and account cache across restarts and upgrades.
     goal_columns = [row[1] for row in con.execute('PRAGMA table_info(metas)').fetchall()]
     for name, definition in [('categoria', "TEXT DEFAULT ''"), ('ticker', "TEXT DEFAULT ''"), ('variacao_anual', 'REAL DEFAULT 0'), ('classes', "TEXT DEFAULT '[]'")]:
         if name not in goal_columns:
@@ -385,6 +396,143 @@ def init_db():
 prepare_database_files()
 init_db()
 migrate_api_credentials()
+
+# Persist the Flask signing key in the mounted data directory so container recreation
+# does not invalidate the PIN setup or expose a predictable development secret.
+def load_session_secret():
+    path = os.environ.get('SESSION_SECRET_FILE', '/data/.lonely-wallet-session.key')
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    if not os.path.exists(path):
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='ascii') as f:
+            f.write(secrets.token_urlsafe(48))
+        os.chmod(tmp, 0o600)
+        try:
+            os.replace(tmp, path)
+        except FileNotFoundError:
+            pass
+    with open(path, 'r', encoding='ascii') as f:
+        return f.read().strip()
+
+app.secret_key = load_session_secret()
+
+
+def auth_record():
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.row_factory = sqlite3.Row
+    try:
+        return con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+    finally:
+        con.close()
+
+
+def pin_digest(pin, salt):
+    return hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), bytes.fromhex(salt), 310000).hex()
+
+
+@app.before_request
+def require_pin_authentication():
+    if request.endpoint in ('auth_status', 'auth_setup', 'auth_login', 'static') or request.path.startswith('/static/'):
+        return None
+    if request.path == '/' and not session.get('authenticated'):
+        return render_template('auth.html')
+    if not session.get('authenticated'):
+        if request.path.startswith('/api/'):
+            return jsonify(ok=False, error='Autenticação necessária.', auth_required=True), 401
+        return render_template('auth.html'), 401
+    # Same-origin check for state-changing browser requests. SameSite cookies add a second layer.
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        origin = request.headers.get('Origin')
+        if origin:
+            from urllib.parse import urlparse
+            if urlparse(origin).netloc.lower() != request.host.lower():
+                return jsonify(ok=False, error='Origem da requisição não autorizada.'), 403
+    return None
+
+
+@app.route('/api/auth/status')
+def auth_status():
+    configured = auth_record() is not None
+    return jsonify(configured=configured, authenticated=bool(session.get('authenticated')))
+
+
+@app.route('/api/auth/setup', methods=['POST'])
+def auth_setup():
+    payload = request.get_json(silent=True) or {}
+    pin = str(payload.get('pin') or '')
+    confirm = str(payload.get('confirm') or '')
+    if auth_record() is not None:
+        return jsonify(ok=False, error='O PIN já foi configurado.'), 409
+    if not re.fullmatch(r'\d{6,12}', pin) or pin != confirm:
+        return jsonify(ok=False, error='Use um PIN de 6 a 12 números e confirme corretamente.'), 400
+    salt = secrets.token_bytes(16).hex()
+    digest = pin_digest(pin, salt)
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    try:
+        con.execute('INSERT INTO app_auth(id,pin_salt,pin_hash,updated_at) VALUES(1,?,?,?)',
+                    (salt, digest, datetime.now(TZ).isoformat()))
+        con.commit()
+    except sqlite3.IntegrityError:
+        return jsonify(ok=False, error='O PIN já foi configurado.'), 409
+    finally:
+        con.close()
+    session.clear(); session['authenticated'] = True; session.permanent = True
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    payload = request.get_json(silent=True) or {}
+    pin = str(payload.get('pin') or '')
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.row_factory = sqlite3.Row
+    try:
+        row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+        if not row:
+            return jsonify(ok=False, setup_required=True, error='Configure seu PIN de acesso.'), 409
+        now = time.time()
+        if row['locked_until'] > now:
+            wait = max(1, int(row['locked_until'] - now))
+            return jsonify(ok=False, error=f'Muitas tentativas. Aguarde {wait} segundos.'), 429
+        candidate = pin_digest(pin, row['pin_salt']) if re.fullmatch(r'\d{6,12}', pin) else ''
+        if not hmac.compare_digest(candidate, row['pin_hash']):
+            attempts = row['failed_attempts'] + 1
+            lock_until = now + 300 if attempts >= 5 else 0
+            con.execute('UPDATE app_auth SET failed_attempts=?,locked_until=? WHERE id=1', (0 if lock_until else attempts, lock_until))
+            con.commit()
+            return jsonify(ok=False, error='PIN incorreto.'), 401
+        con.execute('UPDATE app_auth SET failed_attempts=0,locked_until=0 WHERE id=1')
+        con.commit()
+    finally:
+        con.close()
+    session.clear(); session['authenticated'] = True; session.permanent = True
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    session.clear()
+    return jsonify(ok=True)
+
+
+@app.route('/api/auth/change-pin', methods=['POST'])
+def auth_change_pin():
+    payload = request.get_json(silent=True) or {}
+    current, new_pin = str(payload.get('current') or ''), str(payload.get('new') or '')
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15); con.row_factory = sqlite3.Row
+    try:
+        row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+        if not row or not hmac.compare_digest(pin_digest(current, row['pin_salt']), row['pin_hash']):
+            return jsonify(ok=False, error='PIN atual incorreto.'), 401
+        if not re.fullmatch(r'\d{6,12}', new_pin):
+            return jsonify(ok=False, error='O novo PIN deve ter de 6 a 12 números.'), 400
+        salt = secrets.token_bytes(16).hex()
+        con.execute('UPDATE app_auth SET pin_salt=?,pin_hash=?,failed_attempts=0,locked_until=0,updated_at=? WHERE id=1',
+                    (salt, pin_digest(new_pin, salt), datetime.now(TZ).isoformat()))
+        con.commit()
+    finally:
+        con.close()
+    return jsonify(ok=True)
 
 API_PROVIDERS = {
     'pluggy': {'name':'Pluggy', 'category':'Open Finance · contas e investimentos', 'description':'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.', 'auth':True, 'credential_type':'client_id_secret', 'url':'https://dashboard.pluggy.ai/', 'docs':'https://docs.pluggy.ai/'},

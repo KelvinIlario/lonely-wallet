@@ -1,3 +1,26 @@
+# Lonely Wallet v4.1.0
+
+## Novidades e melhorias
+
+- Proteção de acesso por PIN numérico de 6 a 12 dígitos, configurado no primeiro acesso.
+- PIN armazenado com hash PBKDF2-HMAC-SHA256 e salt aleatório, sem texto puro no banco.
+- Bloqueio temporário após cinco tentativas consecutivas incorretas.
+- Sessão assinada com chave persistente no volume `/data`, mantendo a autenticação após reinicializações do container.
+- Opções de alterar o PIN e encerrar a sessão pela barra superior.
+- Proteção das rotas da API para sessões não autenticadas e validação de origem em operações de escrita.
+- Removida a limpeza automática de `pluggy_accounts` e `pluggy_transactions` durante a inicialização.
+- SQLite configurado com WAL, `busy_timeout` e `synchronous=NORMAL` para melhorar a convivência entre leituras e gravações.
+- Ícone do ZimaOS com versão na URL para evitar cache de imagem antiga.
+
+## Atualização segura
+
+- Mantenha o volume `/DATA/AppData/lonely-wallet/data:/data`.
+- Não apague `ativos.db`, `tokens.db`, `.api-credentials.key` ou `.lonely-wallet-session.key`.
+- No primeiro acesso após a atualização, crie seu PIN. Se já houver uma configuração de PIN, use o PIN existente.
+- A interface principal e os dados existentes são mantidos.
+
+---
+
 # Lonely Wallet v4.0.1
 
 ## v4.0.1

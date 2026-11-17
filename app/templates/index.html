@@ -2021,6 +2021,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 </head><body>
 <div id="loadingScreen"><img class="loading-logo" src="/static/lonely-wallet-logo.png" alt="Lonely Wallet"><div class="loading-spinner"></div><div class="loading-label">Carregando sua carteira…</div></div>
 <header class="top"><div class="brand"><img src="/static/lonely-wallet-logotype.png" alt="Lonely Wallet" class="brand-logo"></div><div class="topright"><span id="updated" class="mini">Dados da carteira</span>
+<button class="utility-btn" type="button" title="Segurança da conta" aria-label="Segurança da conta" onclick="manageSecurity()">⌑</button>
 <button class="utility-btn" id="privacyToggle" type="button" aria-label="Ocultar valores" title="Ocultar valores" onclick="togglePrivacy()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
 <button class="utility-btn" id="themeToggle" type="button" aria-label="Ativar tema claro" title="Ativar tema claro" onclick="toggleTheme()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></button>
 <button class="pillbtn" type="button" onclick="openB3Import()">⇧ Importar tabela da B3</button><button class="primary" type="button" onclick="openModal('op')">＋ Adicionar lançamento</button></div></header>
@@ -5357,6 +5358,18 @@ document.addEventListener('click',function(event){
 },true);
 
 startPluggyAutoSync();</script>
+<script>
+async function manageSecurity(){
+ const action=prompt('Segurança da Lonely Wallet\nDigite 1 para alterar o PIN ou 2 para sair.','1');
+ if(action==='2'){if(!confirm('Deseja sair da sua carteira?'))return;await fetch('/api/auth/logout',{method:'POST'});location.replace('/');return;}
+ if(action!=='1')return;
+ const current=prompt('Digite seu PIN atual:');if(current===null)return;
+ const next=prompt('Digite o novo PIN (6 a 12 números):');if(next===null)return;
+ const confirmPin=prompt('Confirme o novo PIN:');if(confirmPin===null)return;
+ if(next!==confirmPin){alert('Os PINs não conferem.');return;}
+ try{const r=await fetch('/api/auth/change-pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current,new:next})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Falha ao alterar PIN.');alert('PIN alterado com sucesso.');}catch(e){alert(e.message)}
+}
+</script>
 </body></html>
 <style>
 
