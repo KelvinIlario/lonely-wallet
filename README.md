@@ -1,3 +1,22 @@
+# Lonely Wallet v3.3.48
+
+## v3.3.48
+
+- Gráfico Consolidação de aportes passa a exibir colunas agrupadas lado a lado para Compras e Vendas em cada período.
+- Compras permanecem em verde e Vendas em rosa, com ambas as séries partindo do zero para facilitar a comparação direta dos valores mensais.
+- Mantidos os filtros de granularidade, período e tipo de ativo, além da abertura da distribuição ao clicar em cada coluna.
+- Card Rentabilidade reorganizado: os percentuais de Últimos 12 meses e Total aparecem logo abaixo de suas respectivas legendas, com espaçamento vertical mais próximo do padrão dos demais cards.
+
+## Atualização
+
+Preserve integralmente o volume persistente `/DATA/AppData/lonely-wallet/data:/data`, incluindo os bancos SQLite e o arquivo de credenciais. Não apague nem recrie esses arquivos ao atualizar.
+
+Porta externa recomendada no ZimaOS: `8085`, apontando para a porta interna `8080`. Fuso: `America/Sao_Paulo`.
+
+## Validação
+
+Alterações de interface e configuração do gráfico verificadas por inspeção do código e validação sintática. A aparência final deve ser conferida no navegador após atualizar o container.
+
 # Lonely Wallet v3.3.47\n\n## v3.3.47\n\n- Ajustado o alinhamento vertical dos percentuais na legenda do gráfico de distribuição de compras e vendas.\n- Valores e percentuais de vendas destacados em vermelho; compras permanecem em verde.\n- Removidas vírgulas indevidas entre os ativos da legenda.\n- Mantida a representação simultânea de compras e vendas no gráfico de barras, em lados opostos do eixo zero.\n\n# Lonely Wallet v3.3.38
 
 ## v3.3.38

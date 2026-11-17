@@ -3741,11 +3741,14 @@ function renderLaunchConsolidation(){
  const keys=Object.keys(buckets).sort();
  const fmt=k=>granularity==='anual'?k:granularity==='trimestral'?`${k.slice(0,4)} · ${k.slice(5)}`:`${k.slice(5,7)}/${k.slice(0,4)}`;
  const labels=keys.map(fmt),buys=keys.map(k=>Number(buckets[k].compras.toFixed(2))),sells=keys.map(k=>Number(buckets[k].vendas.toFixed(2)));
- chart('launchConsolidationChart','bar',{labels,datasets:[{label:'Compras',data:buys,backgroundColor:'#31b77e',borderRadius:4},{label:'Vendas',data:sells.map(v=>-v),backgroundColor:'#ef6680',borderRadius:4}]},{onClick:(event,elements)=>{
+ chart('launchConsolidationChart','bar',{labels,datasets:[
+  {label:'Compras',data:buys,backgroundColor:'#31b77e',borderRadius:4,grouped:true,barPercentage:.82,categoryPercentage:.72},
+  {label:'Vendas',data:sells,backgroundColor:'#ef6680',borderRadius:4,grouped:true,barPercentage:.82,categoryPercentage:.72}
+ ]},{onClick:(event,elements)=>{
   if(!elements||!elements.length)return;
   const hit=elements[0],periodKey=keys[hit.index],side=hit.datasetIndex===0?'compra':'venda';
   if(periodKey)openLaunchDistribution(periodKey,side,granularity,valid);
- },plugins:{legend:{labels:{color:'#b8c1ce'}}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{ticks:{color:'#8f99a8',callback:v=>'R$ '+Math.abs(Number(v)).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
+ },plugins:{legend:{labels:{color:'#b8c1ce'}}},scales:{x:{ticks:{color:'#8f99a8'},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#8f99a8',callback:v=>'R$ '+Number(v).toLocaleString('pt-BR')},grid:{color:'#303541'}}}});
  const totalBuys=buys.reduce((a,b)=>a+b,0),totalSells=sells.reduce((a,b)=>a+b,0);
  const totalEl=document.getElementById('launchConsolidationTotal');
  if(totalEl)totalEl.textContent=`Compras ${brl(totalBuys)} · Vendas ${brl(totalSells)} · Líquido ${brl(totalBuys-totalSells)}`;
@@ -5727,4 +5730,23 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 .return-stat-card .return-spark-item{justify-items:center;text-align:center}
 .return-stat-card .return-spark-item>b{justify-self:center;margin-inline:auto;text-align:center}
 .return-stat-card .return-spark-item.spark-empty::after{content:none;display:none}
+</style>
+
+
+<style>
+/* v3.3.48 — aproxima os percentuais das legendas no card Rentabilidade */
+.return-stat-card .return-spark-item{
+  grid-template-rows:auto auto!important;
+  row-gap:14px!important;
+  align-content:start;
+}
+.return-stat-card .return-spark-item .sparkline-svg{
+  display:none!important;
+}
+.return-stat-card .return-spark-item>span{
+  margin:0;
+}
+.return-stat-card .return-spark-item>b{
+  margin-top:0;
+}
 </style>
