@@ -5378,6 +5378,17 @@ async function disableSecurityPin(){const pin=document.getElementById('securityC
 async function securityLogout(){try{await fetch('/api/auth/logout',{method:'POST'});}finally{location.replace('/');}}
 
 </script>
+
+<style>
+/* v4.1.10: hover uniforme nas linhas da tabela de ativos.
+   A célula de Variação acompanha o mesmo fundo das demais colunas. */
+.asset-category .data.proportional-assets-table tbody tr:hover > td,
+.asset-category .data.proportional-assets-table tbody tr:hover > td[data-col="variacao_dia"],
+.asset-category .data.proportional-assets-table tbody tr:hover > td[data-col="variacao_dia"]:hover {
+  background-color: var(--table-hover) !important;
+  box-shadow: none !important;
+}
+</style>
 </body></html>
 <style>
 

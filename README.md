@@ -1,4 +1,4 @@
-# Lonely Wallet v4.1.8
+# Lonely Wallet v4.1.10
 
 ## Objetivo desta versão
 Versão de manutenção baseada no pacote v4.1.6 enviado pelo usuário. Preserva a estrutura da aplicação, os bancos existentes e o volume `/data`.
@@ -27,7 +27,7 @@ Versão de manutenção baseada no pacote v4.1.6 enviado pelo usuário. Preserva
 - Adicionado endpoint `/api/health` para verificar a disponibilidade dos bancos.
 - Adicionado healthcheck ao Docker Compose.
 - Adicionada a opção Docker `no-new-privileges`.
-- Atualizada a referência visual do ícone para v4.1.8.
+- Atualizada a referência visual do ícone para v4.1.10.
 - Removido `__pycache__` do pacote para evitar distribuir bytecode de outra versão do Python.
 - Delimitada a faixa de versões de `cryptography` para evitar atualizações incompatíveis inesperadas.
 
@@ -57,7 +57,7 @@ Se utilizar proxy reverso com HTTPS, configure `SESSION_COOKIE_SECURE: "true"` n
 ## Release notes
 - Consulte as notas de lançamento desta versão na seção acima. Não é necessário adicionar um arquivo separado de release notes ao ZIP.
 
-## v4.1.8
+## v4.1.10
 
 - Removido o atalho redundante de Segurança da conta ao lado do botão de privacidade.
 - Acesso à segurança mantido exclusivamente pela aba Segurança na navegação principal.
