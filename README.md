@@ -188,3 +188,10 @@ A opção de excluir todos os ativos limpa lançamentos, posições/snapshots, p
 - Somente eventos com pagamento confirmado e data efetiva até hoje entram nos totais, rentabilidade e metas.
 - Proventos futuros continuam vindo das fontes de mercado e lançamentos manuais, sem usar Pluggy.
 - Edição de lançamentos importados preserva a identificação de origem Pluggy. Exclusões manuais são respeitadas em sincronizações futuras.
+
+
+## v3.3.21
+- Tooltip da coluna Variação simplificado para exibir apenas a pergunta e o valor financeiro correspondente.
+- Proventos recebidos limitados aos registros vinculados às importações Pluggy e B3.
+- Lançamentos manuais e eventos de outras APIs deixam de compor os totais de proventos recebidos.
+- Mantida a exclusão de pagamentos futuros da apuração de recebimentos.

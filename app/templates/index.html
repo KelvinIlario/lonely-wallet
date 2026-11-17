@@ -2703,8 +2703,7 @@ function moveIdealBalanceTooltip(event,el){
 
 function variationMoneyHint(item,change){
  const amount=item&&item.pluggy_variacao_valor!==null&&item.pluggy_variacao_valor!==undefined?Number(item.pluggy_variacao_valor):Number(item.variacao_valor??item.lucro??(Number(item.quantidade||0)*Number(item.preco_atual||0)*Number(change||0)/100));
- const basis=item&&item.pluggy_primeira_compra?` desde a primeira compra em ${item.pluggy_primeira_compra}`:'';
- return `Resultado de ${pct(change)}${basis} (sem proventos):\n${brl(amount)}`;
+ return `Quanto uma variação de ${pct(change)} representa?\n${brl(amount)}`;
 }
  
 window.hideVariationMoneyTooltip=function hideVariationMoneyTooltip(){
