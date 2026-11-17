@@ -4738,22 +4738,18 @@ def dashboard():
         {'ticker':item['ticker'],'data':item['data_pagamento'],'valor_total':item['valor_total'],'tipo_evento':item.get('tipo_evento')}
         for item in detailed if _is_income_event(item.get('tipo_evento'))
     ]
-    performance_history = fetch_portfolio_price_history(ops, imported_rows)
-    performance = build_portfolio_performance(ops, performance_dividends, history=performance_history, imported_positions=imported_rows, snapshot_date=base_date, current_positions=portfolio.get('itens', []))
-    # Séries por classe permitem que o filtro da página Rentabilidade altere
-    # os indicadores e o gráfico sem misturar classes diferentes.
-    return_types = sorted({str(row.get('tipo') or '').strip().lower() for row in [*ops, *imported_rows] if row.get('tipo')})
+    # O histórico de preços é carregado em endpoint separado, depois que o Resumo
+    # já foi entregue. Isso impede que APIs históricas bloqueiem a primeira pintura.
+    performance = {
+        'series_12m': [], 'series_total': [], 'series_roi_total': [],
+        'series_patrimonio': [], 'rentabilidade_12m': None,
+        'rentabilidade_total': None, 'meses_disponiveis': 0,
+        'primeiro_mes': None, 'historico_completo': False,
+        'historico_parcial': True, 'ativos_sem_historico': [],
+        'ativos_com_historico': 0, 'total_ativos': len(portfolio.get('itens', [])),
+        'fontes_historico': {}
+    }
     performance_by_type = {}
-    for asset_type in return_types:
-        type_ops = [row for row in ops if str(row.get('tipo') or '').strip().lower() == asset_type]
-        type_positions = [row for row in imported_rows if str(row.get('tipo') or '').strip().lower() == asset_type]
-        type_tickers = {str(row.get('ticker') or '').upper() for row in [*type_ops, *type_positions]}
-        type_dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in type_tickers]
-        performance_by_type[asset_type] = build_portfolio_performance(
-            type_ops, type_dividends, history=performance_history,
-            imported_positions=type_positions, snapshot_date=base_date,
-            current_positions=[row for row in portfolio.get('itens', []) if str(row.get('tipo') or '').strip().lower() == asset_type]
-        )
     return jsonify(**portfolio, operacoes=ops, agendadas=scheduled, proventos=manual_rows,
         saldos_importados=imported_rows, data_base_snapshot=base_date,
         aportes_mensais=monthly, proventos_mensais=received_by_month,
@@ -4770,6 +4766,48 @@ def dashboard():
             'a_receber':sorted(upcoming,key=lambda x:x['data_pagamento']),
             'distribuicao':type_totals,'sincronizacao':sync_status
         })
+
+
+@app.route('/api/dashboard/historico')
+def dashboard_history():
+    """Carrega séries históricas em segundo plano, sem atrasar o dashboard principal."""
+    ops = [dict(r) for r in db().execute(
+        "SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id"
+    ).fetchall()]
+    base_date = snapshot_date_for()
+    imported_rows = [dict(row) for row in db().execute(
+        'SELECT ticker,tipo,quantidade,preco_medio,preco_base,data_base,nome,origem FROM saldos_importados WHERE data_base=? ORDER BY tipo,nome,ticker',
+        (base_date,)
+    ).fetchall()] if base_date else []
+    active_tickers = {str(row.get('ticker') or '').upper() for row in imported_rows}
+    active_tickers.update(str(row.get('ticker') or '').upper() for row in ops)
+    received_records = _received_proventos_records(active_tickers)
+    performance_dividends = [
+        {'ticker': item['ticker'], 'data': item['data_pagamento'],
+         'valor_total': item['valor_total'], 'tipo_evento': item.get('tipo_evento')}
+        for item in received_records if _is_income_event(item.get('tipo_evento'))
+    ]
+    payload = request.get_json(silent=True) or {}
+    current = payload.get('current_positions') if isinstance(payload.get('current_positions'), list) else []
+    history = fetch_portfolio_price_history(ops, imported_rows)
+    performance = build_portfolio_performance(
+        ops, performance_dividends, history=history, imported_positions=imported_rows,
+        snapshot_date=base_date, current_positions=current
+    )
+    types = sorted({str(row.get('tipo') or '').strip().lower()
+                    for row in [*ops, *imported_rows] if row.get('tipo')})
+    by_type = {}
+    for asset_type in types:
+        type_ops = [row for row in ops if str(row.get('tipo') or '').strip().lower() == asset_type]
+        type_positions = [row for row in imported_rows if str(row.get('tipo') or '').strip().lower() == asset_type]
+        tickers = {str(row.get('ticker') or '').upper() for row in [*type_ops, *type_positions]}
+        dividends = [row for row in performance_dividends if str(row.get('ticker') or '').upper() in tickers]
+        by_type[asset_type] = build_portfolio_performance(
+            type_ops, dividends, history=history, imported_positions=type_positions,
+            snapshot_date=base_date,
+            current_positions=[row for row in current if str(row.get('tipo') or '').strip().lower() == asset_type]
+        )
+    return jsonify(rentabilidade_historica=performance, rentabilidade_por_tipo=by_type)
 
 
 @app.route('/api/ativos/busca')

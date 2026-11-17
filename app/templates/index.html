@@ -2209,9 +2209,10 @@ function scheduleMutationRefresh(){
 async function api(url,opts={}){
  const method=String(opts.method||'GET').toUpperCase();
  const controller=opts.signal?null:new AbortController();
- const requestOptions={headers:{'Content-Type':'application/json'},...opts,...(controller?{signal:controller.signal}:{})};
- const timeout=controller?setTimeout(()=>controller.abort(),25000):null;
- let r;try{r=await fetch(url,requestOptions);}finally{if(timeout)clearTimeout(timeout);}
+ const {timeoutMs=90000,...fetchOpts}=opts;
+ const requestOptions={headers:{'Content-Type':'application/json'},...fetchOpts,...(controller?{signal:controller.signal}:{})};
+ const timeout=controller?setTimeout(()=>controller.abort(),timeoutMs):null;
+ let r;try{r=await fetch(url,requestOptions);}catch(error){if(error&&error.name==='AbortError')throw new Error('A consulta demorou mais que o esperado. Tente novamente; seus dados não foram alterados.');throw error;}finally{if(timeout)clearTimeout(timeout);}
  let d={};
  try{d=await r.json();}catch(error){if(r.ok)throw new Error('O servidor não retornou uma resposta válida.');}
  if(!r.ok)throw new Error(d.erro||d.error||d.message||'Não foi possível concluir a operação.');
@@ -2221,6 +2222,25 @@ async function api(url,opts={}){
 function chart(id,type,data,options={}){if(!document.getElementById(id))return;if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),{type,data,options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#b8c1ce',boxWidth:9,font:{size:11}}}},scales:type==='bar'?{x:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}},y:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}}}:{},...options}})}
 function stat(label,value,sub='',color=''){return `<div class="card stat"><div class="statlabel">${label}</div><div class="statvalue ${color}">${value}</div><div class="mini">${sub}</div></div>`}
 function rowEmpty(cols,msg='Nenhum registro encontrado.'){return `<tr><td colspan="${cols}" class="empty">${msg}</td></tr>`}
+let dashboardHistoryInFlight=false;
+async function loadDashboardHistory(){
+ if(dashboardHistoryInFlight)return;
+ dashboardHistoryInFlight=true;
+ try{
+  const history=await api('/api/dashboard/historico',{method:'POST',body:JSON.stringify({current_positions:state.itens||[]}),skipAutoRefresh:true,timeoutMs:120000});
+  if(history&&history.rentabilidade_historica){
+   state.rentabilidade_historica=history.rentabilidade_historica;
+   state.rentabilidade_por_tipo=history.rentabilidade_por_tipo||{};
+   render();
+   applyPositionColumnPrefs();
+  }
+ }catch(error){
+  console.warn('Histórico de rentabilidade indisponível no momento:',error);
+ }finally{
+  dashboardHistoryInFlight=false;
+ }
+}
+
 async function refresh(){
  if(mutationRefreshTimer){clearTimeout(mutationRefreshTimer);mutationRefreshTimer=null;}
  if(refreshInFlight){refreshAgain=true;return refreshInFlight;}
@@ -2228,12 +2248,13 @@ async function refresh(){
   try{
    const dashboardAttempts=4;let dashboardError=null;
    for(let attempt=0;attempt<dashboardAttempts;attempt++){
-    try{state=await api('/api/dashboard');dashboardError=null;break;}
+    try{state=await api('/api/dashboard',{timeoutMs:90000});dashboardError=null;break;}
     catch(error){dashboardError=error;if(attempt<dashboardAttempts-1){await new Promise(resolve=>setTimeout(resolve,650*Math.pow(2,attempt)));}}
    }
    if(dashboardError)throw dashboardError;
    render();
    applyPositionColumnPrefs();
+   loadDashboardHistory();
    const updated=document.getElementById('updated');
    if(updated)updated.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
    const irpfPage=document.getElementById('page-irpf');
