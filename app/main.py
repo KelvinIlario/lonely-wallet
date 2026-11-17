@@ -1,4 +1,4 @@
-import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil, secrets, hmac
+import os, sqlite3, time, json, threading, hashlib, io, re, unicodedata, uuid, shutil, secrets, hmac, math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from datetime import date, datetime, time as clock_time, timedelta
@@ -9,7 +9,7 @@ from openpyxl import load_workbook, Workbook
 from flask import Flask, g, jsonify, render_template, request, send_file, session, redirect, url_for
 
 app = Flask(__name__)
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', PERMANENT_SESSION_LIFETIME=timedelta(minutes=30))
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '0').lower() in ('1', 'true', 'yes'), PERMANENT_SESSION_LIFETIME=timedelta(minutes=30))
 # Dados da carteira ficam em um banco próprio; segredos de APIs ficam em tokens.db.
 DB_PATH = os.environ.get('ASSETS_DB_PATH', '/data/ativos.db')
 LEGACY_DB_PATH = os.environ.get('DB_PATH', '/data/carteira.db')
@@ -438,9 +438,41 @@ def pin_digest(pin, salt):
     return hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), bytes.fromhex(salt), 310000).hex()
 
 
+def _auth_failure(con, row, now=None):
+    now = time.time() if now is None else now
+    attempts = int(row['failed_attempts'] or 0) + 1
+    locked_until = now + 300 if attempts >= 5 else 0
+    con.execute('UPDATE app_auth SET failed_attempts=?,locked_until=? WHERE id=1',
+                (0 if locked_until else attempts, locked_until))
+    con.commit()
+    return locked_until
+
+
+def _auth_lock_response(row, now=None):
+    now = time.time() if now is None else now
+    if float(row['locked_until'] or 0) > now:
+        wait = max(1, int(float(row['locked_until']) - now))
+        return jsonify(ok=False, error=f'Muitas tentativas. Aguarde {wait} segundos.'), 429
+    return None
+
+
+def _origin_is_same_host():
+    origin = request.headers.get('Origin')
+    if not origin:
+        return True  # Clientes não-browser podem não enviar Origin; SameSite continua ativo.
+    from urllib.parse import urlparse
+    try:
+        return urlparse(origin).netloc.lower() == request.host.lower()
+    except Exception:
+        return False
+
+
 @app.before_request
 def require_pin_authentication():
-    if request.endpoint in ('auth_status', 'auth_setup', 'auth_login', 'auth_disable', 'static') or request.path.startswith('/static/'):
+    # Verifica origem também nos endpoints públicos de autenticação para reduzir CSRF.
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE') and not _origin_is_same_host():
+        return jsonify(ok=False, error='Origem da requisição não autorizada.'), 403
+    if request.endpoint in ('auth_status', 'auth_setup', 'auth_login', 'auth_disable', 'health', 'static') or request.path.startswith('/static/'):
         return None
     record = auth_record()
     if not record or not record['enabled'] or not record['pin_hash']:
@@ -466,13 +498,6 @@ def require_pin_authentication():
     session['boot_id'] = BOOT_ID
     session.permanent = True
 
-    # Same-origin check for state-changing browser requests. SameSite cookies add a second layer.
-    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
-        origin = request.headers.get('Origin')
-        if origin:
-            from urllib.parse import urlparse
-            if urlparse(origin).netloc.lower() != request.host.lower():
-                return jsonify(ok=False, error='Origem da requisição não autorizada.'), 403
     return None
 
 
@@ -514,25 +539,31 @@ def auth_setup():
 @app.route('/api/auth/disable', methods=['POST'])
 def auth_disable():
     payload = request.get_json(silent=True) or {}
-    row = auth_record()
-    if row and row['pin_hash']:
-        current = str(payload.get('pin') or '')
-        candidate = pin_digest(current, row['pin_salt']) if re.fullmatch(r"\d{6,12}", current) else ''
-        if not hmac.compare_digest(candidate, row['pin_hash']):
-            return jsonify(ok=False, error='PIN incorreto. Não foi possível desativar a proteção.'), 401
-        con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
-        try:
-            con.execute('UPDATE app_auth SET enabled=0,failed_attempts=0,locked_until=0 WHERE id=1')
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute('BEGIN IMMEDIATE')
+        row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
+        if row and row['pin_hash']:
+            lock_response = _auth_lock_response(row)
+            if lock_response:
+                return lock_response
+            current = str(payload.get('pin') or '')
+            candidate = pin_digest(current, row['pin_salt']) if re.fullmatch(r"\d{6,12}", current) else ''
+            if not hmac.compare_digest(candidate, row['pin_hash']):
+                locked_until = _auth_failure(con, row)
+                if locked_until:
+                    return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
+                return jsonify(ok=False, error='PIN incorreto. Não foi possível desativar a proteção.'), 401
+            con.execute('UPDATE app_auth SET enabled=0,failed_attempts=0,locked_until=0,updated_at=? WHERE id=1',
+                        (datetime.now(TZ).isoformat(),))
             con.commit()
-        finally:
-            con.close()
-    else:
-        con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
-        try:
-            con.execute("INSERT OR REPLACE INTO app_auth(id,pin_salt,pin_hash,failed_attempts,locked_until,updated_at,enabled) VALUES(1,'','',0,0,?,0)", (datetime.now(TZ).isoformat(),))
+        else:
+            con.execute("INSERT OR REPLACE INTO app_auth(id,pin_salt,pin_hash,failed_attempts,locked_until,updated_at,enabled) VALUES(1,'','',0,0,?,0)",
+                        (datetime.now(TZ).isoformat(),))
             con.commit()
-        finally:
-            con.close()
+    finally:
+        con.close()
     if not session.get('authenticated'):
         session.clear()
     return jsonify(ok=True)
@@ -545,19 +576,19 @@ def auth_login():
     con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
     con.row_factory = sqlite3.Row
     try:
+        con.execute('BEGIN IMMEDIATE')
         row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
         if not row:
             return jsonify(ok=False, setup_required=True, error='Configure seu PIN de acesso.'), 409
         now = time.time()
-        if row['locked_until'] > now:
-            wait = max(1, int(row['locked_until'] - now))
-            return jsonify(ok=False, error=f'Muitas tentativas. Aguarde {wait} segundos.'), 429
+        lock_response = _auth_lock_response(row, now)
+        if lock_response:
+            return lock_response
         candidate = pin_digest(pin, row['pin_salt']) if re.fullmatch(r'\d{6,12}', pin) else ''
         if not hmac.compare_digest(candidate, row['pin_hash']):
-            attempts = row['failed_attempts'] + 1
-            lock_until = now + 300 if attempts >= 5 else 0
-            con.execute('UPDATE app_auth SET failed_attempts=?,locked_until=? WHERE id=1', (0 if lock_until else attempts, lock_until))
-            con.commit()
+            lock_until = _auth_failure(con, row, now)
+            if lock_until:
+                return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
             return jsonify(ok=False, error='PIN incorreto.'), 401
         con.execute('UPDATE app_auth SET failed_attempts=0,locked_until=0 WHERE id=1')
         con.commit()
@@ -579,8 +610,18 @@ def auth_change_pin():
     current, new_pin = str(payload.get('current') or ''), str(payload.get('new') or '')
     con = sqlite3.connect(TOKEN_DB_PATH, timeout=15); con.row_factory = sqlite3.Row
     try:
+        con.execute('BEGIN IMMEDIATE')
         row = con.execute('SELECT * FROM app_auth WHERE id=1').fetchone()
-        if not row or not hmac.compare_digest(pin_digest(current, row['pin_salt']), row['pin_hash']):
+        if not row:
+            return jsonify(ok=False, error='PIN não configurado.'), 409
+        lock_response = _auth_lock_response(row)
+        if lock_response:
+            return lock_response
+        candidate = pin_digest(current, row['pin_salt']) if re.fullmatch(r'\d{6,12}', current) else ''
+        if not hmac.compare_digest(candidate, row['pin_hash']):
+            locked_until = _auth_failure(con, row)
+            if locked_until:
+                return jsonify(ok=False, error='Muitas tentativas. Proteção temporariamente bloqueada por 5 minutos.'), 429
             return jsonify(ok=False, error='PIN atual incorreto.'), 401
         if not re.fullmatch(r'\d{6,12}', new_pin):
             return jsonify(ok=False, error='O novo PIN deve ter de 6 a 12 números.'), 400
@@ -2062,6 +2103,8 @@ def valid_operation(data):
         ticker=str(data.get('ticker','')).strip().upper(); tipo=str(data.get('tipo','acao')).lower(); lado=str(data.get('lado','compra')).lower()
         qtd=float(data.get('quantidade',0)); preco=float(data.get('preco',0)); custos=float(data.get('custos',0) or 0)
         dt=str(data.get('data','')); date.fromisoformat(dt)
+        if not all(math.isfinite(v) for v in (qtd, preco, custos)):
+            raise ValueError('Valores financeiros precisam ser finitos.')
         allowed_types=('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros')
         if not ticker or len(ticker)>80 or tipo not in allowed_types: raise ValueError()
         if lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
@@ -2093,6 +2136,17 @@ def valid_operation(data):
         return (ticker,tipo,lado,qtd,preco,execution.date().isoformat(),custos,status,now.isoformat(timespec='minutes'),execution.isoformat(timespec='minutes'),json.dumps(details,ensure_ascii=False)),None
     except Exception:
         return None,'Confira ativo, tipo, quantidade, preço, custos e data da operação.'
+
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    try:
+        db().execute('SELECT 1').fetchone()
+        token_db().execute('SELECT 1').fetchone()
+        return jsonify(ok=True, status='healthy', version='4.1.7'), 200
+    except Exception:
+        app.logger.exception('Healthcheck failed')
+        return jsonify(ok=False, status='unhealthy'), 503
 
 
 @app.route('/')
@@ -2331,6 +2385,8 @@ def delete_operacao(op_id):
         dt=str(j.get('data') or current['data'])
         allowed_types=('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros')
         date.fromisoformat(dt)
+        if not all(math.isfinite(v) for v in (qtd, preco, custos)):
+            raise ValueError('Valores financeiros precisam ser finitos.')
         if not ticker or len(ticker)>80 or tipo not in allowed_types or lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
         if lado=='venda':
             existing_type=db().execute("SELECT tipo FROM operacoes WHERE ticker=? ORDER BY id LIMIT 1",(ticker,)).fetchone()
@@ -3128,12 +3184,10 @@ def _is_income_event(event_type):
 
 
 def _received_proventos_records(active_tickers=None):
-    """Retorna somente proventos pagos registrados pela Pluggy ou importados da tabela B3.
+    """Retorna proventos da tabela comum com data não futura, deduplicando origens importadas.
 
-    A tabela proventos é um armazenamento comum. Um registro só entra nesta
-    apuração quando seu ID está vinculado ao livro de importação da Pluggy ou
-    ao lote de importação da B3. Lançamentos manuais e eventos de outras APIs
-    não são considerados recebidos.
+    Registros vinculados à Pluggy ou B3 mantêm a origem de importação. Registros
+    sem vínculo são lançamentos manuais e também entram na apuração de recebidos.
     """
     active_set = None if active_tickers is None else {str(t).upper() for t in active_tickers}
     if active_set is not None and not active_set:
@@ -3147,46 +3201,44 @@ def _received_proventos_records(active_tickers=None):
         "SELECT registro_id FROM b3_importados WHERE lower(categoria)='provento' AND registro_id IS NOT NULL"
     ).fetchall()}
 
+    # Todos os lançamentos da tabela comum são considerados: os importados recebem
+    # sua origem; os demais são lançamentos manuais. Eventos futuros não entram.
+    origin_by_id = {ident: 'Pluggy' for ident in pluggy_ids}
+    for ident in b3_ids:
+        origin_by_id.setdefault(ident, 'B3')
+    rows = db().execute('SELECT id,ticker,valor_total,data FROM proventos ORDER BY data,id').fetchall()
     records = []
     seen = set()
-    # Pluggy tem prioridade; B3 complementa somente quando não houver duplicidade.
-    for origin, ids in (('Pluggy', pluggy_ids), ('B3', b3_ids)):
-        if not ids:
+    for raw in rows:
+        row = dict(raw)
+        payment_date = _api_date(row.get('data'))
+        if not payment_date:
             continue
-        id_list = sorted(ids)
-        for offset in range(0, len(id_list), 400):
-            chunk = id_list[offset:offset + 400]
-            marks = ','.join('?' for _ in chunk)
-            rows = db().execute(
-                f"SELECT id,ticker,valor_total,data FROM proventos WHERE id IN ({marks}) ORDER BY data,id",
-                tuple(chunk)
-            ).fetchall()
-            for raw in rows:
-                row = dict(raw)
-                payment_date = _api_date(row.get('data'))
-                if not payment_date:
-                    continue
-                try:
-                    if date.fromisoformat(payment_date) > today:
-                        continue
-                except ValueError:
-                    continue
-                ticker = str(row.get('ticker') or '').upper()
-                if active_set is not None and ticker not in active_set:
-                    continue
-                amount = round(float(row.get('valor_total') or 0), 2)
-                key = (ticker, payment_date[:10], amount)
-                if key in seen:
-                    continue
-                seen.add(key)
-                records.append({
-                    'ticker': ticker, 'tipo': 'Provento',
-                    'tipo_ativo': typesafe_asset_type(ticker),
-                    'status': 'Pago', 'data_com': None,
-                    'data_pagamento': payment_date, 'quantidade': None,
-                    'valor_por_ativo': None, 'valor_total': amount,
-                    'origem': origin, 'tipo_evento': 'PROVENTO'
-                })
+        try:
+            if date.fromisoformat(payment_date) > today:
+                continue
+        except ValueError:
+            continue
+        ticker = str(row.get('ticker') or '').upper()
+        if active_set is not None and ticker not in active_set:
+            continue
+        amount = round(float(row.get('valor_total') or 0), 2)
+        if not math.isfinite(amount) or amount <= 0:
+            continue
+        key = (ticker, payment_date[:10], amount)
+        origin = origin_by_id.get(int(row['id']), 'Manual')
+        if origin != 'Manual' and key in seen:
+            continue
+        if origin != 'Manual':
+            seen.add(key)
+        records.append({
+            'ticker': ticker, 'tipo': 'Provento',
+            'tipo_ativo': typesafe_asset_type(ticker),
+            'status': 'Pago', 'data_com': None,
+            'data_pagamento': payment_date, 'quantidade': None,
+            'valor_por_ativo': None, 'valor_total': amount,
+            'origem': origin, 'tipo_evento': 'PROVENTO'
+        })
     return records
 
 

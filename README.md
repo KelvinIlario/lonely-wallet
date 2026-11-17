@@ -1,39 +1,58 @@
-# Lonely Wallet v4.1.6
+# Lonely Wallet v4.1.7
 
-## Ajustes de acesso
-- A tela de acesso pré-carrega recursos visuais (logotipo e biblioteca de gráficos) enquanto o PIN é digitado.
-- Opção para continuar sem PIN na configuração inicial.
-- Opção para desativar o PIN posteriormente, mediante confirmação do PIN atual.
-- A proteção pode ser reativada configurando um PIN novamente quando estiver desativada.
-- A tela recomenda manter o PIN para proteger a carteira.
-- O carregamento dos dados privados da carteira ocorre após a autenticação; os dados não são expostos antes do PIN.
+## Objetivo desta versão
+Versão de manutenção baseada no pacote v4.1.6 enviado pelo usuário. Preserva a estrutura da aplicação, os bancos existentes e o volume `/data`.
 
-## Persistência
-- A configuração de PIN é armazenada em `tokens.db`.
-- A migração adiciona a coluna `enabled` sem apagar a configuração existente.
-- Os bancos e credenciais existentes permanecem no volume `/data`.
+## Correções implementadas
 
-## Atualização
-- Manter o volume `/DATA/AppData/lonely-wallet/data:/data`.
-- Fazer backup da pasta de dados antes da atualização.
+### Segurança e autenticação
+- O endpoint de desativação do PIN agora usa o mesmo limite de cinco tentativas e bloqueio temporário de cinco minutos do login.
+- O contador de falhas e o bloqueio são compartilhados entre login e desativação do PIN.
+- Requisições de alteração de estado com cabeçalho `Origin` de outra origem são rejeitadas, inclusive nos endpoints públicos de autenticação.
+- A opção `SESSION_COOKIE_SECURE` permite exigir cookies Secure quando a aplicação estiver atrás de HTTPS. O padrão permanece desativado para compatibilidade com instalações que acessam diretamente por HTTP.
+- A chave de sessão continua persistida no volume de dados.
 
+### Integridade financeira
+- Operações novas e editadas rejeitam `NaN`, infinito positivo e infinito negativo em quantidade, preço e custos.
+- Lançamentos manuais de proventos rejeitam valores não finitos.
+- A apuração de proventos recebidos agora inclui lançamentos manuais com data de pagamento não futura, além dos registros importados, preservando a deduplicação entre origens importadas. Lançamentos manuais distintos não são eliminados apenas por terem ticker, data e valor iguais.
 
-## v4.1.5
+### Backup consistente
+- Incluído `scripts/backup.py`, que usa a API de backup do SQLite para copiar os bancos sem depender de copiar arquivos WAL manualmente.
+- O script valida cada banco de destino com `PRAGMA integrity_check` e copia as chaves de criptografia/sessão quando presentes.
+- Exemplo dentro do container: `python scripts/backup.py --destination /backup` (monte previamente um diretório de backup persistente em `/backup`).
+- O script é manual; agendamento e retenção automática devem ser configurados no host para evitar consumo inesperado de disco.
 
-- Ajustes visuais da página Segurança para ocupar a largura disponível.
-- Botões e campos da página Segurança padronizados com o tema Lonely Wallet.
-- Cor de fundo crítica definida desde o início do carregamento para evitar flash branco na transição após autenticação.
+### Operação e infraestrutura
+- Adicionado endpoint `/api/health` para verificar a disponibilidade dos bancos.
+- Adicionado healthcheck ao Docker Compose.
+- Adicionada a opção Docker `no-new-privileges`.
+- Atualizada a referência visual do ícone para v4.1.7.
+- Removido `__pycache__` do pacote para evitar distribuir bytecode de outra versão do Python.
+- Delimitada a faixa de versões de `cryptography` para evitar atualizações incompatíveis inesperadas.
 
+## Compatibilidade e preservação
+- Mantidos `ativos.db`, `tokens.db`, arquivos de chaves e demais dados no volume `/DATA/AppData/lonely-wallet/data:/data`.
+- Não há migração destrutiva nem exclusão de registros.
+- Não alterada a regra de preço médio ou a metodologia de rentabilidade: essas regras precisam de decisão contábil explícita e testes com extratos reais antes de qualquer mudança.
+- Não foi implementado nesta versão um limitador global de cotas para todos os provedores externos; os mecanismos de cache/timeouts já existentes foram preservados.
+- A reconciliação de snapshots da Pluggy/B3 não foi reescrita nesta manutenção para evitar risco de exclusão ou duplicação de dados históricos.
 
-## v4.1.6
+## Atualização no ZimaOS
+1. Faça backup da pasta `/DATA/AppData/lonely-wallet/data` antes de atualizar.
+2. Substitua os arquivos do projeto pelos arquivos deste pacote.
+3. Preserve o volume `/DATA/AppData/lonely-wallet/data:/data`.
+4. Execute `docker compose up -d --build`.
+5. Confirme que o container fica `healthy` e acesse `/api/health`.
+6. Teste login, desativação do PIN, compra/venda, importação B3/Pluggy e gráficos de proventos.
 
-### Correção da transição após autenticação
-- Corrigida a exibição rápida dos títulos “Minhas observações”, “Lançamentos do ativo” e “Editar colunas” após inserir o PIN.
-- Os três modais foram movidos para dentro do `<body>`, evitando que o navegador renderize seu conteúdo antes da aplicação dos estilos.
-- Os modais continuam disponíveis normalmente quando acionados dentro da carteira.
-- Nenhuma alteração na autenticação, no PIN, nos bancos de dados ou nos dados persistidos.
+### HTTPS
+Se utilizar proxy reverso com HTTPS, configure `SESSION_COOKIE_SECURE: "true"` no ambiente do serviço. Não habilite essa opção se continuar acessando a aplicação diretamente por HTTP, pois o navegador não enviará o cookie Secure nessa conexão.
 
-### Atualização
-- Preserve o volume `/DATA/AppData/lonely-wallet/data:/data`.
-- Faça backup da pasta de dados antes de atualizar.
-- Reconstrua a imagem com `docker compose up -d --build`.
+## Testes
+- Testes de regressão incluídos em `tests/test_regressions.py`.
+- Compilação Python, sintaxe JavaScript, testes de regressão, validação do Compose e integridade do ZIP devem ser executados antes da publicação.
+- Integrações externas e cálculos com dados reais dependem de validação no ambiente do usuário; não são certificados apenas por testes locais.
+
+## Release notes
+- Consulte as notas de lançamento desta versão na seção acima. Não é necessário adicionar um arquivo separado de release notes ao ZIP.

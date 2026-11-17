@@ -6,6 +6,18 @@ services:
       dockerfile: Dockerfile
     container_name: lonely-wallet
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4).read()
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    security_opt:
+      - no-new-privileges:true
     network_mode: bridge
     ports:
       - "8085:8080"
@@ -18,7 +30,7 @@ services:
     volumes:
       - /DATA/AppData/lonely-wallet/data:/data
     labels:
-      icon: "http://192.168.31.79:8085/static/lonely-wallet-logo.png?v=4.1.2"
+      icon: "http://192.168.31.79:8085/static/lonely-wallet-logo.png?v=4.1.7"
     deploy:
       resources:
         limits:
@@ -38,7 +50,7 @@ x-casaos:
     pt_BR: Carteira pessoal para acompanhar investimentos, posições e proventos.
     en_US: Personal investment portfolio dashboard.
   developer: Lonely Wallet
-  icon: "http://192.168.31.79:8085/static/lonely-wallet-logo.png?v=4.1.2"
+  icon: "http://192.168.31.79:8085/static/lonely-wallet-logo.png?v=4.1.7"
   index: /
   is_uncontrolled: false
   main: lonely-wallet
