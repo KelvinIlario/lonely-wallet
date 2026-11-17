@@ -1,10 +1,10 @@
-# Lonely Wallet v4.2.4
+# Lonely Wallet v4.2.3
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.4
+- **Versão:** 4.2.3
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -19,12 +19,7 @@ O Lonely Wallet é uma aplicação pessoal para registrar e acompanhar investime
 
 **O Lonely Wallet não é corretora, custodiante, banco, consultoria ou serviço de recomendação de investimentos.** Os valores dependem dos lançamentos cadastrados, dos saldos importados e da disponibilidade, cobertura, frequência e regras dos provedores externos. Confira extratos, notas de corretagem e documentos oficiais antes de tomar decisões ou preparar declarações fiscais.
 
-## 2. Novidades da versão 4.2.4
-
-- A tela do PIN permanece até a resposta inicial do dashboard ser carregada; a interface não exibe mais um resumo vazio durante a inicialização.
-- Tela de carregamento em tela cheia com indicador visual, explicação do processo e botão para tentar novamente quando houver falha.
-- O carregamento inicial prioriza a consulta principal da carteira antes de iniciar a distribuição e a sincronização automática da Pluggy, reduzindo concorrência no primeiro acesso.
-- Tentativas de recuperação mais rápidas para falhas transitórias na consulta inicial.
+## 2. Novidades da versão 4.2.3
 
 - Backups atômicos: falhas removem a pasta temporária e não deixam cópias parciais aparentando sucesso.
 - Manifesto com data de criação e relação de arquivos incluídos no backup.
@@ -38,7 +33,7 @@ Esta versão é uma atualização de manutenção baseada na 4.2.2.
 - O backup manual agora inclui `quotes_last_valid.json`, além dos bancos SQLite.
 - O cache de cotações é validado como JSON antes de ser incluído no backup.
 - O arquivo de cache é copiado com permissões restritas no diretório de backup.
-- Corrigidas as referências de versão no guia de atualização e no Compose para 4.2.4.
+- Corrigidas as referências de versão no guia de atualização e no Compose para 4.2.3.
 - Documentação reorganizada com procedimentos de instalação, atualização, restauração, segurança e perguntas frequentes.
 
 ### Como interpretar a última cotação salva
@@ -73,12 +68,12 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.2.4`.
+O retorno deve indicar `ok: true` e `version: 4.2.3`.
 
 ### Atualização de uma versão anterior
 
 1. Faça um backup antes de substituir os arquivos.
-2. Extraia o pacote 4.2.4 em uma pasta de projeto.
+2. Extraia o pacote 4.2.3 em uma pasta de projeto.
 3. **Mantenha exatamente o volume de dados existente**. O Compose padrão utiliza:
 
 ```yaml
@@ -227,7 +222,7 @@ Aguarde o período de bloqueio e tente novamente. Se houver outros dispositivos 
 
 ### O healthcheck falha
 
-Consulte `docker compose logs --tail=200 lonely-wallet` e acesse `/api/health`. Verifique se a aplicação iniciou, se os bancos estão acessíveis e se a versão informada é `4.2.4`.
+Consulte `docker compose logs --tail=200 lonely-wallet` e acesse `/api/health`. Verifique se a aplicação iniciou, se os bancos estão acessíveis e se a versão informada é `4.2.3`.
 
 ### A importação B3 apresenta duplicatas ou ignora operações
 
@@ -246,7 +241,7 @@ Sim, desde que mantenha o mesmo diretório persistente e faça backup antes da a
 Não deve conter o banco pessoal do servidor. Os dados persistentes ficam no volume `/data`. Nunca compartilhe um ZIP que tenha sido modificado para incluir bancos ou segredos.
 
 **O backup inclui as últimas cotações?**  
-Na versão 4.2.4, sim. O script inclui `quotes_last_valid.json` quando o arquivo existe e valida seu JSON antes de copiar.
+Na versão 4.2.3, sim. O script inclui `quotes_last_valid.json` quando o arquivo existe e valida seu JSON antes de copiar.
 
 **O backup inclui as chaves de criptografia?**  
 Não por padrão. Use `--include-keys` somente quando necessário e guarde o backup em local criptografado e restrito.
@@ -329,5 +324,5 @@ Ao pedir ajuda, informe:
 
 ---
 
-**Lonely Wallet v4.2.4**  
+**Lonely Wallet v4.2.3**  
 Guia do usuário e referência de operação. Valores e informações são auxiliares e devem ser conferidos com as fontes oficiais aplicáveis.
