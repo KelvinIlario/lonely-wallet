@@ -3604,10 +3604,29 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
                                 'resultado': month_result})
         previous_end = end_date
 
+    roi_total_series = []
+    for point in portfolio_series:
+        invested = float(point.get('aplicado') or 0)
+        gain = float(point.get('ganho') or 0)
+        if invested > 1e-8:
+            roi_total_series.append({
+                'mes': point['mes'],
+                'valor': round(gain / invested * 100, 4),
+                'ganho_prejuizo_mes': round(gain, 2)
+            })
+    roi_total = roi_total_series[-1]['valor'] if roi_total_series else None
+
     if not monthly_returns:
-        # Mantém os fechamentos mensais disponíveis para o gráfico patrimonial,
-        # mesmo quando ainda não há base suficiente para calcular rentabilidade.
-        return {**snapshot_only_result(), 'series_patrimonio': portfolio_series}
+        # Mesmo sem retorno mensal calculável, a série total usa exatamente
+        # patrimônio menos capital líquido aplicado em cada fechamento.
+        return {
+            **snapshot_only_result(),
+            'series_patrimonio': portfolio_series,
+            'series_roi_total': roi_total_series,
+            'rentabilidade_total': round(roi_total, 2) if roi_total is not None else None,
+            'series_12m': [], 'rentabilidade_12m': None,
+            'historico_parcial': True
+        }
 
     total_factor = 1.0
     series_total = []
@@ -3628,25 +3647,20 @@ def build_portfolio_performance(operations, dividends, history=None, imported_po
         series_12m.append({'mes': row['mes'], 'valor': round((rolling_factor - 1.0) * 100, 4),
                            'ganho_prejuizo_mes': round(float(row.get('resultado') or 0), 2)})
 
-    roi_total_series = []
-    for point in portfolio_series:
-        invested = float(point.get('aplicado') or 0)
-        gain = float(point.get('ganho') or 0)
-        if invested > 1e-8:
-            roi_total_series.append({
-                'mes': point['mes'],
-                'valor': round(gain / invested * 100, 4),
-                'ganho_prejuizo_mes': round(gain, 2)
-            })
-    roi_total = roi_total_series[-1]['valor'] if roi_total_series else None
-
+    # Retorno de 12 meses só é publicado com 12 fechamentos mensais consecutivos.
+    last_twelve = monthly_returns[-12:]
+    twelve_complete = len(last_twelve) == 12 and all(
+        (int(last_twelve[i]['mes'][:4]) * 12 + int(last_twelve[i]['mes'][5:7])) ==
+        (int(last_twelve[i-1]['mes'][:4]) * 12 + int(last_twelve[i-1]['mes'][5:7]) + 1)
+        for i in range(1, len(last_twelve))
+    )
     return {
         **empty,
         'series_12m': series_12m,
         'series_total': series_total,
         'series_roi_total': roi_total_series,
         'series_patrimonio': portfolio_series,
-        'rentabilidade_12m': round((rolling_factor - 1.0) * 100, 2) if monthly_returns else None,
+        'rentabilidade_12m': round((rolling_factor - 1.0) * 100, 2) if twelve_complete else None,
         'rentabilidade_total': round(roi_total, 2) if roi_total is not None else None,
         'meses_disponiveis': len(monthly_returns),
         'primeiro_mes': monthly_returns[0]['mes'],

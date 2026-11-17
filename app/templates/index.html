@@ -3447,6 +3447,19 @@ function closeProvDistributionModal(){const back=document.getElementById('provDi
 function setProvDistributionMode(mode){provDistributionMode=mode;document.getElementById('provDistAssetTab')?.classList.toggle('active',mode==='ativo');document.getElementById('provDistTypeTab')?.classList.toggle('active',mode==='tipo');const items=provDistributionData[mode]||[];const total=items.reduce((sum,x)=>sum+Number(x.value||0),0);const totalEl=document.getElementById('provDistributionTotal');if(totalEl)totalEl.textContent=brl(total);const list=document.getElementById('provDistributionDetailList');if(list)list.innerHTML=items.length?items.map(item=>`<div class="prov-distribution-item" data-tooltip="${provDistributionStatus==='A receber'?'Previsto':'Recebido'}: ${brl(item.value)}"><span><i style="background:${item.color}"></i>${escapeHTML(item.name)}</span><b>${pct(total?item.value/total*100:0)}</b></div>`).join(''):`<div class="empty">Nenhum provento ${provDistributionStatus==='A receber'?'previsto':'recebido'} no período.</div>`;chart('provDistributionDetailChart','doughnut',{labels:items.map(x=>x.name),datasets:[{data:items.map(x=>x.value),backgroundColor:items.map(x=>x.color),borderWidth:0}]},{cutout:'48%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)}`}}}});}
 
 const chartPalette=['#78b7f5','#f3d978','#42d49b','#b59af3','#ed8e9c','#74d7d2','#d7a36a','#e8a56b','#a8b7cb','#d98ad0','#f28f5b','#88c1a8','#c49aeb','#d9c46a','#78a8d8','#e57da9','#9cc36b','#b6a0d8'];
+function getAllTypesPortfolioHistory(){
+ const monthly=new Map(),missingTickers=new Set();
+ Object.values(state.rentabilidade_por_tipo||{}).forEach(classPerformance=>{
+  (classPerformance.ativos_sem_historico||[]).forEach(ticker=>missingTickers.add(String(ticker).toUpperCase()));
+  (classPerformance.series_patrimonio||[]).forEach(row=>{
+   if(!row||!/^\d{4}-\d{2}$/.test(String(row.mes||'')))return;
+   const current=monthly.get(row.mes)||{mes:row.mes,aplicado:0,ganho:0,patrimonio:0};
+   current.aplicado+=Number(row.aplicado||0);current.ganho+=Number(row.ganho||0);current.patrimonio+=Number(row.patrimonio||0);monthly.set(row.mes,current);
+  });
+ });
+ return {rows:[...monthly.values()].sort((a,b)=>a.mes.localeCompare(b.mes)).map(row=>({...row,aplicado:Number(row.aplicado.toFixed(2)),ganho:Number(row.ganho.toFixed(2)),patrimonio:Number(row.patrimonio.toFixed(2))})),missing:[...missingTickers]};
+}
+
 function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typeId='aporteType'){
  const ops=state.operacoes||[];
  const period=document.getElementById(periodId)?.value||'12';
@@ -3526,24 +3539,9 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
  // histórica de preços é parcial. Os filtros individuais permanecem intactos.
  let historical;
  if(selectedType==='todos'){
-  const monthly=new Map();
-  const missingTickers=new Set();
-  Object.values(state.rentabilidade_por_tipo||{}).forEach(classPerformance=>{
-   (classPerformance.ativos_sem_historico||[]).forEach(ticker=>missingTickers.add(String(ticker).toUpperCase()));
-   (classPerformance.series_patrimonio||[]).forEach(row=>{
-    if(!row||!/^\d{4}-\d{2}$/.test(String(row.mes||'')))return;
-    const current=monthly.get(row.mes)||{mes:row.mes,aplicado:0,ganho:0,patrimonio:0};
-    current.aplicado+=Number(row.aplicado||0);
-    current.ganho+=Number(row.ganho||0);
-    current.patrimonio+=Number(row.patrimonio||0);
-    monthly.set(row.mes,current);
-   });
-  });
-  historical=[...monthly.values()].sort((a,b)=>a.mes.localeCompare(b.mes)).map(row=>({
-   ...row,aplicado:Number(row.aplicado.toFixed(2)),ganho:Number(row.ganho.toFixed(2)),
-   patrimonio:Number(row.patrimonio.toFixed(2))
-  }));
-  performance.ativos_sem_historico=[...missingTickers];
+  const aggregate=getAllTypesPortfolioHistory();
+  historical=aggregate.rows;
+  performance.ativos_sem_historico=aggregate.missing;
  }else{
   historical=(performance.series_patrimonio||[]).filter(row=>row&&/^\d{4}-\d{2}$/.test(String(row.mes||'')));
  }
@@ -3994,7 +3992,10 @@ function renderReturnSparklines(series12m,seriesTotal,totalFallback){
 function renderConsolidatedReturnSparklines(value){
  const performance=state.rentabilidade_historica||{};
  const valid=rows=>Array.isArray(rows)?rows.filter(point=>point&&/^\d{4}-\d{2}$/.test(String(point.mes||''))&&Number.isFinite(Number(point.valor))):[];
- const totalSeries=valid(performance.series_roi_total||performance.series_total);
+ // A linha Total usa a mesma série agregada por classe do gráfico Evolução do Patrimônio.
+ const totalSeries=getAllTypesPortfolioHistory().rows.filter(row=>Number(row.aplicado)>0).map(row=>({
+  mes:row.mes,valor:Number((Number(row.ganho||0)/Number(row.aplicado||1)*100).toFixed(4))
+ }));
  const twelveMonths=valid(performance.series_12m).slice(-12);
  renderReturnSparklines(twelveMonths,totalSeries,null);
 }
@@ -4081,16 +4082,19 @@ function renderImportedBalances(rows,baseDate){
 }
 
 function render(){const r=state.resumo||{},provDash=state.proventos_dashboard||{};
-const totalProfit=Number(r.lucro||0)+Number(r.proventos||0);
 const performance=state.rentabilidade_historica||{};
+const allTypesHistory=getAllTypesPortfolioHistory().rows;
+const latestEvolution=allTypesHistory.length?allTypesHistory[allTypesHistory.length-1]:null;
+const summaryPatrimony=latestEvolution?Number(latestEvolution.patrimonio||0):Number(r.atual||0);
+const summaryApplied=latestEvolution?Number(latestEvolution.aplicado||0):Number(r.investido||0);
+const totalProfit=latestEvolution?Number(latestEvolution.ganho||0):Number(r.lucro||0);
 const return12m=performance.rentabilidade_12m;
-const returnTotal=performance.rentabilidade_total;
-const portfolioReturn=returnTotal===null||returnTotal===undefined?null:Number(returnTotal);
+const portfolioReturn=summaryApplied>0?(totalProfit/summaryApplied)*100:null;
 document.getElementById('stats').innerHTML=`
- <div class="card stat"><div class="statlabel-row">Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição.">i</span></div><div class="statvalue statvalue-inline">${brl(r.atual||0)} <small class="${totalProfit>=0?'green':'red'}" title="Resultado total de ${brl(totalProfit)} sobre ${brl(r.investido||0)} investidos">${pct(portfolioReturn)} ${totalProfit>=0?'▲':'▼'}</small></div><div class="statdetail"><span>Valor investido</span><b>${brl(r.investido||0)}</b></div></div>
+ <div class="card stat"><div class="statlabel-row">Patrimônio total<span class="info-tip" tabindex="0" aria-label="Sobre o patrimônio total" data-tip="Valor atual de todos os seus ativos na carteira, considerando a cotação atual de cada posição.">i</span></div><div class="statvalue statvalue-inline">${brl(summaryPatrimony)} <small class="${totalProfit>=0?'green':'red'}" title="Resultado total de ${brl(totalProfit)} sobre ${brl(summaryApplied)} investidos">${pct(portfolioReturn)} ${totalProfit>=0?'▲':'▼'}</small></div><div class="statdetail"><span>Valor investido</span><b>${brl(summaryApplied)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Lucro total<span class="info-tip" tabindex="0" aria-label="Sobre o lucro total" data-tip="Seu resultado acumulado na carteira: ganho de capital (valorização dos ativos) somado aos dividendos e proventos recebidos.">i</span></div><div class="statvalue ${totalProfit>=0?'green':'red'}">${brl(totalProfit)}</div><div class="statdetail"><span>Ganho de capital</span><b>${brl(r.lucro||0)}</b></div><div class="statdetail"><span>Dividendos recebidos</span><b>${brl(r.proventos||0)}</b></div></div>
  <div class="card stat"><div class="statlabel-row">Proventos recebidos (12M)<span class="info-tip" tabindex="0" aria-label="Sobre os proventos recebidos" data-tip="Total de dividendos, JCP e rendimentos recebidos nos últimos 12 meses.">i</span></div><div class="statvalue">${brl(provDash.total_12m||0)}</div><div class="statdetail"><span>Total confirmado</span><b>${brl(provDash.total_12m||0)}</b></div></div>
- <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Rentabilidade calculada mês a mês pelo método Modified Dietz, ponderando aportes e retiradas pelo tempo em que permaneceram na carteira. O cálculo usa o patrimônio histórico e considera proventos sem duplicá-los quando já estão incorporados aos preços ajustados. O período de 12 meses só é exibido quando há 12 meses calculáveis.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Últimos 12 meses</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade dos últimos 12 meses"></svg><b class="${return12m===null||return12m===undefined?'':Number(return12m)>=0?'green':'red'}">${return12m===null||return12m===undefined?'Indisponível':pct(return12m)}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${portfolioReturn===null?'':portfolioReturn>=0?'green':'red'}">${portfolioReturn===null?'Indisponível':pct(portfolioReturn)}</b></div></div></div>`;
+ <div class="card stat return-stat-card"><div class="statlabel-row">Rentabilidade<span class="info-tip" tabindex="0" aria-label="Sobre o cálculo da rentabilidade" data-tip="Rentabilidade calculada com base na evolução mensal do patrimônio e do capital líquido aplicado, usando preços não ajustados. Dividendos, JCP e demais proventos não entram no cálculo. O período de 12 meses só é exibido quando há 12 fechamentos mensais consecutivos disponíveis.">i</span></div><div class="return-spark-grid"><div class="return-spark-item"><span>Últimos 12 meses</span><svg id="return12mChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade dos últimos 12 meses"></svg><b class="${return12m===null||return12m===undefined?'':Number(return12m)>=0?'green':'red'}">${return12m===null||return12m===undefined?'Indisponível':pct(return12m)}</b></div><div class="return-spark-item"><span>Total</span><svg id="returnTotalChart" class="sparkline-svg" viewBox="0 0 300 40" role="img" aria-label="Rentabilidade total"></svg><b class="${portfolioReturn===null?'':portfolioReturn>=0?'green':'red'}">${portfolioReturn===null?'Indisponível':pct(portfolioReturn)}</b></div></div></div>`;
 renderConsolidatedReturnSparklines(portfolioReturn);
 
 
