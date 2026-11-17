@@ -3526,7 +3526,8 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
   chart(canvasId,'bar',{labels,datasets:[
    {label:'Valor aplicado',data:applied,backgroundColor:'#28b579',borderRadius:3,stack:'patrimonio'},
    {label:'Ganho de Capital',data:gains,backgroundColor:'#9be8c3',borderRadius:3,stack:'patrimonio'}
-  ]},{plugins:{legend:{display:true,labels:{color:'#b8c1ce'}},tooltip:{
+  ]},{interaction:{mode:'index',intersect:false},plugins:{legend:{display:true,labels:{color:'#b8c1ce'}},tooltip:{
+   mode:'index',intersect:false,
    backgroundColor:'#11151d',titleColor:'#f4f6fa',bodyColor:'#d7deea',
    borderColor:'#303846',borderWidth:1,cornerRadius:12,padding:14,
    displayColors:true,boxPadding:5,
