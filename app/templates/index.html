@@ -3521,7 +3521,32 @@ function renderEvolutionChart(canvasId='aporteChart',periodId='aportePeriod',typ
  const performance=selectedType==='todos'
   ?(state.rentabilidade_historica||{})
   :((state.rentabilidade_por_tipo||{})[selectedType]||{});
- const historical=(performance.series_patrimonio||[]).filter(row=>row&&/^\d{4}-\d{2}$/.test(String(row.mes||'')));
+ // "Todos os tipos" agrega as séries mensais de cada classe. A série
+ // consolidada pode deixar classes inteiras de fora quando a cobertura
+ // histórica de preços é parcial. Os filtros individuais permanecem intactos.
+ let historical;
+ if(selectedType==='todos'){
+  const monthly=new Map();
+  const missingTickers=new Set();
+  Object.values(state.rentabilidade_por_tipo||{}).forEach(classPerformance=>{
+   (classPerformance.ativos_sem_historico||[]).forEach(ticker=>missingTickers.add(String(ticker).toUpperCase()));
+   (classPerformance.series_patrimonio||[]).forEach(row=>{
+    if(!row||!/^\d{4}-\d{2}$/.test(String(row.mes||'')))return;
+    const current=monthly.get(row.mes)||{mes:row.mes,aplicado:0,ganho:0,patrimonio:0};
+    current.aplicado+=Number(row.aplicado||0);
+    current.ganho+=Number(row.ganho||0);
+    current.patrimonio+=Number(row.patrimonio||0);
+    monthly.set(row.mes,current);
+   });
+  });
+  historical=[...monthly.values()].sort((a,b)=>a.mes.localeCompare(b.mes)).map(row=>({
+   ...row,aplicado:Number(row.aplicado.toFixed(2)),ganho:Number(row.ganho.toFixed(2)),
+   patrimonio:Number(row.patrimonio.toFixed(2))
+  }));
+  performance.ativos_sem_historico=[...missingTickers];
+ }else{
+  historical=(performance.series_patrimonio||[]).filter(row=>row&&/^\d{4}-\d{2}$/.test(String(row.mes||'')));
+ }
  const visibleHistory=count?historical.slice(-count):historical;
  if(visibleHistory.length){
   const labels=visibleHistory.map(row=>row.mes.slice(5,7)+'/'+row.mes.slice(0,4));
