@@ -1,10 +1,10 @@
-# Lonely Wallet v4.3.0
+# Lonely Wallet v4.3.1
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.3.0
+- **Versão:** 4.3.1
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -12,6 +12,20 @@
 - **Diretório persistente:** `/DATA/AppData/lonely-wallet/data` no host, montado em `/data` no container
 
 ---
+
+## Atualização 4.3.1
+
+- Corrigido o título do gráfico de lançamentos para diferenciar compras e vendas; a consolidação mensal agora usa “Saldo líquido”, mais preciso para compras menos vendas.
+- Corrigida a leitura da estrutura `results[TICKER]` da HG Brasil.
+- Corrigido o uso do fallback quando a cotação principal não fornece variação diária, sem misturar dados de provedores diferentes. Quando o provedor entrega preço e fechamento anterior, a variação é calculada a partir desses dois dados da mesma fonte.
+- Ajustado o fallback Alpha Vantage e Yahoo Finance para tentar o sufixo `.SA` em tickers da B3.
+- Revisados os testes de conexão da Brapi, Twelve Data e Alpha Vantage, incluindo respostas de erro HTTP 200, chave inválida, bloqueio por plano e limite de uso.
+- Corrigida a aplicação do tema claro no elemento raiz, inclusive nas áreas externas ao conteúdo.
+- Ajustados componentes legados que mantinham cores escuras fixas, incluindo grupos de operações, saldos importados, seletores, avisos e indicadores.
+- Botão Gerenciar API com destaque vermelho claro nos dois temas.
+- Modo de privacidade ampliado para observar conteúdo e dicas inseridos dinamicamente, além de ocultar valores em cards, tabelas, gráficos, textos SVG e modais.
+- Migração de permissões do volume Docker agora falha de forma segura quando não consegue ajustar propriedade, sem deixar um marcador de migração parcial. O marcador é gravado atomicamente.
+- Rodapé agora lê a versão diretamente do arquivo `VERSION`.
 
 ## Atualização 4.3.0
 
@@ -101,7 +115,7 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.3.0`.
+O retorno deve indicar `ok: true` e `version: 4.3.1`.
 
 ### Atualização de uma versão anterior
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-br" class="dashboard-wait-lock"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14161d"><style>html,body{background:#14161d;color-scheme:dark}</style><title>Lonely Wallet | Investimentos</title><link rel="icon" type="image/png" href="/static/lonely-wallet-favicon.png"><link rel="apple-touch-icon" href="/static/lonely-wallet-favicon.png">
+<html lang="pt-BR" class="dashboard-wait-lock"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14161d"><style>html,body{background:#14161d;color-scheme:dark}</style><title>Lonely Wallet | Investimentos</title><link rel="icon" type="image/png" href="/static/lonely-wallet-favicon.png"><link rel="apple-touch-icon" href="/static/lonely-wallet-favicon.png">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
@@ -2031,6 +2031,19 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 </style>
 </head><body class="dashboard-wait-lock">
+<script>
+// Aplica as preferências antes da primeira pintura para evitar flash de tema/valores.
+try {
+ if(localStorage.getItem('lonelyWalletLightTheme')==='1'){
+  document.documentElement.classList.add('light-theme');
+  document.body.classList.add('light-theme');
+  document.documentElement.style.colorScheme='light';
+ }
+ if(localStorage.getItem('lonelyWalletPrivacyMode')==='1'){
+  document.body.classList.add('privacy-mode');
+ }
+} catch(e) {}
+</script>
 <div class="modalback utility-modal-back" id="notesModalBack" onclick="if(event.target===this)closeUtilityModal('notesModalBack')"><div class="modal utility-modal"><div class="modalhead"><h2 id="notesModalTitle">Minhas observações</h2><button class="close" onclick="closeUtilityModal('notesModalBack')">×</button></div><div id="notesModalContent"></div></div></div>
 <div class="modalback utility-modal-back" id="transactionsModalBack" onclick="if(event.target===this)closeUtilityModal('transactionsModalBack')"><div class="modal utility-modal transactions-modal"><div class="modalhead"><h2 id="transactionsModalTitle">Lançamentos do ativo</h2><button class="close" onclick="closeUtilityModal('transactionsModalBack')">×</button></div><div id="transactionsModalContent"></div></div></div>
 <div class="modalback utility-modal-back" id="columnsModalBack" onclick="if(event.target===this)closeUtilityModal('columnsModalBack')"><div class="modal utility-modal columns-modal"><div class="modalhead"><div><h2>Editar colunas</h2><div class="sub">Adicione ou remova as colunas que deseja visualizar na tabela.</div></div><button class="close" onclick="closeUtilityModal('columnsModalBack')">×</button></div><div id="columnsModalContent" class="columns-modal-content"></div><div class="columns-modal-footer"><button class="text-button" onclick="restorePositionColumns()">Restaurar padrão</button><button class="primary" onclick="savePositionColumns()">Salvar</button></div></div></div>
@@ -2123,18 +2136,18 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 </section>
 <section id="page-lancamentos" class="page hidden">
 <div class="pagehead"><div><h1>Lançamentos</h1><div class="sub">Consolidação de compras, vendas e histórico das operações cadastradas.</div></div><div class="toolbar"><button class="ghost" type="button" onclick="openB3ImportsManager()">▤ Editar importações da B3</button><button class="ghost" type="button" onclick="exportOperations()">⇩ Exportar lançamentos</button><button class="ghost" type="button" onclick="openOperationManager()">☷ Editar lançamentos de ativos</button></div></div>
-<div class="panel section"><div class="panelhead"><h2>Consolidação de aportes</h2><div class="toolbar"><select id="launchGranularity" onchange="renderLaunchConsolidation()"><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="anual">Anual</option></select><select id="launchPeriod" onchange="renderLaunchConsolidation()"><option value="12" selected>Últimos 12 meses</option><option value="24">2 anos</option><option value="60">5 anos</option><option value="all">Todo o período</option></select><select id="launchType" onchange="renderLaunchConsolidation()"><option value="todos">Todos os tipos</option></select></div></div><div class="chartbox launch-consolidation-chart"><canvas id="launchConsolidationChart"></canvas></div></div>
-<div class="panel section"><div class="panelhead"><h2>Consolidação mensal</h2><span id="launchConsolidationTotal" class="mini"></span></div><div class="tablewrap"><table class="data"><thead><tr><th>Período</th><th>Compras</th><th>Vendas</th><th>Aportes líquidos</th></tr></thead><tbody id="launchConsolidationRows"></tbody></table></div></div>
+<div class="panel section"><div class="panelhead"><h2>Consolidação de operações</h2><div class="toolbar"><select id="launchGranularity" onchange="renderLaunchConsolidation()"><option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="anual">Anual</option></select><select id="launchPeriod" onchange="renderLaunchConsolidation()"><option value="12" selected>Últimos 12 meses</option><option value="24">2 anos</option><option value="60">5 anos</option><option value="all">Todo o período</option></select><select id="launchType" onchange="renderLaunchConsolidation()"><option value="todos">Todos os tipos</option></select></div></div><div class="chartbox launch-consolidation-chart"><canvas id="launchConsolidationChart"></canvas></div></div>
+<div class="panel section"><div class="panelhead"><h2>Consolidação mensal</h2><span id="launchConsolidationTotal" class="mini"></span></div><div class="tablewrap"><table class="data"><thead><tr><th>Período</th><th>Compras</th><th>Vendas</th><th>Saldo líquido</th></tr></thead><tbody id="launchConsolidationRows"></tbody></table></div></div>
 <div class="panel section"><div class="panelhead"><h2>Lançamentos por tipo de ativo</h2><span class="mini">Cada classe tem sua própria tabela. Os registros originais foram preservados.</span></div><div id="operationGroups" class="operation-groups"></div></div>
 </section>
 <div id="goalRows" class="hidden"></div><section id="page-apis" class="page hidden"><div class="pagehead"><div><h1>Integrações e APIs</h1><div class="sub">Gerencie fontes de cotações, séries históricas, proventos e indicadores econômicos.</div></div><button class="ghost" type="button" onclick="loadAPIProviders()">↻ Atualizar status</button></div><div class="api-security-note"><b>Segurança:</b> os tokens cadastrados são enviados somente ao servidor e armazenados criptografados no volume local do aplicativo. Eles nunca são devolvidos à interface em texto aberto. Não informe senha de corretora, código de autenticação ou credenciais bancárias nesta página. Como o app não possui login próprio, mantenha-o restrito à sua rede confiável ou atrás de uma camada de autenticação; não exponha a porta diretamente à internet.</div><h2 class="api-section-title">Open Finance · Pluggy</h2><div class="mini" style="margin:-3px 0 10px">Integração bancária e de investimentos. Gerencie as credenciais e conexões independentemente das fontes de cotações.</div><div id="apiPluggyGrid" class="api-grid"><div class="panel">Carregando Pluggy…</div></div><h2 class="api-section-title">APIs de mercado e indicadores</h2><div id="apiProvidersGrid" class="api-grid"><div class="panel">Carregando provedores…</div></div></section>
-<section id="page-seguranca" class="page hidden"><div class="pagehead"><div><h1>Segurança</h1><div class="sub">Gerencie o PIN de acesso e o bloqueio automático da sua carteira.</div></div><button class="ghost" type="button" onclick="loadSecuritySettings()">↻ Atualizar</button></div><div class="panel security-panel"><div class="panelhead"><h2>Proteção por PIN</h2><span id="securityPinStatus" class="badge">Verificando…</span></div><p class="mini" id="securityPinDescription">O PIN ajuda a impedir que outras pessoas abram sua carteira.</p><div id="securityPinActions" class="formgrid" style="max-width:560px"><div class="field full"><label for="securityCurrentPin">PIN atual</label><input id="securityCurrentPin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" placeholder="Digite seu PIN atual"></div><div class="field"><label for="securityNewPin">Novo PIN (6 a 12 números)</label><input id="securityNewPin" type="password" inputmode="numeric" autocomplete="new-password" minlength="6" maxlength="12" placeholder="Novo PIN"></div><div class="field"><label for="securityConfirmPin">Confirmar novo PIN</label><input id="securityConfirmPin" type="password" inputmode="numeric" autocomplete="new-password" minlength="6" maxlength="12" placeholder="Repita o novo PIN"></div><div class="toolbar full"><button class="primary" type="button" id="securitySavePin" onclick="saveSecurityPin()">Salvar PIN</button><button class="danger" type="button" id="securityDisablePin" onclick="disableSecurityPin()">Desabilitar PIN</button><button class="ghost" type="button" onclick="securityLogout()">Bloquear agora</button></div></div><div id="securityPinMessage" class="mini" role="status" style="margin-top:12px"></div><div class="notice" style="margin-top:18px"><b>Bloqueio automático:</b> com PIN ativado, a sessão será encerrada após 30 minutos sem atividade. Ao reiniciar o Docker, todos os acessos anteriores serão invalidados e o PIN será solicitado novamente. Se o PIN estiver desativado, a carteira abrirá sem solicitar código.</div></div></section>
+<section id="page-seguranca" class="page hidden"><div class="pagehead"><div><h1>Segurança</h1><div class="sub">Gerencie o PIN de acesso e o bloqueio automático da sua carteira.</div></div><button class="ghost" type="button" onclick="loadSecuritySettings()">↻ Atualizar</button></div><div class="panel security-panel"><div class="panelhead"><h2>Proteção por PIN</h2><span id="securityPinStatus" class="badge">Verificando…</span></div><p class="mini" id="securityPinDescription">O PIN ajuda a impedir que outras pessoas abram sua carteira.</p><div id="securityPinActions" class="formgrid" style="max-width:560px"><div class="field full"><label for="securityCurrentPin">PIN atual</label><input id="securityCurrentPin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" placeholder="Digite seu PIN atual"></div><div class="field"><label for="securityNewPin">Novo PIN (6 a 12 números)</label><input id="securityNewPin" type="password" inputmode="numeric" autocomplete="new-password" minlength="6" maxlength="12" placeholder="Novo PIN"></div><div class="field"><label for="securityConfirmPin">Confirmar novo PIN</label><input id="securityConfirmPin" type="password" inputmode="numeric" autocomplete="new-password" minlength="6" maxlength="12" placeholder="Repita o novo PIN"></div><div class="toolbar full"><button class="primary" type="button" id="securitySavePin" onclick="saveSecurityPin()">Salvar PIN</button><button class="danger" type="button" id="securityDisablePin" onclick="disableSecurityPin()">Desabilitar PIN</button><button class="ghost" type="button" onclick="securityLogout()">Bloquear agora</button></div></div><div id="securityPinMessage" class="mini" role="status" style="margin-top:12px"></div><div class="notice" style="margin-top:18px"><b>Bloqueio automático:</b> com PIN ativado, a sessão será encerrada após 30 minutos de inatividade. Ao reiniciar o Docker, todos os acessos anteriores serão invalidados e o PIN será solicitado novamente. Se o PIN estiver desativado, a carteira abrirá sem solicitar código.</div></div></section>
 
 
 
-<div class="footer">Lonely Wallet v4.2.9 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
+<div class="footer">Lonely Wallet v{{ version }} · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
-<div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
+<div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de operações</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
 <div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
 <div class="modalback" id="appConfirmBack" onclick="if(event.target===this)resolveAppConfirm(false)"><div class="modal" style="width:min(460px,100%)"><div class="modalhead"><h2 id="appConfirmTitle">Confirmar ação</h2><button class="close" onclick="resolveAppConfirm(false)">×</button></div><p id="appConfirmMessage" class="mini" style="font-size:13px;line-height:1.6;color:var(--text)"></p><div class="modalactions"><button class="ghost" type="button" onclick="resolveAppConfirm(false)">Cancelar</button><button class="danger" id="appConfirmAccept" type="button" onclick="resolveAppConfirm(true)">Confirmar exclusão</button></div></div></div>
 <div class="modalback" id="b3ImportBack" onclick="if(event.target===this)closeB3Import()"><div class="modal" style="width:min(760px,100%)"><div class="modalhead"><div><h2>Importar movimentações da B3</h2><div class="sub">Selecione o arquivo Excel exportado pela B3. Confira a prévia antes de gravar.</div></div><button class="close" onclick="closeB3Import()">×</button></div><div class="notice b3-fixed-income-notice"><b>Atenção:</b> ativos de renda fixa não são importados pela B3. Cadastre esses investimentos manualmente pela opção <b>Adicionar lançamento</b>.</div><div class="field"><label>Planilha de movimentações (.xlsx)</label><input id="b3File" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div><div id="b3Preview" class="section mini">Nenhum arquivo selecionado.</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3Import()">Cancelar</button><button class="primary" id="b3PreviewButton" type="button" onclick="previewB3File()">Analisar planilha</button><button class="primary hidden" id="b3ConfirmButton" type="button" onclick="confirmB3Import()">Confirmar importação</button></div></div></div>
@@ -3847,7 +3860,7 @@ function renderLaunchDistribution(){
  const fmt=k=>granularity==='anual'?k:granularity==='trimestral'?`${k.slice(0,4)} · ${k.slice(5)}`:`${k.slice(5,7)}/${k.slice(0,4)}`;
  const title=document.getElementById('launchDistributionTitle');
  const subtitle=document.getElementById('launchDistributionSubtitle');
- if(title)title.textContent=`Distribuição de aportes em ${fmt(periodKey)}`;
+ if(title)title.textContent=`Distribuição das ${side==='compra'?'compras':'vendas'} em ${fmt(periodKey)}`;
  if(subtitle)subtitle.textContent=`${side==='compra'?'Compras':'Vendas'} · ${mode==='ativo'?'Por Ativo':'Por Tipo'} · ${entries.length} categoria(s)`;
  const totalEl=document.getElementById('launchDistributionTotal');
  if(totalEl){totalEl.textContent=brl(total);totalEl.style.color=side==='venda'?'#ef6680':'#00d4a0';}
@@ -4419,7 +4432,7 @@ function renderAPIProviders(){
  const managerWasOpen=!!document.getElementById('pluggyManageModal')&&document.getElementById('pluggyManageModal').style.display!=='none';
  const pluggy=apiProviders.filter(p=>p.id==='pluggy'),credentialed=apiProviders.filter(p=>p.auth&&p.id!=='pluggy');
  const card=p=>`<article class="panel api-provider-card ${p.id==='pluggy'?'api-pluggy':''}" data-api-provider="${p.id}">
-  <div class="api-provider-head"><div><h3>${escapeHTML(p.name)}</h3><div class="api-provider-category">${escapeHTML(p.category||'')}</div></div><span class="api-status-pill ${p.configured&&p.enabled?'configured':p.configured?'warning':''}">${p.configured?(p.enabled?'Ativa · credenciais cadastradas':'Desativada · token preservado'):'Credenciais não configuradas'}</span></div>
+  <div class="api-provider-head"><div><h3>${escapeHTML(p.name)}</h3><div class="api-provider-category">${escapeHTML(p.category||'')}</div></div><span class="api-status-pill ${p.configured&&p.enabled?'configured':p.configured?'warning':''}">${p.configured?(p.enabled?'Habilitada · credenciais cadastradas':'Desativada · token preservado'):'Credenciais não configuradas'}</span></div>
   <div class="api-provider-desc">${escapeHTML(p.description||'')}</div>
   ${p.id==='pluggy'?`<div class="api-recommendation" role="note" style="padding:10px 12px;border:1px solid var(--blue);border-radius:8px;background:color-mix(in srgb,var(--blue) 9%,transparent);font-size:12px;line-height:1.5"><strong>Recomendação: altamente indicada.</strong> Mantenha a Pluggy configurada e sincronizada para obter a melhor cobertura possível de contas, posições, movimentações e proventos. A disponibilidade e a atualização dos dados dependem da instituição financeira e das permissões da conexão.</div><div class="mini">Open Finance. As credenciais são usadas exclusivamente no servidor; a vinculação de bancos e corretoras requer o fluxo Pluggy Connect.</div>
   <div class="api-credential-fields"><label class="mini" for="apiClientId_pluggy">Client ID<input type="text" id="apiClientId_pluggy" autocomplete="off" placeholder="${p.client_id_masked?'Cadastrado: '+p.client_id_masked:'Client ID da Pluggy'}"></label><label class="mini" for="apiClientSecret_pluggy">Client Secret<input type="password" id="apiClientSecret_pluggy" autocomplete="new-password" placeholder="${p.configured?'Cadastrado: ••••••••':'Client Secret da Pluggy'}"></label></div>
@@ -4428,7 +4441,7 @@ function renderAPIProviders(){
   <div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4>
   <div class="mini">No plano pessoal, conecte suas instituições no MeuPluggy e cadastre aqui o itemId de cada conexão.</div>
   <div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div>
-  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button class="ghost" type="button" onclick="togglePluggyManager()" aria-expanded="false" aria-controls="pluggyManageModal">Gerenciar API</button></div>
+  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button class="ghost pluggy-manage-trigger" type="button" onclick="togglePluggyManager()" aria-expanded="false" aria-controls="pluggyManageModal">Gerenciar API</button></div>
   <div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>
   <div id="pluggyManageModal" class="pluggy-manager-overlay" style="display:none" aria-hidden="true" onclick="if(event.target===this)closePluggyManager()">
    <div class="pluggy-manager-dialog" role="region" aria-label="Gerenciar API Pluggy">
@@ -4444,7 +4457,7 @@ function renderAPIProviders(){
     </div>
    </div>
   </div>`:
-  p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar; cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
+  p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar. A cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
   `<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.':'Não é necessário cadastrar token.'}</span></div>`}
   <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
 
@@ -4627,7 +4640,7 @@ async function saveAPIProvider(id){
 }
 async function testAPIProvider(id){
  const status=document.getElementById('apiStatus_'+id);if(status){status.className='api-status';status.textContent='Testando conexão…';}
- try{const result=await api('/api/integracoes/'+id+'/test',{method:'POST',body:'{}',skipAutoRefresh:true});if(status){status.className='api-status ok';status.textContent=result.message||'Conexão validada.';}}
+ try{const result=await api('/api/integracoes/'+id+'/test',{method:'POST',body:'{}',skipAutoRefresh:true});if(status){status.className=result.warning?'api-status warning':'api-status ok';status.textContent=result.message||'Conexão validada.';}}
  catch(error){if(status){status.className='api-status error';status.textContent=error.message||'Falha no teste.';}}
 }
 async function toggleAPIProvider(id,enabled){
@@ -5197,7 +5210,11 @@ refresh();loadDistribution();
 
 // Preferências locais: tema claro/escuro e ocultação de valores.
 function applyTheme(light){
+ document.documentElement.classList.toggle('light-theme',!!light);
+ document.documentElement.style.colorScheme=light?'light':'dark';
  document.body.classList.toggle('light-theme',!!light);
+ const themeMeta=document.querySelector('meta[name="theme-color"]');
+ if(themeMeta)themeMeta.setAttribute('content',light?'#f3f5f8':'#14161d');
  const b=document.getElementById('themeToggle');
  if(b){
   b.title=light?'Ativar tema escuro':'Ativar tema claro';
@@ -5212,8 +5229,54 @@ function toggleTheme(){
  try{localStorage.setItem('lonelyWalletLightTheme',light?'1':'0')}catch(e){}
  applyTheme(light);
 }
+let privacyObserver=null,privacyScanTimer=null;
+function scanPrivacySensitiveValues(root=document.body){
+ if(!document.body.classList.contains('privacy-mode')||!root)return;
+ const moneyPattern=/(?:R\$|US\$|USD\s*|EUR\s*|€|£)\s*[-+]?\s*\d[\d.,]*/i;
+ const percentPattern=/[-+]?\d[\d.,]*\s*%/;
+ const markSensitive=element=>{
+  if(element&&!element.closest('#privacyToggle,script,style,textarea,input,option')&&!element.classList.contains('privacy-sensitive'))element.classList.add('privacy-sensitive');
+ };
+ const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
+  acceptNode(node){
+   const text=node.nodeValue||'';
+   if(!text.trim()||(!moneyPattern.test(text)&&!percentPattern.test(text)))return NodeFilter.FILTER_REJECT;
+   const parent=node.parentElement;
+   if(!parent||parent.closest('#privacyToggle,script,style,textarea,input,option'))return NodeFilter.FILTER_REJECT;
+   return NodeFilter.FILTER_ACCEPT;
+  }
+ });
+ let node;
+ while((node=walker.nextNode()))markSensitive(node.parentElement);
+ // Alguns valores aparecem apenas em dicas, títulos e atributos acessíveis.
+ const attributePattern=/(?:R\$|US\$|USD\s*|EUR\s*|€|£)\s*[-+]?\s*\d[\d.,]*|[-+]?\d[\d.,]*\s*%/i;
+ const attributeElements=root.querySelectorAll('[data-hint],[title],[aria-label],[data-tooltip]');
+ attributeElements.forEach(element=>{
+  const content=['data-hint','title','aria-label','data-tooltip'].map(name=>element.getAttribute(name)||'').join(' ');
+  if(attributePattern.test(content))markSensitive(element);
+ });
+ // Captura valores cujo prefixo monetário e número foram separados em spans.
+ root.querySelectorAll('b,strong,span,small,em,td,th,p,div,li,button,svg text,svg tspan').forEach(element=>{
+  // Evita desfocar grandes painéis inteiros: marca apenas elementos compactos que
+  // concentram um valor ou poucas partes de um mesmo número formatado.
+  if(element.children.length<=4&&attributePattern.test((element.textContent||'').trim())&&(element.textContent||'').trim().length<=90)markSensitive(element);
+ });
+}
+function schedulePrivacyScan(){
+ if(privacyScanTimer)clearTimeout(privacyScanTimer);
+ privacyScanTimer=setTimeout(()=>{privacyScanTimer=null;scanPrivacySensitiveValues();},120);
+}
 function applyPrivacy(hidden){
  document.body.classList.toggle('privacy-mode',!!hidden);
+ if(privacyObserver){privacyObserver.disconnect();privacyObserver=null;}
+ if(hidden){
+  scanPrivacySensitiveValues();
+  privacyObserver=new MutationObserver(schedulePrivacyScan);
+  privacyObserver.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['title','aria-label','data-hint','data-tooltip']});
+ }else{
+  document.querySelectorAll('.privacy-sensitive').forEach(el=>el.classList.remove('privacy-sensitive'));
+ }
+
  const b=document.getElementById('privacyToggle');
  if(b){
   b.title=hidden?'Mostrar valores':'Ocultar valores';
@@ -5509,7 +5572,7 @@ startPluggyAutoSync();</script>
 <script>
 async function loadSecuritySettings(){
  const status=document.getElementById('securityPinStatus'),desc=document.getElementById('securityPinDescription'),save=document.getElementById('securitySavePin'),disable=document.getElementById('securityDisablePin'),current=document.getElementById('securityCurrentPin');
- try{const r=await fetch('/api/auth/status',{cache:'no-store'});const d=await r.json();const active=!!d.enabled;status.textContent=active?'PIN ativado':'PIN desativado';status.className=active?'badge ok':'badge';desc.textContent=active?'Sua carteira solicita PIN após reinicializações e após 30 minutos sem atividade.':'A carteira está sem bloqueio por PIN. Recomendamos ativar essa proteção.';current.closest('.field').hidden=!active;disable.hidden=!active;save.textContent=active?'Alterar PIN':'Cadastrar PIN';document.getElementById('securityPinMessage').textContent='';}
+ try{const r=await fetch('/api/auth/status',{cache:'no-store'});const d=await r.json();const active=!!d.enabled;status.textContent=active?'PIN ativado':'PIN desativado';status.className=active?'badge ok':'badge';desc.textContent=active?'O PIN é solicitado após reinicializações e após 30 minutos de inatividade.':'A carteira está sem bloqueio por PIN. Recomendamos ativar essa proteção.';current.closest('.field').hidden=!active;disable.hidden=!active;save.textContent=active?'Alterar PIN':'Cadastrar PIN';document.getElementById('securityPinMessage').textContent='';}
  catch(e){status.textContent='Não foi possível consultar';document.getElementById('securityPinMessage').textContent=e.message;}
 }
 async function saveSecurityPin(){
@@ -5533,7 +5596,70 @@ async function securityLogout(){try{await fetch('/api/auth/logout',{method:'POST
   box-shadow: none !important;
 }
 </style>
-</body></html>
+
+<style>
+/* v4.3.1 — padronização dos temas e privacidade dos valores dinâmicos */
+html.light-theme{background:#f3f5f8!important;color-scheme:light!important}
+html.light-theme body{min-height:100vh;background:#f3f5f8!important;color:#202633!important;color-scheme:light!important}
+body.light-theme{color-scheme:light!important}
+body.light-theme .panelhead select{background:#fff!important;color:#202633!important;border-color:#d8dee8!important;color-scheme:light!important}
+body.light-theme .progress{background:#e7ebf1!important}
+body.light-theme .notice{background:#fff7e8!important;border-color:#ead9b5!important;color:#70551e!important}
+body.light-theme .goalmeta b,body.light-theme .goalrow,body.light-theme .goalmeta{color:var(--text)}
+body.light-theme .api-provider-card,body.light-theme .pluggy-manager-dialog{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .api-provider-card input,body.light-theme .pluggy-manager-content select{background:#f8fafc!important;color:#202633!important;border-color:#d8dee8!important;color-scheme:light!important}
+body.light-theme .api-provider-category,body.light-theme .api-provider-desc,body.light-theme .api-provider-links,body.light-theme .pluggy-manager-note{color:#657184!important}
+body.light-theme .api-status-pill{background:#edf1f6!important;color:#4b596d!important;border-color:#d8dee8!important}
+body.light-theme .api-status-pill.configured{background:#e3f5ec!important;color:#08784f!important;border-color:#bce6d0!important}
+body.light-theme .api-status-pill.warning{background:#fff3dc!important;color:#8b5d13!important;border-color:#f0d7a7!important}
+body.light-theme .api-status{color:#657184!important}
+.api-status.warning{color:var(--gold)}
+body.light-theme #page-seguranca .security-panel .toolbar button.ghost{background:#f5f7fa!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme #page-seguranca .security-panel .toolbar button.danger{background:#fff0f2!important;color:#b93855!important;border-color:#f0c2cc!important}
+body.light-theme #page-seguranca .security-panel .notice{background:#fff7e8!important;border-color:#ead9b5!important;color:#70551e!important}
+body.light-theme #page-seguranca .security-panel .field input{background:#f8fafc!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .security-panel .badge{background:#edf1f6;color:#4b596d}
+body.light-theme .security-panel .badge.positive{background:#e3f5ec;color:#08784f}
+body.light-theme .api-provider-actions .ghost{background:#f5f7fa;color:#202633;border-color:#d8dee8}
+body.light-theme .api-provider-actions .ghost:hover{background:#edf1f6}
+html.light-theme .dashboard-data-wait{background:#f3f5f8!important}
+html.light-theme .dashboard-data-wait-card{background:#fff!important;border-color:#d8dee8!important;color:#202633!important}
+body.light-theme .pluggy-clear-actions select{background:#f8fafc!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .pluggy-clear-actions button.danger{background:#fff0f2!important;color:#b93855!important;border-color:#f0c2cc!important}
+body.light-theme .api-recommendation{background:#edf5ff!important;color:#244f7b!important}
+body.light-theme .pluggy-manager-section{background:#f8fafc!important;border-color:#d8dee8!important}
+body.light-theme .pluggy-manager-header{border-color:#d8dee8!important}
+body.light-theme .pluggy-manage-trigger{background:#fff0f2!important;color:#bd405b!important;border-color:#f3c4ce!important}
+body.light-theme .pluggy-manage-trigger:hover{background:#ffe4e9!important}
+body:not(.light-theme) .pluggy-manage-trigger{background:rgba(239,102,128,.12)!important;color:#ff91a5!important;border-color:rgba(239,102,128,.38)!important}
+body:not(.light-theme) .pluggy-manage-trigger:hover{background:rgba(239,102,128,.2)!important}
+/* Componentes legados que ainda tinham cores escuras fixas. */
+body.light-theme .operation-group,body.light-theme .imported-balance-class{background:#fff!important;border-color:#d8dee8!important;color:#202633!important}
+body.light-theme .operation-group-head,body.light-theme .imported-balance-head{background:#f3f5f8!important;border-color:#d8dee8!important;color:#202633!important}
+body.light-theme .operation-group .data th{background:#eef1f5!important;color:#566174!important}
+body.light-theme .operation-switch{background:#e8edf4!important}
+body.light-theme .operation-side{color:#566174!important}
+body.light-theme .operation-side.active{background:#fff!important;color:#202633!important;border:1px solid #cbd4e1!important}
+body.light-theme .operation-side[data-side="compra"].active{color:#08784f!important}
+body.light-theme .operation-side[data-side="venda"].active{color:#bd405b!important}
+body.light-theme .operation-form .total-preview{background:#f5f7fa!important;color:#202633!important}
+body.light-theme .opportunity-note{background:#eef3f8!important;color:#455166!important}
+body.light-theme .asset-category-icon,body.light-theme .insight-icon{background:#edf1f6!important;color:#566174!important}
+body.light-theme .asset-category .buy-yes,body.light-theme .opportunity-table .buy-yes{background:#e3f5ec!important;color:#08784f!important}
+body.light-theme .asset-category .buy-no,body.light-theme .opportunity-table .buy-no{background:#edf1f6!important;color:#4b596d!important}
+body.light-theme .value-pill.positive{background:#def5eb!important;color:#08784f!important}
+body.light-theme .value-pill.negative{background:#fde8ed!important;color:#b93855!important}
+body.light-theme .prov-status{background:#e3f5ec!important;color:#08784f!important}
+body.light-theme .prov-status.pending{background:#e8effa!important;color:#315f9d!important}
+body.light-theme .suggestion-name,body.light-theme .suggestion-empty{color:#566174!important}
+body.light-theme #toast{background:#fff!important;color:#202633!important;border-color:#d8dee8!important;box-shadow:0 8px 30px #17203325!important}
+body.privacy-mode .privacy-sensitive{filter:blur(7px)!important;user-select:none!important;transition:filter .15s}
+body.privacy-mode .privacy-sensitive:hover{filter:blur(7px)!important}
+body.privacy-mode canvas{filter:blur(8px)!important;user-select:none!important}
+body.privacy-mode .variation-money-floating-tooltip{filter:blur(7px)!important}
+</style>
+
+
 <style>
 
 /* v2.0.58 — filtros compactos, menus arredondados e cabeçalhos alinhados */
@@ -5986,3 +6112,4 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 #page-seguranca .security-panel .badge{white-space:nowrap}
 @media(max-width:620px){ #page-seguranca .security-panel{padding:16px}#page-seguranca .security-panel #securityPinActions{grid-template-columns:1fr}#page-seguranca .security-panel #securityPinActions .field.full{grid-column:1}#page-seguranca .security-panel .toolbar button{flex:1 1 auto}}
 </style>
+</body></html>
