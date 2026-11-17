@@ -4477,7 +4477,7 @@ async function deleteAPIProvider(id){
 function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',lancamentos:'Lançamentos',apis:'APIs',seguranca:'Segurança'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon.png';}
 
 function resetPageFilterDefaults(page){const root=document.getElementById('page-'+page);if(!root)return;const filters=root.querySelectorAll('.toolbar select,.panelhead select,.filter-row select,.filters select,.filter-bar select');filters.forEach(select=>{if(!select.options?.length)return;const initial=Array.from(select.options).find(option=>option.defaultSelected)||select.options[0];if(!initial)return;const changed=select.value!==initial.value;select.value=initial.value;select.__lwSyncCustom?.();if(changed)select.dispatchEvent(new Event('change',{bubbles:true}));});}
-function showPage(name){if(!document.getElementById('page-'+name))name='resumo';document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');resetPageFilterDefaults(name);document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();if(name==='apis')loadAPIProviders();if(name==='seguranca')loadSecuritySettings();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
+function showPage(name){if(!document.getElementById('page-'+name))name='resumo';document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');resetPageFilterDefaults(name);document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();if(name==='apis'){loadAPIProviders();startPluggyAutoSync();}if(name==='seguranca')loadSecuritySettings();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
 function renderSpecificFields(type){
  const host=document.getElementById('assetSpecificFields'); if(!host)return;
  const fixed=['renda_fixa','tesouro'].includes(type);
@@ -5362,7 +5362,7 @@ document.addEventListener('click',function(event){
  }
 },true);
 
-startPluggyAutoSync();</script>
+</script>
 <script>
 async function loadSecuritySettings(){
  const status=document.getElementById('securityPinStatus'),desc=document.getElementById('securityPinDescription'),save=document.getElementById('securitySavePin'),disable=document.getElementById('securityDisablePin'),current=document.getElementById('securityCurrentPin');
