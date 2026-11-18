@@ -1,5 +1,11 @@
 # Lonely Wallet
 
+## v4.2.11
+- Tema claro refinado com contraste ampliado em tabelas, menus, formulários, grupos de lançamentos, segurança e gráficos.
+- Painel Gerenciar API Pluggy passou a ser expandido em linha, imediatamente abaixo dos controles MeuPluggy na página APIs, sem ser movido para o final de cada página.
+- Botão Gerenciar API com laranja convencional e Limpar dados importados com vermelho convencional.
+- Removido o tooltip de título ao passar o mouse sobre as legendas da Distribuição de aportes.
+
 ## v4.2.10
 - Modal Gerenciar API Pluggy expandido para a largura útil do navegador, com layout horizontal e margens simétricas.
 - Preferência de sincronização Pluggy salva com transação SQLite, confirmação de leitura e restauração após F5.
@@ -9,13 +15,13 @@
 - Privacidade de valores desativada por padrão; quando ativada permanece até novo clique e cobre também conteúdo dinâmico.
 - Legendas da distribuição de aportes usam nomes localizados e acentuação correta (Ação, FIIs, Renda fixa, Tesouro Direto, ETFs, BDRs e demais classes).
 
-# Lonely Wallet v4.2.10
+# Lonely Wallet v4.2.11
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.10
+- **Versão:** 4.2.11
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -104,12 +110,12 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.2.10`.
+O retorno deve indicar `ok: true` e `version: 4.2.11`.
 
 ### Atualização de uma versão anterior
 
 1. Faça um backup antes de substituir os arquivos.
-2. Extraia o pacote 4.2.10 em uma pasta de projeto.
+2. Extraia o pacote 4.2.11 em uma pasta de projeto.
 3. **Mantenha exatamente o volume de dados existente**. O Compose padrão utiliza:
 
 ```yaml

@@ -2132,7 +2132,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 
 
-<div class="footer">Lonely Wallet v4.2.10 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
+<div class="footer">Lonely Wallet v4.2.11 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
 <div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
@@ -2311,7 +2311,7 @@ async function refreshDashboardInBackground(showWait=true){
   }
  }
 }
-function chart(id,type,data,options={}){if(!document.getElementById(id))return;if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),{type,data,options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#b8c1ce',boxWidth:9,font:{size:11}}}},scales:type==='bar'?{x:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}},y:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}}}:{},...options}})}
+function chart(id,type,data,options={}){if(!document.getElementById(id))return;if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),{type,data,options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#b8c1ce',boxWidth:9,font:{size:11}}}},scales:type==='bar'?{x:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}},y:{ticks:{color:'#8f99a8'},grid:{color:'#303541'}}}:{},...options}});applyChartTheme(charts[id]);}
 function stat(label,value,sub='',color=''){return `<div class="card stat"><div class="statlabel">${label}</div><div class="statvalue ${color}">${value}</div><div class="mini">${sub}</div></div>`}
 function rowEmpty(cols,msg='Nenhum registro encontrado.'){return `<tr><td colspan="${cols}" class="empty">${msg}</td></tr>`}
 async function refresh(){
@@ -3860,11 +3860,11 @@ function renderLaunchDistribution(){
  if(totalEl){totalEl.textContent=brl(total);totalEl.style.color=side==='venda'?'#ef6680':'#00d4a0';}
  const rows=document.getElementById('launchDistributionRows');
  const colors=getDistinctChartColors(entries.length);
- if(rows)rows.innerHTML=entries.length?entries.map(([name,value],i)=>`<div class="launch-distribution-row"><div class="launch-distribution-name"><i style="background:${colors[i]}"></i><span title="${escapeHTML(name)}">${escapeHTML(name)}</span></div><b>${pct(total?value/total*100:0)}</b></div>`).join(''):'<div class="empty">Não há operações deste tipo no período selecionado.</div>';
+ if(rows)rows.innerHTML=entries.length?entries.map(([name,value],i)=>`<div class="launch-distribution-row"><div class="launch-distribution-name"><i style="background:${colors[i]}"></i><span>${escapeHTML(name)}</span></div><b>${pct(total?value/total*100:0)}</b></div>`).join(''):'<div class="empty">Não há operações deste tipo no período selecionado.</div>';
  const canvas=document.getElementById('launchDistributionChart');
  if(launchDistributionChart){launchDistributionChart.destroy();launchDistributionChart=null;}
  if(canvas&&entries.length){
-  launchDistributionChart=new Chart(canvas,{type:'doughnut',data:{labels:entries.map(x=>x[0]),datasets:[{data:entries.map(x=>Number(x[1].toFixed(2))),backgroundColor:colors,borderWidth:0,hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'42%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)} · ${pct(total?(ctx.raw||0)/total*100:0)}`}}}}});
+  launchDistributionChart=new Chart(canvas,{type:'doughnut',data:{labels:entries.map(x=>x[0]),datasets:[{data:entries.map(x=>Number(x[1].toFixed(2))),backgroundColor:colors,borderWidth:0,hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'42%',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${brl(ctx.raw||0)} · ${pct(total?(ctx.raw||0)/total*100:0)}`}}}}});applyChartTheme(launchDistributionChart);
  }
 }
 function openLaunchDistribution(periodKey,side,granularity,operations){
@@ -4432,10 +4432,9 @@ function renderAPIProviders(){
   <div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4>
   <div class="mini">No plano pessoal, conecte suas instituições no MeuPluggy e cadastre aqui o itemId de cada conexão.</div>
   <div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div>
-  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button class="ghost pluggy-manage-button" type="button" onclick="openPluggyManager()">Gerenciar API</button></div>
-  <div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>
-  <div id="pluggyManageModal" class="pluggy-manager-overlay" style="display:none" onclick="if(event.target===this)closePluggyManager()">
-   <div class="pluggy-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="pluggyManagerTitle">
+  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button id="pluggyManageToggle" class="ghost pluggy-manage-button" type="button" onclick="openPluggyManager()" aria-expanded="false" aria-controls="pluggyManageModal">Gerenciar API</button></div>
+  <div id="pluggyManageModal" class="pluggy-manager-inline" style="display:none">
+   <div class="pluggy-manager-dialog" role="region" aria-labelledby="pluggyManagerTitle">
     <div class="pluggy-manager-header"><div><h3 id="pluggyManagerTitle">Gerenciar API Pluggy</h3><div class="mini">Sincronização automática e exclusão de dados importados</div></div><button class="ghost" type="button" onclick="closePluggyManager()" aria-label="Fechar">✕</button></div>
     <div class="pluggy-manager-content">
      <section class="pluggy-manager-section pluggy-sync-section">
@@ -4447,7 +4446,9 @@ function renderAPIProviders(){
      </section>
     </div>
    </div>
-  </div>`:
+  </div>
+  <div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>
+`:
   p.auth?`<div class="mini">${p.connected?'Conectada ao motor atual de dados':'Fonte complementar; cobertura depende do provedor e do plano.'}</div><label class="mini" for="apiToken_${p.id}">Token de integração</label><input type="password" id="apiToken_${p.id}" autocomplete="new-password" placeholder="${p.masked?'Cadastrado: '+p.masked:'Cole seu token aqui'}"/><div class="api-provider-actions"><button class="primary" type="button" onclick="saveAPIProvider('${p.id}')">Salvar token</button><button class="ghost" type="button" onclick="testAPIProvider('${p.id}')">Testar conexão</button>${p.configured?`<button class="ghost" type="button" onclick="toggleAPIProvider('${p.id}',${!p.enabled})">${p.enabled?'Desativar':'Ativar'}</button><button class="ghost" type="button" onclick="deleteAPIProvider('${p.id}')">Remover</button>`:''}</div>`:
   `<div class="api-provider-actions"><span class="mini">${p.id==='b3'?'Acesso mediante contrato e licença.':'Não é necessário cadastrar token.'}</span></div>`}
   <div class="api-status" id="apiStatus_${p.id}">${p.auth&&p.updated_at?'Última alteração: '+new Date(p.updated_at).toLocaleString('pt-BR'):''}</div>
@@ -4485,13 +4486,19 @@ async function addPluggyItem(){
 }
 
 async function openPluggyManager(){
- const modal=document.getElementById('pluggyManageModal');
- if(modal&&modal.parentElement!==document.body)document.body.appendChild(modal);
+ const panel=document.getElementById('pluggyManageModal');
+ if(!panel)return;
+ panel.style.display='block';
+ document.getElementById('pluggyManageToggle')?.setAttribute('aria-expanded','true');
  await loadPluggyAutoSyncSettings();
- if(modal)modal.style.display='flex';
- if(typeof loadPluggyState==='function')loadPluggyState();
+ if(typeof loadPluggyState==='function')await loadPluggyState();
+ panel.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
-function closePluggyManager(){const modal=document.getElementById('pluggyManageModal');if(modal)modal.style.display='none';}
+function closePluggyManager(){
+ const panel=document.getElementById('pluggyManageModal');
+ if(panel)panel.style.display='none';
+ document.getElementById('pluggyManageToggle')?.setAttribute('aria-expanded','false');
+}
 let pluggyAutoSyncTimer=null;
 let pluggyAutoSyncRunning=false;
 let pluggyAutoSyncIntervalMinutes=30;
@@ -5249,6 +5256,29 @@ updateDocumentIdentity('resumo');
 refresh();loadDistribution();autoSyncPluggyOnPageLoad();
 
 // Preferências locais: tema claro/escuro e ocultação de valores.
+function applyChartTheme(instance){
+ if(!instance||!instance.options)return;
+ const light=document.body.classList.contains('light-theme')||document.documentElement.classList.contains('light-theme');
+ const textColor=light?'#536176':'#b8c1ce';
+ const gridColor=light?'#d7dee8':'#303541';
+ const tooltipBg=light?'#ffffff':'#1d222d';
+ const tooltipText=light?'#202633':'#f3f5f8';
+ instance.options.color=textColor;
+ Object.values(instance.options.scales||{}).forEach(scale=>{
+  if(scale.ticks)scale.ticks.color=textColor;
+  if(scale.grid)scale.grid.color=gridColor;
+  if(scale.title)scale.title.color=textColor;
+ });
+ const plugins=instance.options.plugins||{};
+ if(plugins.legend&&plugins.legend.labels)plugins.legend.labels.color=textColor;
+ if(plugins.tooltip){plugins.tooltip.backgroundColor=tooltipBg;plugins.tooltip.titleColor=tooltipText;plugins.tooltip.bodyColor=tooltipText;plugins.tooltip.borderColor=light?'#cbd4e1':'#465164';plugins.tooltip.borderWidth=1;}
+ try{instance.update('none')}catch(e){}
+}
+function applyAllChartsTheme(){
+ if(!window.Chart)return;
+ try{Chart.defaults.color=document.body.classList.contains('light-theme')?'#536176':'#b8c1ce';Chart.defaults.borderColor=document.body.classList.contains('light-theme')?'#d7dee8':'#303541';}catch(e){}
+ try{Object.values(Chart.instances||{}).forEach(applyChartTheme)}catch(e){}
+}
 function applyTheme(light){
  document.documentElement.classList.toggle('light-theme',!!light);
  document.body.classList.toggle('light-theme',!!light);
@@ -5260,6 +5290,7 @@ function applyTheme(light){
    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg>'
    : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>';
  }
+ applyAllChartsTheme();
 }
 function toggleTheme(){
  const light=!document.body.classList.contains('light-theme');
@@ -6151,4 +6182,121 @@ body.privacy-mode .chartbox canvas,body.privacy-mode .distribution-chartbox canv
 body.privacy-mode .launch-distribution-chart canvas,body.privacy-mode .prov-distribution-chart canvas,
 body.privacy-mode [data-tooltip]::after,body.privacy-mode [data-hint]::after,
 body.privacy-mode .variation-money-floating-tooltip{filter:blur(7px)!important}
+</style>
+
+
+<style id="v4-2-11-inline-pluggy-theme-contrast">
+/* O gerenciamento Pluggy fica no fluxo normal da área Open Finance, logo após os controles. */
+.pluggy-manager-inline{display:none;width:100%;max-width:100%;margin:14px 0 4px;}
+.pluggy-manager-inline .pluggy-manager-dialog{width:100%!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:16px!important;border-radius:12px!important;box-shadow:0 8px 24px rgba(0,0,0,.16)!important;}
+.pluggy-manager-inline .pluggy-manager-header{margin-bottom:12px;padding-bottom:10px;}
+.pluggy-manager-inline .pluggy-manager-content{grid-template-columns:minmax(260px,.78fr) minmax(0,1.42fr)!important;gap:12px!important;width:100%!important;}
+.pluggy-manager-inline .pluggy-manager-section{min-width:0!important;width:100%!important;}
+.pluggy-manager-inline .pluggy-clear-section{grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr)!important;}
+.pluggy-manager-inline .pluggy-clear-actions{grid-template-columns:minmax(180px,1fr) auto!important;width:100%!important;}
+.pluggy-manager-inline .pluggy-clear-actions select{width:100%!important;min-width:0!important;}
+.pluggy-manager-inline .pluggy-clear-actions button{white-space:nowrap;}
+/* Cores solicitadas: laranja e vermelho convencionais, não pastéis. */
+.api-provider-actions .pluggy-manage-button,
+.pluggy-manage-button{background:#f59e0b!important;border-color:#d97706!important;color:#30200b!important;font-weight:650!important;}
+.api-provider-actions .pluggy-manage-button:hover,
+.pluggy-manage-button:hover{background:#d97706!important;border-color:#b45309!important;color:#fff!important;}
+.pluggy-clear-danger-button{background:#dc2626!important;border-color:#b91c1c!important;color:#fff!important;font-weight:650!important;}
+.pluggy-clear-danger-button:hover{background:#b91c1c!important;border-color:#991b1b!important;color:#fff!important;}
+@media(max-width:980px){
+ .pluggy-manager-inline .pluggy-manager-content{grid-template-columns:minmax(0,1fr)!important;}
+ .pluggy-manager-inline .pluggy-clear-section{grid-template-columns:minmax(0,1fr)!important;}
+ .pluggy-manager-inline .pluggy-clear-actions{grid-template-columns:minmax(0,1fr) auto!important;}
+}
+@media(max-width:560px){
+ .pluggy-manager-inline .pluggy-manager-dialog{padding:12px!important;}
+ .pluggy-manager-inline .pluggy-manager-content{grid-template-columns:minmax(0,1fr)!important;}
+ .pluggy-manager-inline .pluggy-clear-actions{grid-template-columns:minmax(0,1fr)!important;}
+ .pluggy-manager-inline .pluggy-clear-actions button{width:100%;}
+ .pluggy-manager-inline .pluggy-manager-content .pluggy-auto-sync-control{align-items:flex-start!important;flex-direction:column!important;}
+ .pluggy-manager-inline .pluggy-manager-content .pluggy-auto-sync-control select{width:100%!important;max-width:none!important;}
+}
+
+/* Tema claro: alto contraste e remoção de fundos herdados do tema escuro. */
+html.light-theme{background:#f1f4f8!important;color-scheme:light!important;}
+html.light-theme body,body.light-theme{background:#f1f4f8!important;color:#172033!important;color-scheme:light!important;}
+body.light-theme{
+ --bg:#f1f4f8;--panel:#ffffff;--panel2:#e9eef5;--line:#d2dae6;--text:#172033;--muted:#536176;
+ --green:#087f5b;--red:#c83250;--blue:#245fa8;--gold:#9a691d;--table-hover:#edf2f8;
+}
+body.light-theme main{color:#172033!important;}
+body.light-theme .top{background:#fff!important;color:#172033!important;border-color:#d5dce6!important;}
+body.light-theme .nav{background:#f8fafc!important;border-color:#d5dce6!important;}
+body.light-theme .nav button,body.light-theme .nav button.active{color:#26364d!important;}
+body.light-theme .panel,body.light-theme .card,body.light-theme .stat,body.light-theme .insight-card,
+body.light-theme .operation-manager-card,body.light-theme .operation-group,body.light-theme .imported-balance-class,
+body.light-theme .api-provider-card,body.light-theme .pluggy-manager-dialog,body.light-theme .pluggy-manager-section,
+body.light-theme .modal,body.light-theme .utility-modal{background:#fff!important;color:#172033!important;border-color:#d2dae6!important;}
+body.light-theme .panelhead select,body.light-theme .toolbar input,body.light-theme .toolbar select,
+body.light-theme .field input,body.light-theme .field select,body.light-theme .api-provider-card input,
+body.light-theme .api-provider-card select,body.light-theme .pluggy-manager-inline select,
+body.light-theme .pluggy-manager-inline input,body.light-theme .pluggy-manager-dialog select,
+body.light-theme .pluggy-manager-dialog input,body.light-theme textarea{
+ background-color:#fff!important;color:#172033!important;border-color:#c7d1df!important;color-scheme:light!important;
+}
+body.light-theme .pillbtn,body.light-theme .ghost{background:#f5f7fa!important;color:#26364d!important;border-color:#cbd5e1!important;}
+body.light-theme .primary{background:#2478d4!important;color:#fff!important;border-color:#2478d4!important;}
+body.light-theme .data th,body.light-theme .tablewrap thead th{background:#e9eef5!important;color:#33445e!important;border-color:#d2dae6!important;}
+body.light-theme .data td,body.light-theme .tablewrap tbody td{color:#172033!important;border-color:#d9e0e9!important;}
+body.light-theme .data tr:hover td{background:#edf2f8!important;}
+body.light-theme .operation-group{background:#fff!important;border-color:#d2dae6!important;}
+body.light-theme .operation-group-head,body.light-theme .imported-balance-head{background:#eef2f7!important;color:#172033!important;border-color:#d2dae6!important;}
+body.light-theme .operation-group .data th{background:#e9eef5!important;color:#33445e!important;}
+body.light-theme .imported-balance-class{background:#fff!important;border-color:#d2dae6!important;}
+body.light-theme .operation-group .data td,body.light-theme .imported-balance-class .data td{color:#172033!important;}
+body.light-theme .operation-switch{background:#e9eef5!important;border:1px solid #d2dae6!important;}
+body.light-theme .operation-switch button{color:#33445e!important;}
+body.light-theme .operation-switch button.active{background:#fff!important;color:#172033!important;border-color:#cbd5e1!important;}
+body.light-theme .suggestions{background:#fff!important;border-color:#cbd5e1!important;box-shadow:0 12px 28px rgba(23,32,51,.14)!important;}
+body.light-theme .suggestion{background:#fff!important;color:#172033!important;border-color:#e0e6ee!important;}
+body.light-theme .suggestion:hover{background:#edf3fa!important;}
+body.light-theme .suggestion-name,body.light-theme .suggestion-empty{color:#536176!important;}
+body.light-theme .suggestion-price{color:#087f5b!important;}
+body.light-theme .total-preview,body.light-theme .operation-form .total-preview{background:#f5f7fa!important;color:#172033!important;border-color:#d2dae6!important;}
+body.light-theme .opportunity-note{background:#edf2f8!important;color:#33445e!important;border:1px solid #d2dae6!important;}
+body.light-theme .tag{background:#e8edf4!important;color:#34445d!important;}
+body.light-theme .asset-category-icon,body.light-theme .insight-icon{background:#e9eef5!important;color:#34445d!important;border-color:#d2dae6!important;}
+body.light-theme .asset-category-head:hover{background:#edf2f8!important;}
+body.light-theme .progress,body.light-theme .insight-bar{background:#e3e9f1!important;}
+body.light-theme .notice{background:#fff6e6!important;border-color:#efcf91!important;color:#67470f!important;}
+body.light-theme #page-seguranca .security-panel .toolbar button,
+body.light-theme #page-seguranca .security-panel .toolbar button.ghost{background:#f5f7fa!important;color:#26364d!important;border-color:#cbd5e1!important;}
+body.light-theme #page-seguranca .security-panel .toolbar button.primary{background:#2478d4!important;border-color:#2478d4!important;color:#fff!important;}
+body.light-theme #page-seguranca .security-panel .toolbar button.danger{background:#dc2626!important;border-color:#b91c1c!important;color:#fff!important;}
+body.light-theme #page-seguranca .security-panel .notice{background:#fff6e6!important;border-color:#efcf91!important;color:#67470f!important;}
+body.light-theme .prov-status{background:#dff5eb!important;color:#08764f!important;}
+body.light-theme .prov-status.pending{background:#e7effb!important;color:#245fa8!important;}
+body.light-theme .asset-category .buy-yes,body.light-theme .opportunity-table .buy-yes{background:#dff5eb!important;color:#08764f!important;}
+body.light-theme .asset-category .buy-no,body.light-theme .opportunity-table .buy-no{background:#e8edf4!important;color:#34445d!important;}
+body.light-theme .api-provider-desc,body.light-theme .api-provider-category,body.light-theme .api-provider-card .mini,
+body.light-theme .pluggy-manager-dialog .mini,body.light-theme .mini,body.light-theme .muted{color:#536176!important;}
+body.light-theme .footer,body.light-theme .chart-footnote,body.light-theme .return-chart-note{color:#536176!important;}
+body.light-theme .api-status-pill{background:#e8edf4!important;color:#34445d!important;}
+body.light-theme .api-status-pill.configured{background:#dff5eb!important;color:#08764f!important;}
+body.light-theme .api-status-pill.warning{background:#fff0d2!important;color:#79500c!important;}
+body.light-theme .pluggy-manager-section{background:#f7f9fc!important;border-color:#d2dae6!important;}
+body.light-theme .pluggy-manager-inline .pluggy-manager-dialog{background:#fff!important;border-color:#cbd5e1!important;}
+body.light-theme .pluggy-manager-inline .pluggy-manager-dialog .ghost{background:#f5f7fa!important;color:#26364d!important;border-color:#cbd5e1!important;}
+body.light-theme .pluggy-manager-inline .pluggy-manage-button,
+body.light-theme .api-provider-actions .pluggy-manage-button{background:#f59e0b!important;border-color:#d97706!important;color:#30200b!important;}
+body.light-theme .pluggy-manager-inline .pluggy-clear-danger-button{background:#dc2626!important;border-color:#b91c1c!important;color:#fff!important;}
+body.light-theme .earnings-history-toolbar .prov-history-trigger,body.light-theme .my-provents-toolbar .prov-history-trigger,
+body.light-theme .prov-history-menu,body.light-theme .my-prov-period-menu,body.light-theme .prov-chart-period-menu,
+body.light-theme .prov-total-menu,body.light-theme .lw-select-menu{background:#fff!important;color:#172033!important;border-color:#cbd5e1!important;}
+body.light-theme .prov-history-menu .native-dropdown-option,body.light-theme .lw-select-option,
+body.light-theme .prov-chart-period-menu .period-title,body.light-theme .prov-chart-period-menu .period-section{color:#172033!important;}
+body.light-theme .prov-history-menu .native-dropdown-option:hover,body.light-theme .prov-history-menu .native-dropdown-option.active,
+body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.active{background:#e4effc!important;color:#172033!important;}
+body.light-theme .tax-tabs,body.light-theme .tax-tabs button{background:#edf2f8!important;color:#33445e!important;}
+body.light-theme .tax-tabs button.active{background:#fff!important;color:#172033!important;}
+body.light-theme .toast{background:#fff!important;color:#172033!important;border-color:#cbd5e1!important;}
+body.light-theme .launch-distribution-row,body.light-theme .launch-distribution-name,body.light-theme .launch-distribution-legend{color:#172033!important;}
+/* Remover o tooltip nativo da legenda de distribuição de aportes. */
+.launch-distribution-row .launch-distribution-name span{cursor:default;}
+.launch-distribution-row .launch-distribution-name span[title]{pointer-events:none;}
 </style>
