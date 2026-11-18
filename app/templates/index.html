@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-br" class="dashboard-wait-lock"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14161d"><style>html,body{background:#14161d;color-scheme:dark}</style><title>Lonely Wallet | Investimentos</title><link rel="icon" type="image/png" href="/static/lonely-wallet-favicon.png"><link rel="apple-touch-icon" href="/static/lonely-wallet-favicon.png">
+<html lang="pt-br" class="dashboard-wait-lock"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14161d"><style>html,body{background:#14161d;color-scheme:dark}html.light-theme,html.light-theme body{background:#f3f5f8!important;color-scheme:light!important}</style><script>try{if(localStorage.getItem('lonelyWalletLightTheme')==='1')document.documentElement.classList.add('light-theme');}catch(e){}</script><title>Lonely Wallet | Investimentos</title><link rel="icon" type="image/png" href="/static/lonely-wallet-favicon.png"><link rel="apple-touch-icon" href="/static/lonely-wallet-favicon.png">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
@@ -2132,7 +2132,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 
 
-<div class="footer">Lonely Wallet v4.2.9 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
+<div class="footer">Lonely Wallet v4.2.10 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
 <div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
@@ -3804,6 +3804,20 @@ function setLaunchDistributionSide(side){
  document.getElementById('launchDistSellTab')?.classList.toggle('active',side==='venda');
  renderLaunchDistribution();
 }
+function formatLaunchAssetType(value){
+ const raw=String(value||'outros').trim();
+ const key=raw.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s-]+/g,'_');
+ const names={
+  acao:'Ação',acoes:'Ação',acao_ordinaria:'Ação',acao_preferencial:'Ação',
+  fii:'FIIs',fiis:'FIIs',fundo_imobiliario:'FIIs',fundos_imobiliarios:'FIIs',
+  renda_fixa:'Renda fixa',renda_fixa_privada:'Renda fixa',cdb:'Renda fixa',lci:'Renda fixa',lca:'Renda fixa',
+  tesouro:'Tesouro Direto',tesouro_direto:'Tesouro Direto',
+  etf:'ETFs',etfs:'ETFs',bdr:'BDRs',bdrs:'BDRs',
+  internacional:'Ativos internacionais',stocks:'Ações internacionais',reit:'REITs',
+  cripto:'Criptomoedas',fundo:'Fundos de investimento',fundos:'Fundos de investimento',outros:'Outros ativos'
+ };
+ return names[key]||raw.charAt(0).toLocaleUpperCase('pt-BR')+raw.slice(1);
+}
 function renderLaunchDistribution(){
  const {periodKey,granularity,operations,mode}=launchDistributionState;
  const periodOps=operations.filter(op=>{
@@ -3828,7 +3842,7 @@ function renderLaunchDistribution(){
  const grouped=new Map();
  matches.forEach(op=>{
   const ticker=String(op.ticker||'Ativo sem identificação').trim()||'Ativo sem identificação';
-  const kind=String(op.tipo||'Outros').trim()||'Outros';
+  const kind=formatLaunchAssetType(op.tipo||'outros');
   const name=mode==='tipo'?kind:ticker;
   const amount=Number(op.quantidade||0)*Number(op.preco||0)+(side==='compra'?Number(op.custos||0):-Number(op.custos||0));
   const value=Math.max(0,amount);
@@ -4388,8 +4402,6 @@ const API_PROVIDER_FALLBACK=[
  {id:'pluggy',name:'Pluggy',connected:false,category:'Open Finance · contas e investimentos',description:'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.',auth:true,credentialType:'pluggy',url:'https://dashboard.pluggy.ai/',docs:'https://docs.pluggy.ai/'},
  {id:'brapi',name:'brapi',connected:true,category:'Brasil · cotações e histórico',description:'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. Cobertura e limites variam por plano.',auth:true,url:'https://brapi.dev/dashboard',docs:'https://brapi.dev/docs'},
  {id:'hgbrasil',name:'HG Brasil',connected:true,category:'Brasil · mercado e indicadores',description:'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano.',auth:true,url:'https://console.hgbrasil.com/',docs:'https://console.hgbrasil.com/documentation/finance'},
- {id:'twelvedata',name:'Twelve Data',category:'Global · cotações e séries',description:'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura B3 e os créditos do plano.',auth:true,url:'https://twelvedata.com/account',docs:'https://twelvedata.com/docs'},
- {id:'alphavantage',name:'Alpha Vantage',category:'Global · cotações e fundamentos',description:'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. Cobertura brasileira varia por endpoint.',auth:true,url:'https://www.alphavantage.co/support/#api-key',docs:'https://www.alphavantage.co/documentation/'},
  {id:'fred',name:'FRED',category:'Macroeconomia internacional',description:'Séries macroeconômicas e indicadores econômicos internacionais; não substitui preços de ativos B3.',auth:true,url:'https://fred.stlouisfed.org/docs/api/api_key.html',docs:'https://fred.stlouisfed.org/docs/api/fred/'},
  {id:'bcb',name:'Banco Central · SGS',connected:true,category:'Brasil · fonte oficial',description:'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.',auth:false,url:'https://www.bcb.gov.br/gestao_site/webservices.asp',docs:'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais'},
  {id:'ibge',name:'IBGE · SIDRA',category:'Brasil · estatísticas e inflação',description:'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.',auth:false,url:'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3',docs:'https://apisidra.ibge.gov.br/'},
@@ -4420,18 +4432,18 @@ function renderAPIProviders(){
   <div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4>
   <div class="mini">No plano pessoal, conecte suas instituições no MeuPluggy e cadastre aqui o itemId de cada conexão.</div>
   <div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div>
-  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button class="ghost" type="button" onclick="openPluggyManager()">Gerenciar API</button></div>
+  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button class="ghost pluggy-manage-button" type="button" onclick="openPluggyManager()">Gerenciar API</button></div>
   <div id="pluggyState" class="pluggy-state mini">Carregando conexões…</div><div id="pluggyInvestments" class="pluggy-investments"></div>
   <div id="pluggyManageModal" class="pluggy-manager-overlay" style="display:none" onclick="if(event.target===this)closePluggyManager()">
    <div class="pluggy-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="pluggyManagerTitle">
     <div class="pluggy-manager-header"><div><h3 id="pluggyManagerTitle">Gerenciar API Pluggy</h3><div class="mini">Sincronização automática e exclusão de dados importados</div></div><button class="ghost" type="button" onclick="closePluggyManager()" aria-label="Fechar">✕</button></div>
     <div class="pluggy-manager-content">
      <section class="pluggy-manager-section pluggy-sync-section">
-      <label class="mini pluggy-auto-sync-control" for="pluggyAutoSyncInterval"><span>Sincronizar automaticamente</span><select id="pluggyAutoSyncInterval" aria-label="Intervalo de sincronização automática" onchange="savePluggyAutoSyncInterval(this)"><option value="0">Desativado</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60">A cada hora</option><option value="240">A cada 4 horas</option><option value="720">A cada 12 horas</option><option value="1440">Uma vez ao dia</option></select></label>
+      <label class="mini pluggy-auto-sync-control" for="pluggyAutoSyncInterval"><span>Sincronizar automaticamente</span><select id="pluggyAutoSyncInterval" aria-label="Intervalo de sincronização automática" onchange="savePluggyAutoSyncInterval(this)"><option value="0">Desativado</option><option value="15">A cada 15 minutos</option><option value="30" selected>A cada 30 minutos</option><option value="60">A cada hora</option><option value="240">A cada 4 horas</option><option value="720">A cada 12 horas</option><option value="1440">Uma vez ao dia</option></select></label>
      </section>
      <section class="pluggy-manager-section pluggy-clear-section">
       <div class="pluggy-clear-copy"><h4>Excluir dados importados</h4><div class="mini">Escolha uma conexão específica ou todas as conexões para remover os dados importados.</div></div>
-      <div class="pluggy-clear-actions"><select id="pluggyClearItemSelect" aria-label="Conexão para limpar"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost danger" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button></div>
+      <div class="pluggy-clear-actions"><select id="pluggyClearItemSelect" aria-label="Conexão para limpar"><option value="">Selecione a conexão</option><option value="__all__">Todas as conexões</option></select><button class="ghost pluggy-clear-danger-button" type="button" onclick="clearPluggyImportedData()">Limpar dados importados</button></div>
      </section>
     </div>
    </div>
@@ -4472,26 +4484,35 @@ async function addPluggyItem(){
  }catch(error){toast(error.message||'Não foi possível adicionar a conexão.');}
 }
 
-function openPluggyManager(){
- const modal=document.getElementById('pluggyManageModal');if(modal)modal.style.display='flex';
+async function openPluggyManager(){
+ const modal=document.getElementById('pluggyManageModal');
+ if(modal&&modal.parentElement!==document.body)document.body.appendChild(modal);
+ await loadPluggyAutoSyncSettings();
+ if(modal)modal.style.display='flex';
  if(typeof loadPluggyState==='function')loadPluggyState();
- startPluggyAutoSync();
 }
 function closePluggyManager(){const modal=document.getElementById('pluggyManageModal');if(modal)modal.style.display='none';}
 let pluggyAutoSyncTimer=null;
 let pluggyAutoSyncRunning=false;
 let pluggyAutoSyncIntervalMinutes=30;
+const PLUGGY_SYNC_INTERVAL_KEY='lonelyWalletPluggySyncInterval';
 let pluggyAutoSyncSettingsLoaded=false;
 async function loadPluggyAutoSyncSettings(){
+ // Exibe imediatamente o último valor confirmado, mas sempre reconcilia com o SQLite.
+ try{const cachedRaw=localStorage.getItem(PLUGGY_SYNC_INTERVAL_KEY);if(cachedRaw!==null){const cached=Number(cachedRaw);if([0,15,30,60,240,720,1440].includes(cached))pluggyAutoSyncIntervalMinutes=cached;}}catch(e){}
+ const select=document.getElementById('pluggyAutoSyncInterval');
+ if(select)select.value=String(pluggyAutoSyncIntervalMinutes);
  try{
   const settings=await api('/api/pluggy/settings',{skipAutoRefresh:true,cache:'no-store'});
   const interval=Number(settings.interval_minutes);
-  if([0,15,30,60,240,720,1440].includes(interval))pluggyAutoSyncIntervalMinutes=interval;
+  if([0,15,30,60,240,720,1440].includes(interval)){
+   pluggyAutoSyncIntervalMinutes=interval;
+   try{localStorage.setItem(PLUGGY_SYNC_INTERVAL_KEY,String(interval));}catch(e){}
+  }
   pluggyAutoSyncSettingsLoaded=true;
  }catch(error){
   console.warn('Não foi possível carregar a frequência salva da Pluggy:',error);
  }
- const select=document.getElementById('pluggyAutoSyncInterval');
  if(select)select.value=String(pluggyAutoSyncIntervalMinutes);
  configurePluggyAutoSyncTimer();
  return pluggyAutoSyncIntervalMinutes;
@@ -4518,9 +4539,10 @@ async function savePluggyAutoSyncInterval(selectOrValue){
   if(!saved||saved.ok!==true||Number(saved.interval_minutes)!==interval)throw new Error('O servidor não confirmou a frequência selecionada.');
   pluggyAutoSyncIntervalMinutes=interval;
   pluggyAutoSyncSettingsLoaded=true;
+  try{localStorage.setItem(PLUGGY_SYNC_INTERVAL_KEY,String(interval));}catch(e){}
   if(select)select.value=String(interval);
   configurePluggyAutoSyncTimer();
-  toast(interval===0?'Sincronização automática desativada.':'Sincronização automática configurada e salva.');
+  toast(interval===0?'Sincronização automática desativada.':'Frequência de sincronização salva.');
  }catch(error){
   if(select)select.value=String(previous);
   toast(error.message||'Não foi possível salvar o intervalo.');
@@ -5228,6 +5250,7 @@ refresh();loadDistribution();autoSyncPluggyOnPageLoad();
 
 // Preferências locais: tema claro/escuro e ocultação de valores.
 function applyTheme(light){
+ document.documentElement.classList.toggle('light-theme',!!light);
  document.body.classList.toggle('light-theme',!!light);
  const b=document.getElementById('themeToggle');
  if(b){
@@ -5243,12 +5266,47 @@ function toggleTheme(){
  try{localStorage.setItem('lonelyWalletLightTheme',light?'1':'0')}catch(e){}
  applyTheme(light);
 }
+
+// Oculta também valores criados dinamicamente em tabelas, cartões, menus e legendas.
+const privacyValuePattern=/(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*(?:,\d{1,4})?\s*%|R\$\s*-?\d[\d.]*,\d{2}|\b\d[\d.]*,\d{2}\s*(?:reais)?/i;
+function markPrivacySensitiveValues(root=document.body){
+ if(!root)return;
+ const skip='SCRIPT,STYLE,INPUT,TEXTAREA,SELECT,BUTTON,OPTION,SVG,TEXT,PATH';
+ const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+ const parents=new Set();let node;
+ while((node=walker.nextNode())){
+  const text=node.nodeValue||'';if(!privacyValuePattern.test(text))continue;
+  const parent=node.parentElement;if(!parent||parent.closest(skip))continue;
+  if(parent.closest('#privacyToggle'))continue;
+  parents.add(parent);
+ }
+ parents.forEach(el=>el.classList.add('privacy-sensitive-value'));
+}
+let privacyObserver=null;
+function observePrivacyValues(){
+ if(privacyObserver||!document.body||typeof MutationObserver==='undefined')return;
+ privacyObserver=new MutationObserver(records=>{
+  if(!document.body.classList.contains('privacy-mode'))return;
+  records.forEach(record=>{
+   if(record.type==='characterData'&&record.target?.parentElement)markPrivacySensitiveValues(record.target.parentElement);
+   (record.addedNodes||[]).forEach(node=>{
+    if(node.nodeType===Node.ELEMENT_NODE)markPrivacySensitiveValues(node);
+    else if(node.nodeType===Node.TEXT_NODE&&node.parentElement)markPrivacySensitiveValues(node.parentElement);
+   });
+  });
+ });
+ privacyObserver.observe(document.body,{childList:true,subtree:true,characterData:true});
+}
+
 function applyPrivacy(hidden){
  document.body.classList.toggle('privacy-mode',!!hidden);
+ document.documentElement.classList.toggle('privacy-mode',!!hidden);
+ if(hidden){markPrivacySensitiveValues();observePrivacyValues();}
  const b=document.getElementById('privacyToggle');
  if(b){
   b.title=hidden?'Mostrar valores':'Ocultar valores';
   b.setAttribute('aria-label',b.title);
+  b.setAttribute('aria-pressed',hidden?'true':'false');
   b.innerHTML=hidden
    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.1 3.8M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7c1.2 0 2.3-.2 3.3-.6"/></svg>'
    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -5256,12 +5314,12 @@ function applyPrivacy(hidden){
 }
 function togglePrivacy(){
  const hidden=!document.body.classList.contains('privacy-mode');
- try{localStorage.setItem('lonelyWalletPrivacyMode',hidden?'1':'0')}catch(e){}
+ try{localStorage.setItem('lonelyWalletPrivacyMode_v4_2_10',hidden?'1':'0')}catch(e){}
  applyPrivacy(hidden);
 }
 try{
  applyTheme(localStorage.getItem('lonelyWalletLightTheme')==='1');
- applyPrivacy(localStorage.getItem('lonelyWalletPrivacyMode')==='1');
+ applyPrivacy(localStorage.getItem('lonelyWalletPrivacyMode_v4_2_10')==='1');
 }catch(e){applyTheme(false);applyPrivacy(false)}
 
 
@@ -6015,4 +6073,82 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 #page-seguranca .security-panel .notice{max-width:none;margin-top:20px;background:#28251f;border-color:#4b4536;color:#d8c49d}
 #page-seguranca .security-panel .badge{white-space:nowrap}
 @media(max-width:620px){ #page-seguranca .security-panel{padding:16px}#page-seguranca .security-panel #securityPinActions{grid-template-columns:1fr}#page-seguranca .security-panel #securityPinActions .field.full{grid-column:1}#page-seguranca .security-panel .toolbar button{flex:1 1 auto}}
+</style>
+
+
+<style id="v4-2-10-pluggy-layout-theme-privacy">
+/* Modal Pluggy como camada do viewport, com o mesmo recuo dos dois lados. */
+.pluggy-manager-overlay{padding:12px!important;align-items:center!important;justify-content:center!important}
+.pluggy-manager-dialog{width:calc(100vw - 24px)!important;max-width:none!important;max-height:calc(100vh - 24px)!important;margin:0!important;padding:20px!important}
+.pluggy-manager-content{display:grid!important;grid-template-columns:minmax(300px,.78fr) minmax(0,1.42fr)!important;gap:12px!important;width:100%!important}
+.pluggy-manager-section{min-width:0!important;width:100%!important}
+.pluggy-sync-section{justify-content:stretch!important}
+.pluggy-clear-section{display:grid!important;grid-template-columns:minmax(230px,.8fr) minmax(420px,1.2fr)!important;align-items:center!important;gap:16px!important}
+.pluggy-clear-copy{min-width:0!important}
+.pluggy-clear-actions{width:100%!important;display:grid!important;grid-template-columns:minmax(180px,1fr) auto!important;justify-content:stretch!important}
+.pluggy-clear-actions select{width:100%!important;max-width:none!important;min-width:0!important}
+.pluggy-clear-actions button{white-space:nowrap}
+.pluggy-manage-button{background:#fff0d9!important;border-color:#f1c88d!important;color:#92560c!important}
+.pluggy-manage-button:hover{background:#ffe6bf!important;border-color:#e9b66d!important}
+.pluggy-clear-danger-button{background:#ffe9ec!important;border-color:#f2b8c2!important;color:#b92f49!important}
+.pluggy-clear-danger-button:hover{background:#ffdae0!important;border-color:#e99aa8!important}
+@media(max-width:980px){.pluggy-manager-content{grid-template-columns:minmax(0,1fr)!important}.pluggy-clear-section{grid-template-columns:minmax(0,1fr)!important}.pluggy-clear-actions{grid-template-columns:minmax(0,1fr) auto!important}}
+@media(max-width:560px){.pluggy-manager-overlay{padding:7px!important}.pluggy-manager-dialog{width:calc(100vw - 14px)!important;max-height:calc(100vh - 14px)!important;padding:13px!important}.pluggy-manager-content{grid-template-columns:minmax(0,1fr)!important}.pluggy-manager-section{padding:12px!important}.pluggy-clear-actions{grid-template-columns:minmax(0,1fr)!important}.pluggy-clear-actions button{width:100%}.pluggy-manager-content .pluggy-auto-sync-control{align-items:flex-start!important;flex-direction:column!important}.pluggy-manager-content .pluggy-auto-sync-control select{width:100%!important;max-width:none!important}}
+
+/* Tema claro aplicado também à raiz e aos componentes com cores fixas antigas. */
+html.light-theme{background:#f3f5f8!important;color-scheme:light!important}
+html.light-theme body,body.light-theme{background:#f3f5f8!important;color:#202633!important;color-scheme:light!important}
+html.light-theme .top,body.light-theme .top{background:#fff!important;color:#202633!important}
+html.light-theme .nav,body.light-theme .nav{background:#f8f9fb!important}
+body.light-theme .nav button{color:#566174!important}
+body.light-theme .nav button.active{color:#202633!important}
+body.light-theme .panel,body.light-theme .card,body.light-theme .api-provider-card,body.light-theme .pluggy-manager-dialog,body.light-theme .pluggy-manager-section{background-color:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .api-provider-desc,body.light-theme .api-provider-category,body.light-theme .api-provider-card .mini,body.light-theme .pluggy-manager-dialog .mini{color:#596579!important}
+body.light-theme .api-provider-card input,body.light-theme .api-provider-card select,body.light-theme .pluggy-manager-dialog select,body.light-theme .pluggy-manager-dialog input{background:#fff!important;color:#202633!important;border-color:#cbd4e1!important;color-scheme:light!important}
+body.light-theme .api-status-pill{background:#e8edf4!important;color:#445168!important}
+body.light-theme .api-status-pill.configured{background:#dff5eb!important;color:#08764f!important}
+body.light-theme .api-status-pill.warning{background:#fff1d9!important;color:#8b5b0b!important}
+body.light-theme .pluggy-manager-header{border-color:#d8dee8!important}
+body.light-theme .pluggy-manager-section{background:#f8f9fb!important}
+body.light-theme .pluggy-manager-dialog .ghost{background:#f5f7fa!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .pluggy-manage-button{background:#fff0d9!important;color:#92560c!important;border-color:#f1c88d!important}
+body.light-theme .pluggy-clear-danger-button{background:#ffe9ec!important;color:#b92f49!important;border-color:#f2b8c2!important}
+body.light-theme .return-investor-filters select,body.light-theme .return-benchmark-select,body.light-theme .api-provider-card select,body.light-theme select,body.light-theme input,body.light-theme textarea{color-scheme:light!important}
+body.light-theme .return-investor-filters select,body.light-theme .return-benchmark-select,body.light-theme .api-provider-card select{background-color:#fff!important;color:#202633!important;border-color:#d8dee8!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23657184' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important}
+body.light-theme .earnings-history-toolbar .prov-history-menu,body.light-theme .my-provents-toolbar .prov-history-menu{background:#fff!important;color:#202633!important}
+body.light-theme .toolbar input,body.light-theme .field input,body.light-theme .toolbar select,body.light-theme .field select{background:#fff!important;color:#202633!important;border-color:#d8dee8!important;color-scheme:light!important}
+body.light-theme .suggestions,body.light-theme .suggestion,body.light-theme .total-preview,body.light-theme .distribution-row button,body.light-theme .distribution-add select{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .suggestion:hover,body.light-theme .asset-category-head:hover{background:#f0f3f7!important}
+body.light-theme .suggestion-name,body.light-theme .suggestion-empty{color:#596579!important}
+body.light-theme .suggestion-price{color:#087f5b!important}
+body.light-theme .asset-category-icon{background:#e9edf3!important;color:#8b681e!important}
+body.light-theme .asset-category-metric .category-empty-pill{background:#f5d77a!important;color:#60470b!important}
+body.light-theme .asset-category .buy-yes,body.light-theme .opportunity-table .buy-yes{background:#dff5eb!important;color:#08764f!important}
+body.light-theme .asset-category .buy-no,body.light-theme .opportunity-table .buy-no{background:#e8edf4!important;color:#455166!important}
+body.light-theme .progress{background:#e5e9f0!important}
+body.light-theme .notice{background:#fff6e6!important;border-color:#efd7a7!important;color:#76551d!important}
+body.light-theme .tag{background:#e8edf4!important;color:#455166!important}
+body.light-theme .asset-action-menu{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .asset-action-menu button{color:#202633!important}
+body.light-theme .asset-action-menu button:hover{background:#f0f3f7!important}
+body.light-theme .asset-action-menu .asset-menu-divider{background:#d8dee8!important}
+body.light-theme .loading-spinner{border-color:#d8dee8!important;border-top-color:var(--gold)!important}
+body.light-theme .footer{color:#657184!important}
+body.light-theme .distribution-row button{background:#fff!important;color:#202633!important;border-color:#d8dee8!important}
+body.light-theme .chart-footnote,body.light-theme .return-chart-note{color:#657184!important}
+body.light-theme .launch-distribution-row,body.light-theme .launch-distribution-legend,body.light-theme .launch-distribution-switch{color:#202633}
+
+/* Privacidade: cobre números e valores monetários inseridos por renderizações dinâmicas. */
+body.privacy-mode .privacy-sensitive-value{filter:blur(7px)!important;user-select:none!important}
+body.privacy-mode .goal-dashboard-metric b,body.privacy-mode .goal-progress-head strong,
+body.privacy-mode .launch-distribution-total,body.privacy-mode .launch-distribution-row b,
+body.privacy-mode .prov-distribution-item b,body.privacy-mode .prov-distribution-total,
+body.privacy-mode .return-summary-card strong,body.privacy-mode .return-stat-card strong,
+body.privacy-mode .benchmark-value,body.privacy-mode .api-value,
+body.privacy-mode .asset-category .data tbody td:not(:first-child),
+body.privacy-mode .tablewrap tbody td:not(:first-child){filter:blur(7px)!important;user-select:none!important}
+body.privacy-mode .chartbox canvas,body.privacy-mode .distribution-chartbox canvas,
+body.privacy-mode .launch-distribution-chart canvas,body.privacy-mode .prov-distribution-chart canvas,
+body.privacy-mode [data-tooltip]::after,body.privacy-mode [data-hint]::after,
+body.privacy-mode .variation-money-floating-tooltip{filter:blur(7px)!important}
 </style>

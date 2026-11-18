@@ -28,6 +28,24 @@ class RegressionTests(unittest.TestCase):
             con.execute('DELETE FROM auth_attempts')
             con.commit()
 
+    def test_pluggy_sync_interval_persists_after_new_request(self):
+        saved = self.client.post('/api/pluggy/settings', json={'interval_minutes': 15})
+        self.assertEqual(saved.status_code, 200)
+        self.assertTrue(saved.get_json()['ok'])
+        self.assertEqual(saved.get_json()['interval_minutes'], 15)
+        loaded = self.client.get('/api/pluggy/settings')
+        self.assertEqual(loaded.status_code, 200)
+        self.assertEqual(loaded.get_json()['interval_minutes'], 15)
+        with wallet.app.app_context():
+            row = wallet.db().execute("SELECT value FROM app_settings WHERE key='pluggy_sync_interval'").fetchone()
+            self.assertEqual(row['value'], '15')
+            wallet.db().execute("UPDATE app_settings SET value='30' WHERE key='pluggy_sync_interval'")
+            wallet.db().commit()
+
+    def test_retired_market_apis_are_not_available(self):
+        self.assertNotIn('twelvedata', wallet.API_PROVIDERS)
+        self.assertNotIn('alphavantage', wallet.API_PROVIDERS)
+
     def test_health_endpoint(self):
         response = self.client.get('/api/health')
         self.assertEqual(response.status_code, 200)

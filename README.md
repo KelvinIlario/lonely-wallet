@@ -1,10 +1,21 @@
-# Lonely Wallet v4.2.9
+# Lonely Wallet
+
+## v4.2.10
+- Modal Gerenciar API Pluggy expandido para a largura útil do navegador, com layout horizontal e margens simétricas.
+- Preferência de sincronização Pluggy salva com transação SQLite, confirmação de leitura e restauração após F5.
+- Twelve Data e Alpha Vantage removidas do catálogo, das rotas de teste e do motor de cotações/histórico; credenciais antigas dessas integrações são removidas na inicialização.
+- Botões Gerenciar API (laranja claro) e Limpar dados importados (vermelho claro).
+- Correções no tema claro, incluindo fundo da raiz, campos, menus, cards e modal Pluggy.
+- Privacidade de valores desativada por padrão; quando ativada permanece até novo clique e cobre também conteúdo dinâmico.
+- Legendas da distribuição de aportes usam nomes localizados e acentuação correta (Ação, FIIs, Renda fixa, Tesouro Direto, ETFs, BDRs e demais classes).
+
+# Lonely Wallet v4.2.10
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.9
+- **Versão:** 4.2.10
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -93,12 +104,12 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.2.9`.
+O retorno deve indicar `ok: true` e `version: 4.2.10`.
 
 ### Atualização de uma versão anterior
 
 1. Faça um backup antes de substituir os arquivos.
-2. Extraia o pacote 4.2.5 em uma pasta de projeto.
+2. Extraia o pacote 4.2.10 em uma pasta de projeto.
 3. **Mantenha exatamente o volume de dados existente**. O Compose padrão utiliza:
 
 ```yaml

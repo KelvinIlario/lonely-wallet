@@ -523,6 +523,20 @@ prepare_database_files()
 init_db()
 migrate_api_credentials()
 
+
+def remove_retired_api_credentials():
+    """Remove credenciais de provedores descontinuados, sem tocar nas demais APIs."""
+    con = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
+    try:
+        con.execute('PRAGMA busy_timeout=15000')
+        con.execute("DELETE FROM api_credentials WHERE provider IN ('twelvedata','alphavantage')")
+        con.commit()
+    finally:
+        con.close()
+
+
+remove_retired_api_credentials()
+
 # Persist the Flask signing key in the mounted data directory so container recreation
 # does not invalidate the PIN setup or expose a predictable development secret.
 def load_session_secret():
@@ -790,8 +804,6 @@ API_PROVIDERS = {
     'pluggy': {'name':'Pluggy', 'category':'Open Finance · contas e investimentos', 'description':'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.', 'auth':True, 'credential_type':'client_id_secret', 'url':'https://dashboard.pluggy.ai/', 'docs':'https://docs.pluggy.ai/'},
     'brapi': {'name':'brapi', 'category':'Brasil · cotações e histórico', 'description':'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. A cobertura e os limites dependem do plano.', 'auth':True, 'url':'https://brapi.dev/dashboard', 'docs':'https://brapi.dev/docs'},
     'hgbrasil': {'name':'HG Brasil', 'category':'Brasil · mercado e indicadores', 'description':'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano contratado.', 'auth':True, 'url':'https://console.hgbrasil.com/', 'docs':'https://console.hgbrasil.com/documentation/finance'},
-    'twelvedata': {'name':'Twelve Data', 'category':'Global · cotações e séries', 'description':'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura da B3 e os créditos do plano.', 'auth':True, 'url':'https://twelvedata.com/account', 'docs':'https://twelvedata.com/docs'},
-    'alphavantage': {'name':'Alpha Vantage', 'category':'Global · cotações e fundamentos', 'description':'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. A cobertura de tickers brasileiros varia por endpoint.', 'auth':True, 'url':'https://www.alphavantage.co/support/#api-key', 'docs':'https://www.alphavantage.co/documentation/'},
     'fred': {'name':'FRED', 'category':'Macroeconomia internacional', 'description':'Séries macroeconômicas e indicadores econômicos internacionais. Não substitui dados de preços de ativos da B3.', 'auth':True, 'url':'https://fred.stlouisfed.org/docs/api/api_key.html', 'docs':'https://fred.stlouisfed.org/docs/api/fred/'},
     'bcb': {'name':'Banco Central · SGS', 'category':'Brasil · fonte oficial', 'description':'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.', 'auth':False, 'url':'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais', 'docs':'https://www.bcb.gov.br/gestao_site/webservices.asp'},
     'ibge': {'name':'IBGE · SIDRA', 'category':'Brasil · estatísticas e inflação', 'description':'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.', 'auth':False, 'url':'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3', 'docs':'https://apisidra.ibge.gov.br/'},
@@ -1331,17 +1343,20 @@ def pluggy_settings():
         return json_error('Escolha um intervalo disponível.')
     connection = db()
     try:
-        with connection:
-            connection.execute(
-                "INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (str(interval),)
-            )
-            saved = connection.execute(
-                "SELECT value FROM app_settings WHERE key='pluggy_sync_interval'"
-            ).fetchone()
+        connection.execute('BEGIN IMMEDIATE')
+        connection.execute(
+            "INSERT INTO app_settings(key,value) VALUES('pluggy_sync_interval',?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(interval),)
+        )
+        connection.commit()
+        saved = connection.execute(
+            "SELECT value FROM app_settings WHERE key='pluggy_sync_interval'"
+        ).fetchone()
         saved_interval = int(saved['value']) if saved else None
     except (sqlite3.Error, TypeError, ValueError) as exc:
+        try: connection.rollback()
+        except sqlite3.Error: pass
         app.logger.exception('Falha ao salvar a frequência de sincronização Pluggy: %s', exc)
         return json_error('Não foi possível gravar a frequência de sincronização.')
     if saved_interval != interval:
@@ -1642,7 +1657,7 @@ def api_integrations_save(provider):
     if request.method == 'DELETE':
         token_db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); token_db().commit()
         if provider == 'pluggy': PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
-        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+        if provider in ('brapi','hgbrasil','dadosb3','fred'):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True})
     payload = request.get_json(silent=True) or {}
@@ -1653,7 +1668,7 @@ def api_integrations_save(provider):
         token_db().commit()
         if provider == 'pluggy' and not enabled:
             PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
-        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+        if provider in ('brapi','hgbrasil','dadosb3','fred'):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True,'enabled':bool(enabled),'configured':bool(token_db().execute('SELECT 1 FROM api_credentials WHERE provider=?',(provider,)).fetchone())})
     if provider == 'pluggy':
@@ -1675,7 +1690,7 @@ def api_integrations_save(provider):
     else:
         token_db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
     token_db().commit()
-    if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
+    if provider in ('brapi','hgbrasil','dadosb3','fred'):
         CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
     return jsonify({'ok':True,'configured':bool(_get_api_token(provider))})
 
@@ -1707,18 +1722,12 @@ def api_integrations_test(provider):
             response = requests.get('https://brapi.dev/api/v2/user/usage', headers={'Authorization':f'Bearer {token}'}, timeout=15)
         elif provider == 'hgbrasil':
             response = requests.get('https://api.hgbrasil.com/finance', params={'key':token}, timeout=15)
-        elif provider == 'twelvedata':
-            response = requests.get('https://api.twelvedata.com/time_series', params={'symbol':'AAPL','interval':'1day','outputsize':1,'apikey':token}, timeout=15)
-        elif provider == 'alphavantage':
-            response = requests.get('https://www.alphavantage.co/query', params={'function':'GLOBAL_QUOTE','symbol':'IBM','apikey':token}, timeout=15)
         elif provider == 'fred':
             response = requests.get('https://api.stlouisfed.org/fred/series', params={'series_id':'GDP','api_key':token,'file_type':'json'}, timeout=15)
         elif provider == 'dadosb3':
             response = requests.get('https://dadosb3.com/indices/IFIX/precos', headers={'X-API-Key':token}, timeout=15)
         response.raise_for_status()
         data = response.json()
-        if provider == 'twelvedata' and data.get('status') == 'error': raise ValueError(data.get('message') or 'A API retornou erro.')
-        if provider == 'alphavantage' and (data.get('Error Message') or data.get('Note') or data.get('Information')): raise ValueError(data.get('Error Message') or data.get('Note') or data.get('Information'))
         if provider == 'hgbrasil' and data.get('valid_key') is False: raise ValueError('A chave foi recusada pela HG Brasil.')
         if provider == 'dadosb3' and (data.get('amostra') or not isinstance(data.get('serie'), list) or len(data.get('serie') or []) < 2):
             raise ValueError('A chave ainda não liberou o histórico completo. Verifique a chave e tente novamente.')
@@ -1806,38 +1815,10 @@ def _fundamental_rating(quote, asset_type=''):
 
 
 def _enrich_quote_fundamentals(ticker, quote):
-    """Complementa fundamentos com provedores conectados que oferecem dados por empresa."""
+    """Preserva os fundamentos já retornados pelas fontes ainda ativas."""
     enriched = dict(quote or {})
-    # Alpha Vantage OVERVIEW: só consulta se o usuário cadastrou e habilitou a chave.
-    token = _get_api_token('alphavantage')
-    if token:
-        try:
-            symbol = str(ticker or '').upper()
-            if symbol.endswith('.SA'):
-                symbol = symbol[:-3]
-            response = requests.get('https://www.alphavantage.co/query',
-                params={'function': 'OVERVIEW', 'symbol': symbol + '.SA', 'apikey': token}, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            if isinstance(data, dict) and data.get('Symbol') and not data.get('Note') and not data.get('Information'):
-                aliases = {
-                    'ReturnOnEquityTTM':'returnOnEquity','ProfitMargin':'profitMargins',
-                    'OperatingMarginTTM':'operatingMargins','DebtToEquity':'debtToEquity',
-                    'CurrentRatio':'currentRatio','DividendYield':'dividendYield',
-                    'PayoutRatio':'payoutRatio','PERatio':'priceEarnings',
-                    'PriceToBookRatio':'priceToBook','QuarterlyRevenueGrowthYOY':'revenueGrowth',
-                    'QuarterlyEarningsGrowthYOY':'earningsGrowth','52WeekHigh':'fiftyTwoWeekHigh'
-                }
-                for source, target in aliases.items():
-                    value = data.get(source)
-                    if value not in (None, '', 'None', '0') and enriched.get(target) in (None, '', 0, '0'):
-                        try: enriched[target] = float(value)
-                        except (TypeError, ValueError): pass
-                enriched['fundamentalProviders'] = sorted(set((enriched.get('fundamentalProviders') or []) + ['Alpha Vantage']))
-        except (requests.RequestException, ValueError, TypeError):
-            pass
     if enriched.get('priceEarnings') is not None or enriched.get('returnOnEquity') is not None:
-        providers = enriched.get('fundamentalProviders') or []
+        providers = list(enriched.get('fundamentalProviders') or [])
         if enriched.get('quoteProvider') == 'brapi' and 'brapi' not in providers:
             providers.append('brapi')
         enriched['fundamentalProviders'] = providers
@@ -2003,43 +1984,6 @@ def _fallback_market_quote(ticker):
                         'regularMarketChangePercent': float(change) if change is not None else None,
                         'longName': item.get('name') or ticker,
                         'quoteProvider': 'HG Brasil'}
-        except (requests.RequestException, ValueError, TypeError, AttributeError):
-            pass
-
-    # Twelve Data: consulta apenas quando há chave cadastrada.
-    token = _get_api_token('twelvedata')
-    if token:
-        try:
-            response = requests.get('https://api.twelvedata.com/quote',
-                params={'symbol': ticker, 'exchange': 'BVMF', 'apikey': token},
-                headers=headers, timeout=10)
-            response.raise_for_status()
-            item = response.json()
-            price = item.get('close') or item.get('price')
-            if item.get('status') != 'error' and price and float(price) > 0:
-                change = item.get('percent_change')
-                return {'regularMarketPrice': float(price),
-                        'regularMarketChangePercent': float(change) if change not in (None, '') else None,
-                        'longName': item.get('name') or ticker,
-                        'quoteProvider': 'Twelve Data'}
-        except (requests.RequestException, ValueError, TypeError, AttributeError):
-            pass
-
-    # Alpha Vantage é fallback final para tickers que o endpoint reconhece.
-    token = _get_api_token('alphavantage')
-    if token:
-        try:
-            response = requests.get('https://www.alphavantage.co/query',
-                params={'function': 'GLOBAL_QUOTE', 'symbol': ticker, 'apikey': token},
-                headers=headers, timeout=10)
-            response.raise_for_status()
-            item = response.json().get('Global Quote') or {}
-            price = item.get('05. price')
-            change = item.get('10. change percent')
-            if price and float(price) > 0:
-                return {'regularMarketPrice': float(price),
-                        'regularMarketChangePercent': float(str(change or '').replace('%', '').replace(',', '.')) if change else None,
-                        'longName': ticker, 'quoteProvider': 'Alpha Vantage'}
         except (requests.RequestException, ValueError, TypeError, AttributeError):
             pass
 
@@ -3328,51 +3272,6 @@ def _fetch_brapi_dividend_events(asset_type, symbols, start_date):
     return events, errors
 
 
-def _fetch_alphavantage_dividend_events(symbols, start_date):
-    """Consulta o endpoint DIVIDENDS quando há chave Alpha Vantage.
-
-    O endpoint só é usado como fonte complementar. Eventos sem data de pagamento
-    ou valor válido são descartados pelo normalizador comum, e a chave canônica
-    do evento impede que o mesmo pagamento seja contado duas vezes entre fontes.
-    """
-    token = _get_api_token('alphavantage')
-    if not token or not symbols:
-        return [], []
-    events, errors = [], []
-    for ticker in symbols:
-        # Alpha Vantage identifica ativos da B3 com sufixo .SAO em endpoints
-        # que oferecem cobertura internacional; a cobertura varia por ticker/plano.
-        symbol = ticker if '.' in ticker else ticker + '.SAO'
-        try:
-            response = requests.get('https://www.alphavantage.co/query', params={
-                'function': 'DIVIDENDS', 'symbol': symbol, 'apikey': token
-            }, timeout=18)
-            response.raise_for_status()
-            payload = response.json()
-            if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
-                errors.append(f'Alpha Vantage: {ticker} sem cobertura ou limite da API')
-                continue
-            rows = payload.get('data') or payload.get('dividends') or []
-            for row in rows:
-                payment = _api_date(row.get('payment_date') or row.get('paymentDate'))
-                ex_date = _api_date(row.get('ex_dividend_date') or row.get('exDate'))
-                record = _api_date(row.get('record_date') or row.get('recordDate'))
-                declared = _api_date(row.get('declaration_date') or row.get('declarationDate'))
-                try:
-                    amount = float(row.get('amount') or row.get('dividend') or 0)
-                except (TypeError, ValueError):
-                    amount = 0
-                if amount <= 0 or not payment or (start_date and payment < start_date):
-                    continue
-                events.append({
-                    'symbol': ticker, 'rawRate': amount, 'paymentDate': payment,
-                    'lastDatePrior': record, 'exDate': ex_date,
-                    'approvedOn': declared, 'label': str(row.get('type') or 'DIVIDENDO').upper(),
-                    'remarks': 'Fonte complementar: Alpha Vantage DIVIDENDS.'
-                })
-        except (requests.RequestException, ValueError, TypeError):
-            errors.append(f'Alpha Vantage: falha ao consultar {ticker}')
-    return events, errors
 
 
 def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
@@ -3421,14 +3320,6 @@ def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
     fetched.extend((event, 'fii') for event in fii_events)
     fetched.extend((event, 'acao') for event in stock_events)
     errors.extend(stock_errors + fii_errors)
-
-    # Alpha Vantage DIVIDENDS é consultada como fonte complementar quando há
-    # token configurado. A normalização e a chave canônica abaixo deduplicam
-    # pagamentos já retornados pela brapi ou pelo fallback de cotação.
-    alpha_symbols = sorted(symbol for symbol, kind in types.items() if kind in stock_types or kind in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'})
-    alpha_events, alpha_errors = _fetch_alphavantage_dividend_events(alpha_symbols, start_date)
-    fetched.extend((event, 'fii' if types.get(event.get('symbol')) in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'} else 'acao') for event in alpha_events)
-    errors.extend(alpha_errors)
 
     # Fallback compatível com a cotação v1 usada pela versão estável: ela ainda
     # pode trazer eventos em dividendsData.cashDividends quando o endpoint v2
@@ -3790,49 +3681,6 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
                 fii_url, [symbol], fii_params, response_key='fiis', headers=headers
             )
             response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de FIIs'} for point in points] for symbol, points in fii_found.items()})
-
-    # Provedores alternativos autenticados: usados apenas para tickers sem série
-    # válida na brapi. Mantemos uma fonte por ativo e não concatenamos preços distintos.
-    twelve_token = _get_api_token('twelvedata')
-    alpha_token = _get_api_token('alphavantage')
-    for symbol in [item for item in symbols if item not in response_data]:
-        if twelve_token:
-            try:
-                response = requests.get('https://api.twelvedata.com/time_series',
-                    params={'symbol':symbol,'exchange':'BVMF','interval':'1day','outputsize':5000,'apikey':twelve_token},
-                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
-                response.raise_for_status()
-                payload = response.json()
-                if payload.get('status') != 'error' and isinstance(payload.get('values'),list):
-                    points=[]
-                    for row in payload.get('values') or []:
-                        try:
-                            day=date.fromisoformat(str(row.get('datetime') or '')[:10])
-                            close=float(row.get('adjusted_close') or row.get('close') or 0)
-                            if close>0: points.append({'data':day,'preco':close,'fechamento':close,'ajustado':bool(row.get('adjusted_close'))})
-                        except (TypeError,ValueError,AttributeError): continue
-                    if points: response_data[symbol]=[{**point, 'fonte':'Twelve Data · histórico diário'} for point in sorted(points,key=lambda x:x['data'])]
-            except (requests.RequestException,ValueError,TypeError,AttributeError):
-                pass
-        if symbol not in response_data and alpha_token:
-            try:
-                response = requests.get('https://www.alphavantage.co/query',
-                    params={'function':'TIME_SERIES_DAILY_ADJUSTED','symbol':symbol,'outputsize':'full','apikey':alpha_token},
-                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
-                response.raise_for_status()
-                payload=response.json()
-                rows=payload.get('Time Series (Daily)') or {}
-                points=[]
-                for day_text,row in rows.items():
-                    try:
-                        day=date.fromisoformat(day_text)
-                        close=float(row.get('5. adjusted close') or row.get('4. close') or 0)
-                        raw_close=float(row.get('4. close') or close)
-                        if close>0: points.append({'data':day,'preco':close,'fechamento':raw_close,'ajustado':bool(row.get('5. adjusted close'))})
-                    except (TypeError,ValueError,AttributeError): continue
-                if points: response_data[symbol]=[{**point, 'fonte':'Alpha Vantage · histórico diário ajustado'} for point in sorted(points,key=lambda x:x['data'])]
-            except (requests.RequestException,ValueError,TypeError,AttributeError):
-                pass
 
     # Classes sem endpoint histórico específico (ex.: renda fixa cadastrada manualmente)
     # não podem bloquear as séries de ativos negociados em bolsa. Para classes não reconhecidas,
@@ -4496,54 +4344,6 @@ def _benchmark_monthly_dadosb3(code, start_date, end_date, token=''):
     }
 
 
-def _benchmark_monthly_twelvedata(symbol, start_date, end_date, token):
-    """Série mensal ajustada quando o plano Twelve Data oferece o ativo/mercado."""
-    response = requests.get(
-        'https://api.twelvedata.com/time_series',
-        params={'symbol': symbol, 'exchange': 'BVMF', 'interval': '1month',
-                'outputsize': 5000, 'apikey': token},
-        timeout=20
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get('status') == 'error' or not isinstance(payload.get('values'), list):
-        return None
-    points = []
-    for row in payload.get('values') or []:
-        try:
-            day = date.fromisoformat(str(row.get('datetime') or '')[:10])
-            close = float(row.get('adjusted_close') or row.get('close') or 0)
-            if close > 0:
-                points.append((day, close))
-        except (TypeError, ValueError, AttributeError):
-            continue
-    return _benchmark_monthly_prices(points)
-
-
-def _benchmark_monthly_alphavantage(symbol, start_date, end_date, token):
-    """Série mensal ajustada da Alpha Vantage; contingência para IVVB11."""
-    response = requests.get(
-        'https://www.alphavantage.co/query',
-        params={'function': 'TIME_SERIES_MONTHLY_ADJUSTED', 'symbol': symbol, 'apikey': token},
-        timeout=20
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
-        return None
-    rows = payload.get('Monthly Adjusted Time Series') or {}
-    points = []
-    for day_text, row in rows.items():
-        try:
-            day = date.fromisoformat(str(day_text)[:10])
-            close = float(row.get('5. adjusted close') or row.get('4. close') or 0)
-            if close > 0:
-                points.append((day, close))
-        except (TypeError, ValueError, AttributeError):
-            continue
-    return _benchmark_monthly_prices(points)
-
-
 def _benchmark_latest_month(points):
     return points[-1].get('mes') if points else None
 
@@ -4622,8 +4422,6 @@ def api_benchmarks():
     dadosb3_token = _get_api_token('dadosb3')
     hg_token = _get_api_token('hgbrasil')
     brapi_token = _brapi_token()
-    twelve_token = _get_api_token('twelvedata')
-    alpha_token = _get_api_token('alphavantage')
 
     yahoo_symbols = {
         'IBOV': ['^BVSP', 'IBOV.SA'],
@@ -4679,24 +4477,6 @@ def api_benchmarks():
                     data = _benchmark_monthly_brapi(symbol, start, end, brapi_token)
                     if data:
                         candidates.append({'data': data, 'source': f'brapi · histórico mensal ({symbol})', 'sample': False})
-                        break
-                except (requests.RequestException, ValueError, TypeError, KeyError):
-                    continue
-
-        # IVVB11 é um ETF, não um índice. Provedores globais só entram como contingência.
-        if code == 'IVVB11' and twelve_token:
-            try:
-                data = _benchmark_monthly_twelvedata('IVVB11', start, end, twelve_token)
-                if data:
-                    candidates.append({'data': data, 'source': 'Twelve Data · IVVB11 ajustado (BVMF, se coberto)', 'sample': False})
-            except (requests.RequestException, ValueError, TypeError, KeyError):
-                pass
-        if code == 'IVVB11' and alpha_token:
-            for symbol in ('IVVB11.SAO', 'IVVB11.SA'):
-                try:
-                    data = _benchmark_monthly_alphavantage(symbol, start, end, alpha_token)
-                    if data:
-                        candidates.append({'data': data, 'source': f'Alpha Vantage · {symbol} ajustado', 'sample': False})
                         break
                 except (requests.RequestException, ValueError, TypeError, KeyError):
                     continue
@@ -4849,7 +4629,7 @@ def dashboard():
             'ticker':row['ticker'],'tipo':row['tipo_evento'],'tipo_ativo':row['tipo_ativo'],
             'status':'A receber','data_com':row['data_com'],'data_pagamento':row['data_pagamento'],
             'quantidade':float(row['quantidade'] or 0),'valor_por_ativo':float(row['valor_por_ativo'] or 0),
-            'valor_total':float(row['valor_total'] or 0),'origem':('Alpha Vantage' if 'Alpha Vantage' in str(row.get('remarks') or '') else 'brapi'),'tipo_evento':row['tipo_evento'],
+            'valor_total':float(row['valor_total'] or 0),'origem':('Fonte histórica' if 'Alpha Vantage' in str(row.get('remarks') or '') else 'brapi'),'tipo_evento':row['tipo_evento'],
             'remarks':row.get('remarks','')
         })
 
