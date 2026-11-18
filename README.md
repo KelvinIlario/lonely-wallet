@@ -1,5 +1,9 @@
 # Lonely Wallet
 
+## v4.2.12
+- O carregamento inicial da carteira repete automaticamente as tentativas quando o servidor ou uma fonte demora a responder, sem exibir a mensagem de falha nem exigir clique manual. O intervalo entre tentativas aumenta progressivamente até 30 segundos.
+- O botão Gerenciar API Pluggy alterna entre abrir e fechar; o painel começa fechado após F5 e é fechado ao navegar para outra página.
+
 ## v4.2.11
 - Tema claro refinado com contraste ampliado em tabelas, menus, formulários, grupos de lançamentos, segurança e gráficos.
 - Painel Gerenciar API Pluggy passou a ser expandido em linha, imediatamente abaixo dos controles MeuPluggy na página APIs, sem ser movido para o final de cada página.
@@ -15,13 +19,13 @@
 - Privacidade de valores desativada por padrão; quando ativada permanece até novo clique e cobre também conteúdo dinâmico.
 - Legendas da distribuição de aportes usam nomes localizados e acentuação correta (Ação, FIIs, Renda fixa, Tesouro Direto, ETFs, BDRs e demais classes).
 
-# Lonely Wallet v4.2.11
+# Lonely Wallet v4.2.12
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.2.11
+- **Versão:** 4.2.12
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -110,12 +114,12 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.2.11`.
+O retorno deve indicar `ok: true` e `version: 4.2.12`.
 
 ### Atualização de uma versão anterior
 
 1. Faça um backup antes de substituir os arquivos.
-2. Extraia o pacote 4.2.11 em uma pasta de projeto.
+2. Extraia o pacote 4.2.12 em uma pasta de projeto.
 3. **Mantenha exatamente o volume de dados existente**. O Compose padrão utiliza:
 
 ```yaml

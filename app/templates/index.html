@@ -2132,7 +2132,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 
 
-<div class="footer">Lonely Wallet v4.2.11 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
+<div class="footer">Lonely Wallet v4.2.12 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
 <div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
@@ -2253,17 +2253,25 @@ async function api(url,opts={}){
  }
  return d;
 }
-function setDashboardDataWait(message,showRetry=false){
+let dashboardInitialRetryTimer=null;
+let dashboardInitialRetryAttempt=0;
+let dashboardFullRetryTimer=null;
+let dashboardFullRetryAttempt=0;
+function dashboardRetryDelay(attempt){
+ // Retentativas progressivas: 1,5s, 3s, 6s, 12s, 24s e depois no máximo 30s.
+ return Math.min(30000,Math.round(1500*Math.pow(2,Math.max(0,attempt-1))));
+}
+function setDashboardDataWait(message){
  const overlay=document.getElementById('dashboardDataWait');
  if(!overlay)return;
  document.documentElement.classList.add('dashboard-wait-lock');
  document.body.classList.add('dashboard-wait-lock');
  const messageNode=document.getElementById('dashboardDataWaitMessage');
- if(messageNode&&message)messageNode.textContent=message;
+ if(messageNode)messageNode.textContent=message||'Estamos confirmando as cotações e os saldos da carteira.';
  const titleNode=document.getElementById('dashboardDataWaitTitle');
- if(titleNode)titleNode.textContent=showRetry?'Não foi possível confirmar os valores':'Preparando os dados completos da carteira…';
+ if(titleNode)titleNode.textContent='Carregando os dados da carteira…';
  const retry=document.getElementById('dashboardDataWaitRetry');
- if(retry)retry.style.display=showRetry?'inline-flex':'none';
+ if(retry)retry.style.display='none';
  overlay.classList.add('active');
 }
 function hideDashboardDataWait(){
@@ -2271,6 +2279,34 @@ function hideDashboardDataWait(){
  if(overlay)overlay.classList.remove('active');
  document.documentElement.classList.remove('dashboard-wait-lock');
  document.body.classList.remove('dashboard-wait-lock');
+ if(dashboardInitialRetryTimer){clearTimeout(dashboardInitialRetryTimer);dashboardInitialRetryTimer=null;}
+ if(dashboardFullRetryTimer){clearTimeout(dashboardFullRetryTimer);dashboardFullRetryTimer=null;}
+ dashboardInitialRetryAttempt=0;
+ dashboardFullRetryAttempt=0;
+}
+function scheduleDashboardInitialRetry(){
+ if(dashboardInitialRetryTimer)return;
+ dashboardInitialRetryAttempt++;
+ setDashboardDataWait('A conexão está demorando para responder. A carteira tentará carregar novamente automaticamente.');
+ const delay=dashboardRetryDelay(dashboardInitialRetryAttempt);
+ dashboardInitialRetryTimer=setTimeout(()=>{
+  dashboardInitialRetryTimer=null;
+  refresh();
+ },delay);
+}
+function scheduleDashboardFullRetry(showWait=true){
+ if(dashboardFullRetryTimer)return;
+ dashboardFullRetryAttempt++;
+ if(showWait)setDashboardDataWait('Estamos concluindo a atualização. Uma nova tentativa será feita automaticamente.');
+ else{
+  const updated=document.getElementById('updated');
+  if(updated)updated.textContent='Atualização pendente · nova tentativa automática';
+ }
+ const delay=dashboardRetryDelay(dashboardFullRetryAttempt);
+ dashboardFullRetryTimer=setTimeout(()=>{
+  dashboardFullRetryTimer=null;
+  refreshDashboardInBackground(showWait);
+ },delay);
 }
 async function refreshDashboardInBackground(showWait=true){
  if(dashboardFullRefreshInFlight){dashboardFullRefreshQueued=true;return;}
@@ -2296,18 +2332,13 @@ async function refreshDashboardInBackground(showWait=true){
    dashboardFullRefreshQueued=true;
   }
  }catch(error){
-  console.warn('A atualização completa da carteira não terminou:',error);
-  if(showWait){
-   setDashboardDataWait('A atualização completa não terminou. Nenhum valor provisório será exibido. Confira a conexão e tente novamente.',true);
-  }else{
-   const updated=document.getElementById('updated');
-   if(updated)updated.textContent='Cache confirmado · atualização pendente';
-  }
+  console.warn('A atualização completa da carteira não terminou; uma nova tentativa será realizada automaticamente:',error);
+  scheduleDashboardFullRetry(showWait);
  }finally{
   dashboardFullRefreshInFlight=false;
   if(dashboardFullRefreshQueued){
    dashboardFullRefreshQueued=false;
-   setTimeout(()=>refreshDashboardInBackground(true),900);
+   if(!dashboardFullRetryTimer)setTimeout(()=>refreshDashboardInBackground(true),900);
   }
  }
 }
@@ -2322,10 +2353,12 @@ async function refresh(){
   try{
    const dashboardAttempts=4;let dashboardError=null;
    for(let attempt=0;attempt<dashboardAttempts;attempt++){
-    try{state=await api('/api/dashboard');dashboardError=null;break;}
+    try{state=await api('/api/dashboard',{timeoutMs:90000,cache:'no-store'});dashboardError=null;break;}
     catch(error){dashboardError=error;if(attempt<dashboardAttempts-1){await new Promise(resolve=>setTimeout(resolve,650*Math.pow(2,attempt)));}}
    }
    if(dashboardError)throw dashboardError;
+   if(dashboardInitialRetryTimer){clearTimeout(dashboardInitialRetryTimer);dashboardInitialRetryTimer=null;}
+   dashboardInitialRetryAttempt=0;
    const hasCompleteCache=Boolean(state&&state.cache_info&&state.cache_info.cached);
    if(hasCompleteCache){
     render();
@@ -2346,8 +2379,8 @@ async function refresh(){
    if(hasCompleteCache&&darfPage&&!darfPage.classList.contains('hidden'))await loadDARFs();
    return state;
   }catch(e){
-   setDashboardDataWait('Não foi possível carregar os dados da carteira. Nenhum valor provisório será exibido. Tente novamente.',true);
-   toast(`Não foi possível carregar a carteira: ${e.message}`);
+   console.warn('Não foi possível carregar os dados da carteira nesta tentativa:',e);
+   scheduleDashboardInitialRetry();
    return null;
   }
   finally{
@@ -4432,7 +4465,7 @@ function renderAPIProviders(){
   <div class="divider" style="margin:14px 0"></div><h4>Conexões MeuPluggy</h4>
   <div class="mini">No plano pessoal, conecte suas instituições no MeuPluggy e cadastre aqui o itemId de cada conexão.</div>
   <div class="api-credential-fields"><label class="mini">Nome da conexão<input id="pluggyItemLabel" type="text" placeholder="Ex.: Nubank"></label><label class="mini">itemId<input id="pluggyItemId" type="text" placeholder="Cole o itemId copiado do Dashboard"></label></div>
-  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button id="pluggyManageToggle" class="ghost pluggy-manage-button" type="button" onclick="openPluggyManager()" aria-expanded="false" aria-controls="pluggyManageModal">Gerenciar API</button></div>
+  <div class="api-provider-actions"><button class="primary" type="button" onclick="addPluggyItem()">Adicionar conexão</button><button class="ghost" type="button" onclick="syncPluggy()">Sincronizar tudo</button><a class="ghost pluggy-open-button" href="https://meu.pluggy.ai/" target="_blank" rel="noopener noreferrer">Abrir MeuPluggy ↗</a><button id="pluggyManageToggle" class="ghost pluggy-manage-button" type="button" onclick="togglePluggyManager()" aria-expanded="false" aria-controls="pluggyManageModal">Gerenciar API</button></div>
   <div id="pluggyManageModal" class="pluggy-manager-inline" style="display:none">
    <div class="pluggy-manager-dialog" role="region" aria-labelledby="pluggyManagerTitle">
     <div class="pluggy-manager-header"><div><h3 id="pluggyManagerTitle">Gerenciar API Pluggy</h3><div class="mini">Sincronização automática e exclusão de dados importados</div></div><button class="ghost" type="button" onclick="closePluggyManager()" aria-label="Fechar">✕</button></div>
@@ -4485,14 +4518,27 @@ async function addPluggyItem(){
  }catch(error){toast(error.message||'Não foi possível adicionar a conexão.');}
 }
 
-async function openPluggyManager(){
+function pluggyManagerIsOpen(panel){
+ if(!panel)return false;
+ return panel.style.display!=='none'&&getComputedStyle(panel).display!=='none';
+}
+function togglePluggyManager(){
  const panel=document.getElementById('pluggyManageModal');
  if(!panel)return;
+ if(pluggyManagerIsOpen(panel)){
+  closePluggyManager();
+  return;
+ }
+ openPluggyManager();
+}
+async function openPluggyManager(){
+ const panel=document.getElementById('pluggyManageModal');
+ if(!panel||pluggyManagerIsOpen(panel))return;
  panel.style.display='block';
  document.getElementById('pluggyManageToggle')?.setAttribute('aria-expanded','true');
  await loadPluggyAutoSyncSettings();
- if(typeof loadPluggyState==='function')await loadPluggyState();
- panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+ if(typeof loadPluggyState==='function'&&pluggyManagerIsOpen(panel))await loadPluggyState();
+ if(pluggyManagerIsOpen(panel))panel.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function closePluggyManager(){
  const panel=document.getElementById('pluggyManageModal');
@@ -4680,7 +4726,7 @@ async function deleteAPIProvider(id){
 function updateDocumentIdentity(name){const titles={resumo:'Resumo',proventos:'Proventos',patrimonio:'Patrimônio',distribuicao:'Distribuição',lancamentos:'Lançamentos',apis:'APIs',seguranca:'Segurança'};document.title='Lonely Wallet | '+(titles[name]||'Investimentos');const icon=document.querySelector('link[rel=\"icon\"]');if(icon)icon.href='/static/lonely-wallet-favicon.png';}
 
 function resetPageFilterDefaults(page){const root=document.getElementById('page-'+page);if(!root)return;const filters=root.querySelectorAll('.toolbar select,.panelhead select,.filter-row select,.filters select,.filter-bar select');filters.forEach(select=>{if(!select.options?.length)return;const initial=Array.from(select.options).find(option=>option.defaultSelected)||select.options[0];if(!initial)return;const changed=select.value!==initial.value;select.value=initial.value;select.__lwSyncCustom?.();if(changed)select.dispatchEvent(new Event('change',{bubbles:true}));});}
-function showPage(name){if(!document.getElementById('page-'+name))name='resumo';document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');resetPageFilterDefaults(name);document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();if(name==='apis')loadAPIProviders();if(name==='seguranca')loadSecuritySettings();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
+function showPage(name){closePluggyManager();if(!document.getElementById('page-'+name))name='resumo';document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));document.getElementById('page-'+name).classList.remove('hidden');resetPageFilterDefaults(name);document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));updateDocumentIdentity(name);if(name==='distribuicao')loadDistribution();if(name==='apis')loadAPIProviders();if(name==='seguranca')loadSecuritySettings();setTimeout(()=>{if(name==='proventos')renderProventosDashboard();Object.values(charts).forEach(c=>{try{c.resize()}catch(e){}});if(name==='resumo')alignCategoryMoveControls('summaryGroups')},100);window.scrollTo({top:0,behavior:'smooth'})}document.getElementById('nav').addEventListener('click',e=>{let b=e.target.closest('button[data-page]');if(b)showPage(b.dataset.page)});
 function renderSpecificFields(type){
  const host=document.getElementById('assetSpecificFields'); if(!host)return;
  const fixed=['renda_fixa','tesouro'].includes(type);
