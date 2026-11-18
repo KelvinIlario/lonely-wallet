@@ -1,10 +1,10 @@
-# Lonely Wallet v4.3.0
+# Lonely Wallet v4.2.9
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.3.0
+- **Versão:** 4.2.9
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -13,20 +13,12 @@
 
 ---
 
-## Atualização 4.3.0
+## Atualização 4.2.7
 
-- **Gerenciar API Pluggy:** painel agora abre e fecha como seção expansível ao clicar novamente no botão, ocupando toda a largura do cartão e mantendo margens simétricas. A abertura permanece estável quando a lista de provedores é redesenhada.
-- **Sincronização Pluggy no servidor:** a frequência configurada é executada pelo processo da aplicação, sem depender de o navegador permanecer aberto. A configuração continua salva em `app_settings`; o intervalo zero desativa o agendamento.
-- A interface esclarece que a sincronização local importa os dados já publicados pela Pluggy e não força a atualização bancária do MeuPluggy.
-- **Variação diária:** corrigida a coluna para usar o percentual diário recebido pela cotação, separando-o da rentabilidade acumulada. Cotações antigas ou indisponíveis não geram falsa variação diária; o valor em reais do tooltip usa a mesma base diária.
-- **HG Brasil:** corrigida a rota de consulta de cotações de ativos para o endpoint documentado `finance/stock_price`; a consulta geral `finance` permanece apenas para validação da chave.
-- **Resumo por classe:** variação diária passa a ser ponderada pelo valor de mercado de cada posição e ignora cotações sem variação diária válida.
-- O resumo de proventos recebidos é calculado uma única vez por atualização do dashboard, reduzindo consultas repetidas em carteiras grandes.
-- O agendador Pluggy reserva cada execução em transação SQLite, evitando que processos concorrentes iniciem a mesma sincronização.
-- **Proventos:** eventos pagos armazenados em `proventos_api` passam a compor o total de recebidos e são deduplicados contra lançamentos da tabela comum.
-- **Amortizações:** eventos de amortização de FIIs são classificados separadamente e não são somados como renda de dividendos/JCP.
-- **Vendas agendadas:** a validação considera compras e vendas pendentes até o horário efetivo da nova operação, evitando reservar vendas que só ocorreriam depois.
-- Mantidos os temas e variáveis de cor existentes; o painel Pluggy usa os mesmos tokens de tema do restante da interface.
+- Os indicadores e valores financeiros ficam ocultos enquanto as cotações e os indexadores atuais são confirmados.
+- A confirmação dos valores atuais é separada da sincronização complementar de proventos e do histórico de rentabilidade, que continuam em segundo plano.
+- A lista de oportunidades de compra exige preço atual abaixo do preço médio e participação atual abaixo da participação ideal.
+- O rodapé e os metadados do Compose identificam a versão 4.2.7.
 
 ## Atualização 4.2.9
 
@@ -45,13 +37,13 @@
 - Cada conexão MeuPluggy recebeu um botão individual de sincronização, além do botão de sincronização geral.
 - O timeout das requisições de sincronização Pluggy foi ampliado e o Gunicorn passou a aceitar solicitações longas.
 
-## Atualização 4.2.7
+## Atualização 4.2.8
 
-- Os indicadores e valores financeiros ficam ocultos enquanto as cotações e os indexadores atuais são confirmados.
-- A confirmação dos valores atuais é separada da sincronização complementar de proventos e do histórico de rentabilidade, que continuam em segundo plano.
-- A lista de oportunidades de compra exige preço atual abaixo do preço médio e participação atual abaixo da participação ideal.
-- O rodapé e os metadados do Compose identificam a versão 4.2.7.
-
+- O último dashboard totalmente processado é salvo em `/data/dashboard_cache.json` e reaproveitado no F5 quando bancos, credenciais e arquivo de cotações não mudaram.
+- Na primeira abertura sem cache válido, os valores permanecem ocultos até terminar a geração completa de cotações, indexadores, proventos e histórico.
+- O bloqueio de carregamento cobre toda a janela e impede rolagem enquanto não houver valores confirmados.
+- Cada conexão MeuPluggy recebeu um botão individual de sincronização, além do botão de sincronização geral.
+- O tempo limite de sincronização Pluggy foi ampliado no navegador e no servidor.
 
 ## 1. O que é o Lonely Wallet
 
@@ -101,12 +93,12 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.3.0`.
+O retorno deve indicar `ok: true` e `version: 4.2.9`.
 
 ### Atualização de uma versão anterior
 
 1. Faça um backup antes de substituir os arquivos.
-2. Extraia o pacote da versão que deseja instalar em uma pasta de projeto.
+2. Extraia o pacote 4.2.5 em uma pasta de projeto.
 3. **Mantenha exatamente o volume de dados existente**. O Compose padrão utiliza:
 
 ```yaml
@@ -389,14 +381,3 @@ Esta versão parte da linha 4.2.2 e mantém os bancos e arquivos persistentes em
 ### Atualização no ZimaOS
 
 Preserve o mapeamento persistente `/DATA/AppData/lonely-wallet/data:/data`. Faça uma cópia de segurança antes de atualizar. A primeira inicialização pode demorar devido à migração de propriedade do volume.
-
-
-## Mapa de integrações e cobertura
-
-As conexões abaixo têm níveis diferentes de integração. Credencial válida não significa cobertura de todos os tickers ou disponibilidade de todos os endpoints.
-
-- **Ativas no processamento:** brapi (cotações, histórico e proventos conforme endpoint/plano), HG Brasil (cotações e séries históricas compatíveis), Twelve Data e Alpha Vantage (fontes alternativas para cotações/histórico), Yahoo Finance (contingência não oficial), Banco Central/SGS (CDI e outras séries) e IBGE/SIDRA (consulta de inflação).
-- **Uso limitado:** Dados B3 fornece séries de índices; Pluggy lê os dados disponíveis nos itens MeuPluggy e importa posições/movimentações. A frequência configurada no Lonely Wallet regula a leitura/importação local, não a atualização bancária do conector.
-- **Somente catálogo/teste de credencial nesta versão:** FRED tem teste de chave, mas não alimenta os cálculos do painel. Tesouro Transparente, CVM Dados Abertos e APIs oficiais B3 são links de referência; não há sincronização automatizada por essas fontes. A importação B3 disponível é por planilha.
-
-A cobertura e os limites devem ser confirmados no plano de cada provedor. A aplicação não consegue garantir a disponibilidade de serviços externos. Consulte as mensagens de status do app e os documentos oficiais antes de interpretar um dado ausente como saldo zero.

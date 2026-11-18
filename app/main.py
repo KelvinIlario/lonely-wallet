@@ -792,12 +792,12 @@ API_PROVIDERS = {
     'hgbrasil': {'name':'HG Brasil', 'category':'Brasil · mercado e indicadores', 'description':'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano contratado.', 'auth':True, 'url':'https://console.hgbrasil.com/', 'docs':'https://console.hgbrasil.com/documentation/finance'},
     'twelvedata': {'name':'Twelve Data', 'category':'Global · cotações e séries', 'description':'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura da B3 e os créditos do plano.', 'auth':True, 'url':'https://twelvedata.com/account', 'docs':'https://twelvedata.com/docs'},
     'alphavantage': {'name':'Alpha Vantage', 'category':'Global · cotações e fundamentos', 'description':'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. A cobertura de tickers brasileiros varia por endpoint.', 'auth':True, 'url':'https://www.alphavantage.co/support/#api-key', 'docs':'https://www.alphavantage.co/documentation/'},
-    'fred': {'name':'FRED', 'category':'Macroeconomia internacional', 'description':'A credencial pode ser validada nesta tela, mas o FRED ainda não alimenta cotações, gráficos ou cálculos do painel nesta versão.', 'auth':True, 'url':'https://fred.stlouisfed.org/docs/api/api_key.html', 'docs':'https://fred.stlouisfed.org/docs/api/fred/'},
+    'fred': {'name':'FRED', 'category':'Macroeconomia internacional', 'description':'Séries macroeconômicas e indicadores econômicos internacionais. Não substitui dados de preços de ativos da B3.', 'auth':True, 'url':'https://fred.stlouisfed.org/docs/api/api_key.html', 'docs':'https://fred.stlouisfed.org/docs/api/fred/'},
     'bcb': {'name':'Banco Central · SGS', 'category':'Brasil · fonte oficial', 'description':'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.', 'auth':False, 'url':'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais', 'docs':'https://www.bcb.gov.br/gestao_site/webservices.asp'},
     'ibge': {'name':'IBGE · SIDRA', 'category':'Brasil · estatísticas e inflação', 'description':'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.', 'auth':False, 'url':'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3', 'docs':'https://apisidra.ibge.gov.br/'},
-    'tesouro': {'name':'Tesouro Transparente', 'category':'Brasil · títulos públicos', 'description':'Fonte de consulta e documentação. A importação automática de títulos e taxas do Tesouro ainda não está implementada nesta versão.', 'auth':False, 'url':'https://www.tesourotransparente.gov.br/temas/divida-publica-federal/tesouro-direto', 'docs':'https://www.tesourotransparente.gov.br/ckan/dataset'},
-    'cvm': {'name':'CVM Dados Abertos', 'category':'Brasil · fundos e demonstrações', 'description':'Catálogo de dados públicos para consulta externa. O app ainda não importa informes ou demonstrações da CVM automaticamente.', 'auth':False, 'url':'https://dados.cvm.gov.br/', 'docs':'https://dados.cvm.gov.br/'},
-    'b3': {'name':'B3 · APIs oficiais', 'category':'Brasil · dados oficiais de mercado e investidor', 'description':'Catálogo informativo. Esta versão importa planilhas exportadas da B3, mas não consome diretamente as APIs oficiais B3 para posições e eventos.', 'auth':False, 'url':'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/b3-for-developers/', 'docs':'https://developers.b3.com.br/apis'},
+    'tesouro': {'name':'Tesouro Transparente', 'category':'Brasil · títulos públicos', 'description':'Dados abertos de taxas e preços diários de títulos do Tesouro Direto, além de relatórios e séries da dívida pública. Sem token.', 'auth':False, 'url':'https://www.tesourotransparente.gov.br/temas/divida-publica-federal/tesouro-direto', 'docs':'https://www.tesourotransparente.gov.br/ckan/dataset'},
+    'cvm': {'name':'CVM Dados Abertos', 'category':'Brasil · fundos e demonstrações', 'description':'Dados públicos de fundos, informes e demonstrações financeiras. Não é uma API de cotação em tempo real; acesso aos conjuntos públicos não exige token.', 'auth':False, 'url':'https://dados.cvm.gov.br/', 'docs':'https://dados.cvm.gov.br/'},
+    'b3': {'name':'B3 · APIs oficiais', 'category':'Brasil · dados oficiais de mercado e investidor', 'description':'Posições, movimentações, eventos provisionados e negociação. Exige contratação/licença e autorização do investidor; a B3 informa que as APIs do catálogo são voltadas a clientes B2B.', 'auth':False, 'url':'https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/b3-for-developers/', 'docs':'https://developers.b3.com.br/apis'},
     'yahoo': {'name':'Yahoo Finance', 'category':'Global · fonte complementar', 'description':'Histórico e cotações usados como fonte complementar por endpoints não oficiais. Não há API pública oficial com garantia de disponibilidade ou licença para uso comercial.', 'auth':False, 'url':'https://finance.yahoo.com/', 'docs':'https://finance.yahoo.com/'},
     'dadosb3': {'name':'Dados B3 · Índices históricos', 'category':'Brasil · índices de retorno total', 'description':'Séries diárias de IBOV, IFIX, SMLL e IDIV, com retorno total. Sem chave, a API libera apenas os últimos 30 pregões; a chave grátis libera a série completa (200 consultas/dia). Serviço independente que organiza dados públicos da B3, não é a API oficial da B3.', 'auth':True, 'url':'https://dadosb3.com/chave-gratis?de=api', 'docs':'https://dadosb3.com/api'},
 }
@@ -1340,7 +1340,6 @@ def pluggy_settings():
             saved = connection.execute(
                 "SELECT value FROM app_settings WHERE key='pluggy_sync_interval'"
             ).fetchone()
-            connection.execute("DELETE FROM app_settings WHERE key='pluggy_auto_sync_last_attempt'")
         saved_interval = int(saved['value']) if saved else None
     except (sqlite3.Error, TypeError, ValueError) as exc:
         app.logger.exception('Falha ao salvar a frequência de sincronização Pluggy: %s', exc)
@@ -1990,7 +1989,7 @@ def _fallback_market_quote(ticker):
     token = _get_api_token('hgbrasil')
     if token:
         try:
-            response = requests.get('https://api.hgbrasil.com/finance/stock_price',
+            response = requests.get('https://api.hgbrasil.com/finance',
                 params={'key': token, 'symbol': ticker}, headers=headers, timeout=10)
             response.raise_for_status()
             payload = response.json()
@@ -2359,76 +2358,8 @@ def process_due_operations():
     con.commit()
 
 
-_PLUGGY_SCHEDULER_LOCK = threading.Lock()
-
-
-def _scheduled_pluggy_refresh():
-    """Consulta os dados já disponíveis na Pluggy conforme a frequência salva.
-
-    A conexão bancária de MeuPluggy é atualizada pelo próprio provedor. Este
-    agendador apenas importa para o SQLite local o estado já publicado na API.
-    """
-    if not _PLUGGY_SCHEDULER_LOCK.acquire(blocking=False):
-        return
-    try:
-        with app.test_request_context('/api/pluggy/sync', method='POST', json={}):
-            interval = _pluggy_sync_interval()
-            if interval <= 0:
-                return
-            if not db().execute('SELECT 1 FROM pluggy_items WHERE active=1 LIMIT 1').fetchone():
-                return
-            credentials = _get_pluggy_credentials()
-            if not credentials.get('client_id') or not credentials.get('client_secret'):
-                return
-            now = datetime.now(TZ)
-            now_text = now.isoformat(timespec='seconds')
-            connection = db()
-            # BEGIN IMMEDIATE serializa a reserva entre processos Gunicorn.
-            # Sem isso, dois workers poderiam ler o mesmo último horário e
-            # iniciar sincronizações simultâneas para a mesma carteira.
-            connection.execute('BEGIN IMMEDIATE')
-            try:
-                prior = connection.execute(
-                    "SELECT value FROM app_settings WHERE key='pluggy_auto_sync_last_attempt'"
-                ).fetchone()
-                try:
-                    last_attempt = datetime.fromisoformat(str(prior['value'])) if prior and prior['value'] else None
-                    if last_attempt and last_attempt.tzinfo is None:
-                        last_attempt = last_attempt.replace(tzinfo=TZ)
-                except (TypeError, ValueError):
-                    last_attempt = None
-                if last_attempt and (now - last_attempt).total_seconds() < interval * 60:
-                    connection.commit()
-                    return
-                connection.execute(
-                    "INSERT INTO app_settings(key,value) VALUES('pluggy_auto_sync_last_attempt',?) "
-                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (now_text,)
-                )
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
-            result = pluggy_sync()
-            response = result[0] if isinstance(result, tuple) else result
-            status = result[1] if isinstance(result, tuple) and len(result) > 1 else 200
-            if status >= 400:
-                app.logger.warning('Sincronização agendada Pluggy retornou HTTP %s.', status)
-            elif hasattr(response, 'get_json'):
-                payload = response.get_json(silent=True) or {}
-                if payload.get('ok') is False:
-                    app.logger.warning('Sincronização agendada Pluggy: %s', payload.get('erro') or payload.get('message') or 'falha sem detalhe')
-                else:
-                    summary = payload.get('summary') or {}
-                    app.logger.info('Sincronização agendada Pluggy concluída: %s conexão(ões), %s investimento(s), %s movimentação(ões).',
-                                    summary.get('items', 0), summary.get('investments', 0), summary.get('investment_transactions', 0))
-    except Exception:
-        app.logger.exception('Falha na rotina agendada da Pluggy.')
-    finally:
-        _PLUGGY_SCHEDULER_LOCK.release()
-
-
 def scheduler_loop():
-    # Promove operações agendadas e executa a consulta Pluggy sem depender do navegador.
+    # Promove operações agendadas automaticamente quando chega o horário previsto.
     while True:
         con = None
         try:
@@ -2443,10 +2374,6 @@ def scheduler_loop():
         finally:
             if con is not None:
                 con.close()
-        try:
-            _scheduled_pluggy_refresh()
-        except Exception:
-            app.logger.exception('Falha inesperada no scheduler Pluggy.')
         time.sleep(30)
 
 
@@ -2463,31 +2390,19 @@ def valid_operation(data):
         allowed_types=('acao','fii','etf','bdr','internacional','renda_fixa','cripto','stocks','reit','tesouro','fundo','outros')
         if not ticker or len(ticker)>80 or tipo not in allowed_types: raise ValueError()
         if lado not in ('compra','venda') or qtd<=0 or preco<0 or custos<0: raise ValueError()
-        raw=str(data.get('data_hora') or (dt+'T10:00'))
-        requested=datetime.fromisoformat(raw)
-        if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
-        now=datetime.now(TZ); now_minute=now.replace(second=0,microsecond=0)
         if lado=='venda':
             existing_type=asset_type_for_ticker(ticker, dt)
             if not existing_type or existing_type!=tipo:
                 return None,'O ativo selecionado não pertence à categoria informada. Escolha o ativo dentro da categoria correta.'
-            if requested.date() < now.date():
-                available,_=posicao(ticker, as_of=dt)
-            else:
-                # Parte da posição efetiva atual e projeta somente ordens pendentes
-                # cuja execução será anterior ou simultânea à venda solicitada.
-                candidate = now if tipo == 'renda_fixa' else next_b3_session(requested)
-                available,_=posicao(ticker, as_of=now.date().isoformat())
-                scheduled=db().execute(
-                    "SELECT lado,quantidade FROM operacoes WHERE ticker=? AND status='agendada' AND data_execucao<=? ORDER BY data_execucao,id",
-                    (ticker,candidate.isoformat(timespec='minutes'))
-                ).fetchall()
-                for scheduled_op in scheduled:
-                    amount=float(scheduled_op['quantidade'] or 0)
-                    available += amount if scheduled_op['lado']=='compra' else -amount
-                available=max(0.0,available)
-            if qtd>available+1e-8:
-                return None,'A quantidade vendida é maior que a posição disponível até o horário da operação, considerando compras e vendas já agendadas.'
+            available,_=posicao(ticker, as_of=dt)
+            reserved=0.0
+            if dt >= datetime.now(TZ).date().isoformat():
+                reserved=float(db().execute("SELECT COALESCE(SUM(quantidade),0) FROM operacoes WHERE ticker=? AND lado='venda' AND status='agendada'",(ticker,)).fetchone()[0])
+            if qtd>available-reserved+1e-8: return None,'A quantidade vendida é maior que a posição disponível na data da operação, considerando vendas já agendadas.'
+        raw=str(data.get('data_hora') or (dt+'T10:00'))
+        requested=datetime.fromisoformat(raw)
+        if requested.tzinfo is None: requested=requested.replace(tzinfo=TZ)
+        now=datetime.now(TZ); now_minute=now.replace(second=0,microsecond=0)
         # Datas anteriores são lançamentos históricos; não devem ser empurradas para o próximo pregão.
         if requested.date()<now.date():
             execution=requested; status='executada'
@@ -3175,40 +3090,6 @@ def _prefetch_quotes_parallel(tickers):
                 pass
 
 
-def _daily_market_change(current_value, change_percent, stale=False):
-    """Converte a variação percentual diária da cotação em valor da posição.
-
-    Não estima variação diária a partir do custo médio ou de cotação stale:
-    nesses casos não há base confiável para apresentar um número do dia.
-    """
-    if stale or current_value is None or change_percent is None:
-        return None, None
-    try:
-        value = float(current_value)
-        percent = float(change_percent)
-        if not math.isfinite(value) or not math.isfinite(percent) or value < 0 or percent <= -100:
-            return None, None
-        previous_value = value / (1.0 + percent / 100.0)
-        amount = value - previous_value
-        if not math.isfinite(amount):
-            return None, None
-        return round(percent, 2), round(amount, 2)
-    except (TypeError, ValueError, ZeroDivisionError, OverflowError):
-        return None, None
-
-
-def _normalize_api_income_event_type(source_label, source_type='stock'):
-    """Normaliza os rótulos da Brapi sem confundir amortização com rendimento."""
-    label = str(source_label or '').strip().upper()
-    if 'AMORTIZA' in label:
-        return 'AMORTIZACAO'
-    if 'JCP' in label or 'INTEREST' in label:
-        return 'JCP'
-    if 'REND' in label or str(source_type).lower() == 'fii':
-        return 'RENDIMENTO'
-    return 'DIVIDENDO'
-
-
 def carteira(use_cached_quotes=False, force_refresh_quotes=False):
     process_due_operations()
     base_date = snapshot_date_for()
@@ -3244,9 +3125,6 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
                     except Exception:
                         # cotacao() preserva a última cotação válida quando uma fonte falha.
                         pass
-    # Calcula os proventos recebidos uma única vez. Antes, o resumo completo era
-    # reconstruído para cada ticker, multiplicando consultas SQLite em carteiras grandes.
-    received_by_ticker = received_proventos_by_ticker()
     itens=[]; invested=actual=received=0.0
     for ticker in sorted(tickers):
         qty, avg = posicao(ticker)
@@ -3276,7 +3154,7 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
         price=float(raw_price) if market_quote_available else (imported_price if has_imported_reference else avg)
         quote_available=market_quote_available or has_imported_reference
         quote_source=(('Última cotação salva · ' + str(quote.get('quoteProvider') or 'fonte anterior')) if quote.get('quoteIsStale') else (quote.get('quoteProvider') or 'brapi')) if market_quote_available else ('Posição importada' if has_imported_reference else 'Sem cotação')
-        dividends = float(received_by_ticker.get(ticker, 0.0))
+        dividends = float(received_proventos_by_ticker().get(ticker, 0.0))
         divs = (quote.get('dividendsData') or {}).get('cashDividends',[])[:12]
         annual_div = sum(float(x.get('rate') or 0) for x in divs)
         ceiling = annual_div / .06 if annual_div else None
@@ -3299,18 +3177,15 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
         pluggy_return = _pluggy_total_return(ticker, value, dividends) if pluggy_position else None
         invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
         default_name = imported.get('nome') if imported else ticker
-        daily_raw = quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')
-        daily_variation, daily_variation_value = _daily_market_change(
-            value, daily_raw, stale=bool(quote.get('quoteIsStale')) or not market_quote_available or kind == 'renda_fixa'
-        )
-        # Variação diária é independente da rentabilidade acumulada e do custo médio.
+        daily_variation = quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')
+        # Variação mede somente ganho/perda de preço; rentabilidade soma os proventos.
         # Pluggy é a fonte preferencial (fluxos reais desde a primeira compra). Sem
         # histórico Pluggy, usa custo médio e cotação atual, nunca a variação diária.
         variation_value = pluggy_return['variation_value'] if pluggy_return else (value-cost)
         variation_pct = pluggy_return['variation_pct'] if pluggy_return else (round(variation_value/cost*100,2) if cost else 0)
         total_return_value = pluggy_return['total_value'] if pluggy_return else (variation_value + (0.0 if kind=='renda_fixa' else dividends))
         profitability_pct = pluggy_return['total_pct'] if pluggy_return else (round(total_return_value/cost*100,2) if cost else 0)
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_desatualizada':bool(quote.get('quoteIsStale')),'cotacao_ultima_atualizacao':quote.get('quoteLastUpdated'),'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':daily_variation,'variacao_dia_valor':daily_variation_value})
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_desatualizada':bool(quote.get('quoteIsStale')),'cotacao_ultima_atualizacao':quote.get('quoteLastUpdated'),'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':variation_pct})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)
@@ -3622,17 +3497,11 @@ def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
             ignored += 1
             continue
         raw_label = str(event.get('label') or ('RENDIMENTO' if source_type == 'fii' else 'PROVENTO')).strip().upper()
-        label = _normalize_api_income_event_type(raw_label, source_type)
+        label = 'JCP' if 'JCP' in raw_label or 'INTEREST' in raw_label else ('RENDIMENTO' if 'REND' in raw_label else 'DIVIDENDO')
         status = 'Pago' if payment_date and date.fromisoformat(payment_date) < today else 'A receber'
         # Data de pagamento pode ser corrigida pela fonte; não faz parte da chave.
         event_anchor = record_date or payment_date or approved_date or 'sem-data'
         event_key = '|'.join((ticker, label, event_anchor, f'{rate:.10f}'))
-        # Versões anteriores classificavam amortizações de FIIs como DIVIDENDO.
-        # Ao receber a classificação explícita da fonte, remove somente a chave
-        # legada equivalente para não contar o mesmo evento duas vezes.
-        if label == 'AMORTIZACAO' and source_type == 'fii':
-            legacy_event_key = '|'.join((ticker, 'DIVIDENDO', event_anchor, f'{rate:.10f}'))
-            conn.execute('DELETE FROM proventos_api WHERE event_key=?', (legacy_event_key,))
         remarks_parts = [str(event.get('remarks') or '').strip()]
         if estimated_date:
             remarks_parts.append('Data-com estimada pela véspera do exDate; confira o informe oficial.')
@@ -3668,11 +3537,10 @@ def _is_income_event(event_type):
 
 
 def _received_proventos_records(active_tickers=None):
-    """Retorna proventos pagos, unificando lançamentos comuns e eventos de APIs.
+    """Retorna proventos da tabela comum com data não futura, deduplicando origens importadas.
 
-    Mantém a tabela comum como fonte de lançamentos manuais/Pluggy/B3 e inclui
-    eventos pagos da Brapi que ficam em proventos_api. Eventos repetidos são
-    deduplicados por ativo, data de pagamento e valor total.
+    Registros vinculados à Pluggy ou B3 mantêm a origem de importação. Registros
+    sem vínculo são lançamentos manuais e também entram na apuração de recebidos.
     """
     active_set = None if active_tickers is None else {str(t).upper() for t in active_tickers}
     if active_set is not None and not active_set:
@@ -3685,14 +3553,15 @@ def _received_proventos_records(active_tickers=None):
     b3_ids = {int(r['registro_id']) for r in db().execute(
         "SELECT registro_id FROM b3_importados WHERE lower(categoria)='provento' AND registro_id IS NOT NULL"
     ).fetchall()}
+
+    # Todos os lançamentos da tabela comum são considerados: os importados recebem
+    # sua origem; os demais são lançamentos manuais. Eventos futuros não entram.
     origin_by_id = {ident: 'Pluggy' for ident in pluggy_ids}
     for ident in b3_ids:
         origin_by_id.setdefault(ident, 'B3')
-
     rows = db().execute('SELECT id,ticker,valor_total,data FROM proventos ORDER BY data,id').fetchall()
     records = []
-    existing_keys = set()
-    imported_keys = set()
+    seen = set()
     for raw in rows:
         row = dict(raw)
         payment_date = _api_date(row.get('data'))
@@ -3706,19 +3575,15 @@ def _received_proventos_records(active_tickers=None):
         ticker = str(row.get('ticker') or '').upper()
         if active_set is not None and ticker not in active_set:
             continue
-        try:
-            amount = round(float(row.get('valor_total') or 0), 2)
-        except (TypeError, ValueError):
-            continue
+        amount = round(float(row.get('valor_total') or 0), 2)
         if not math.isfinite(amount) or amount <= 0:
             continue
         key = (ticker, payment_date[:10], amount)
-        existing_keys.add(key)
         origin = origin_by_id.get(int(row['id']), 'Manual')
-        if origin != 'Manual' and key in imported_keys:
+        if origin != 'Manual' and key in seen:
             continue
         if origin != 'Manual':
-            imported_keys.add(key)
+            seen.add(key)
         records.append({
             'ticker': ticker, 'tipo': 'Provento',
             'tipo_ativo': typesafe_asset_type(ticker),
@@ -3726,45 +3591,6 @@ def _received_proventos_records(active_tickers=None):
             'data_pagamento': payment_date, 'quantidade': None,
             'valor_por_ativo': None, 'valor_total': amount,
             'origem': origin, 'tipo_evento': 'PROVENTO'
-        })
-
-    # A API mantém eventos futuros e pagos em tabela própria. Somente os pagos
-    # entram no acumulado recebido; amortizações não são renda distribuída.
-    api_rows = db().execute(
-        "SELECT ticker,tipo_ativo,tipo_evento,data_pagamento,valor_total,status "
-        "FROM proventos_api WHERE lower(status) IN ('pago','recebido') "
-        "ORDER BY data_pagamento,event_key"
-    ).fetchall()
-    api_keys = set()
-    for raw in api_rows:
-        row = dict(raw)
-        payment_date = _api_date(row.get('data_pagamento'))
-        if not payment_date:
-            continue
-        try:
-            if date.fromisoformat(payment_date) > today:
-                continue
-            amount = round(float(row.get('valor_total') or 0), 2)
-        except (TypeError, ValueError):
-            continue
-        ticker = str(row.get('ticker') or '').upper()
-        if active_set is not None and ticker not in active_set:
-            continue
-        if not ticker or not math.isfinite(amount) or amount <= 0:
-            continue
-        if not _is_income_event(row.get('tipo_evento')):
-            continue
-        key = (ticker, payment_date[:10], amount)
-        if key in existing_keys or key in api_keys:
-            continue
-        api_keys.add(key)
-        records.append({
-            'ticker': ticker, 'tipo': 'Provento',
-            'tipo_ativo': row.get('tipo_ativo') or typesafe_asset_type(ticker),
-            'status': 'Pago', 'data_com': None,
-            'data_pagamento': payment_date, 'quantidade': None,
-            'valor_por_ativo': None, 'valor_total': amount,
-            'origem': 'Brapi', 'tipo_evento': str(row.get('tipo_evento') or 'PROVENTO').upper()
         })
     return records
 
@@ -3786,17 +3612,6 @@ def received_proventos_by_ticker():
             ticker = str(row['ticker']).upper()
             if ticker not in active and posicao(ticker)[0] > 1e-8:
                 active.append(ticker)
-    # Posições importadas diretamente da Pluggy também compõem a carteira,
-    # mesmo quando não existe operação correspondente na tabela operacoes.
-    pluggy_positions = db().execute(
-        "SELECT UPPER(s.ticker) AS ticker FROM pluggy_position_snapshots s "
-        "JOIN pluggy_items i ON i.item_id=s.item_id WHERE i.active=1 "
-        "GROUP BY UPPER(s.ticker) HAVING SUM(s.quantity)>0.00000001 OR SUM(s.balance)>0.01"
-    ).fetchall()
-    for row in pluggy_positions:
-        ticker = str(row['ticker']).upper()
-        if ticker and ticker not in active:
-            active.append(ticker)
     totals = {}
     for row in _received_proventos_records(active):
         if not _is_income_event(row.get('tipo_evento')):

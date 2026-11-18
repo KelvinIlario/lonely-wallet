@@ -2,8 +2,6 @@
 import os
 import tempfile
 import unittest
-from datetime import datetime, timedelta
-from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(tempfile.mkdtemp(prefix='lonely-wallet-tests-'))
@@ -113,96 +111,6 @@ class RegressionTests(unittest.TestCase):
             self.assertIsNone(error)
             self.assertIsNotNone(result)
 
-
-    def test_pluggy_sync_interval_is_persisted_between_requests(self):
-        saved = self.client.post('/api/pluggy/settings', json={'interval_minutes': 60})
-        self.assertEqual(saved.status_code, 200)
-        self.assertEqual(saved.get_json()['interval_minutes'], 60)
-        loaded = self.client.get('/api/pluggy/settings')
-        self.assertEqual(loaded.status_code, 200)
-        self.assertEqual(loaded.get_json()['interval_minutes'], 60)
-        with wallet.app.app_context():
-            con = wallet.db()
-            con.execute("UPDATE app_settings SET value='30' WHERE key='pluggy_sync_interval'")
-            con.execute("DELETE FROM app_settings WHERE key='pluggy_auto_sync_last_attempt'")
-            con.commit()
-
-    def test_daily_market_change_uses_daily_quote_and_rejects_stale_data(self):
-        percent, amount = wallet._daily_market_change(105, 5)
-        self.assertEqual(percent, 5.0)
-        self.assertEqual(amount, 5.0)
-        self.assertEqual(wallet._daily_market_change(105, 5, stale=True), (None, None))
-        self.assertEqual(wallet._daily_market_change(105, -100), (None, None))
-
-    def test_brapi_amortization_is_not_normalized_as_dividend(self):
-        self.assertEqual(wallet._normalize_api_income_event_type('AMORTIZAÇÃO', 'fii'), 'AMORTIZACAO')
-        self.assertEqual(wallet._normalize_api_income_event_type('RENDIMENTO', 'fii'), 'RENDIMENTO')
-        self.assertEqual(wallet._normalize_api_income_event_type('JCP', 'stock'), 'JCP')
-        self.assertFalse(wallet._is_income_event('AMORTIZACAO'))
-
-    def test_hgbrasil_quote_uses_documented_stock_price_endpoint(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-            def json(self):
-                return {'valid_key': True, 'results': {'HGLG11': {
-                    'symbol': 'HGLG11', 'name': 'FII HGLG', 'price': 160.0,
-                    'change_percent': 0.25
-                }}}
-
-        with patch.object(wallet, '_get_api_token', side_effect=lambda provider: 'test-key' if provider == 'hgbrasil' else ''), \
-             patch.object(wallet.requests, 'get', return_value=FakeResponse()) as request:
-            quote = wallet._fallback_market_quote('HGLG11')
-        self.assertEqual(request.call_args.args[0], 'https://api.hgbrasil.com/finance/stock_price')
-        self.assertEqual(request.call_args.kwargs['params'], {'key': 'test-key', 'symbol': 'HGLG11'})
-        self.assertEqual(quote['regularMarketPrice'], 160.0)
-        self.assertEqual(quote['regularMarketChangePercent'], 0.25)
-
-    def test_paid_brapi_events_are_included_in_received_proventos(self):
-        ticker = 'BRAPITEST11'
-        paid_date = (datetime.now(wallet.TZ).date() - timedelta(days=2)).isoformat()
-        item_id = 'regression-paid-proventos-item'
-        with wallet.app.app_context():
-            con = wallet.db()
-            con.execute('DELETE FROM proventos WHERE ticker=?', (ticker,))
-            con.execute('DELETE FROM proventos_api WHERE ticker=?', (ticker,))
-            con.execute('DELETE FROM pluggy_position_snapshots WHERE ticker=?', (ticker,))
-            con.execute('DELETE FROM pluggy_items WHERE item_id=?', (item_id,))
-            con.execute('INSERT INTO pluggy_items(item_id,label,connector_name,status,consent_expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
-                        (item_id,'Teste','MeuPluggy','UPDATED','',1,datetime.now(wallet.TZ).isoformat(),datetime.now(wallet.TZ).isoformat()))
-            con.execute('INSERT INTO pluggy_position_snapshots(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) VALUES(?,?,?,?,?,?,?,?)',
-                        (item_id,'regression-investment',ticker,'fii',10,50,55,datetime.now(wallet.TZ).isoformat()))
-            con.execute('INSERT INTO proventos_api(event_key,ticker,tipo_ativo,tipo_evento,data_aprovacao,data_com,data_ex,data_pagamento,valor_por_ativo,quantidade,valor_total,status,remarks,sincronizado_em) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                        ('test-paid-'+ticker,ticker,'fii','RENDIMENTO',paid_date,paid_date,paid_date,paid_date,0.5,10,5.0,'Pago','',datetime.now(wallet.TZ).isoformat()))
-            con.commit()
-            rows = wallet._received_proventos_records([ticker])
-            self.assertEqual(sum(row['valor_total'] for row in rows if row['origem']=='Brapi'), 5.0)
-            self.assertEqual(wallet.received_proventos_by_ticker().get(ticker), 5.0)
-            con.execute('DELETE FROM proventos_api WHERE ticker=?', (ticker,))
-            con.execute('DELETE FROM pluggy_position_snapshots WHERE ticker=?', (ticker,))
-            con.execute('DELETE FROM pluggy_items WHERE item_id=?', (item_id,))
-            con.commit()
-
-    def test_future_scheduled_sale_does_not_reserve_quantity_for_earlier_sale(self):
-        ticker = 'FUTURESALE4'
-        requested = (datetime.now(wallet.TZ) + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-        execution = wallet.next_b3_session(requested)
-        later = execution + timedelta(days=2)
-        with wallet.app.app_context():
-            con = wallet.db()
-            con.execute('DELETE FROM operacoes WHERE ticker=?', (ticker,))
-            con.execute("INSERT INTO operacoes(ticker,tipo,lado,quantidade,preco,data,custos,status,data_registro,data_execucao,detalhes) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                        (ticker,'acao','venda',6,10,later.date().isoformat(),0,'agendada',datetime.now(wallet.TZ).isoformat(timespec='minutes'),later.isoformat(timespec='minutes'),'{}'))
-            con.commit()
-        payload={'ticker':ticker,'tipo':'acao','lado':'venda','quantidade':'5','preco':'10','custos':'0','data':requested.date().isoformat(),'data_hora':requested.isoformat()}
-        with wallet.app.test_request_context('/'):
-            with patch.object(wallet, 'asset_type_for_ticker', return_value='acao'), patch.object(wallet, 'posicao', return_value=(10.0,10.0)):
-                result, error=wallet.valid_operation(payload)
-        with wallet.app.app_context():
-            wallet.db().execute('DELETE FROM operacoes WHERE ticker=?', (ticker,))
-            wallet.db().commit()
-        self.assertIsNone(error)
-        self.assertIsNotNone(result)
 
     def test_b3_rejects_non_finite_cells(self):
         for value in ('NaN', 'Infinity', '-Infinity'):
