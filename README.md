@@ -1,10 +1,10 @@
-# Lonely Wallet v4.3.2
+# Lonely Wallet v4.3.0
 
 **Carteira pessoal de investimentos | Aplicação web self-hosted | Docker / ZimaOS**
 
 > Guia do usuário, instalação, atualização, segurança, backup, solução de problemas e perguntas frequentes.
 
-- **Versão:** 4.3.2
+- **Versão:** 4.3.0
 - **Idioma da interface:** Português (Brasil)
 - **Backend:** Python 3.12 + Flask + Gunicorn
 - **Persistência:** SQLite e arquivo JSON de última cotação válida
@@ -12,31 +12,6 @@
 - **Diretório persistente:** `/DATA/AppData/lonely-wallet/data` no host, montado em `/data` no container
 
 ---
-
-## Atualização 4.3.2
-
-- Removidas as integrações Twelve Data e Alpha Vantage do catálogo, dos testes de conexão, do motor de cotações, das séries históricas e dos benchmarks.
-- Credenciais antigas dessas duas integrações são removidas do banco de tokens na primeira inicialização da versão; as demais credenciais e os dados da carteira são preservados.
-- A cotação prioriza Brapi, tenta completar campos ausentes com a busca do mesmo provedor e usa HG Brasil/Yahoo Finance como contingência, sem misturar preço e variação diária de origens diferentes.
-- A variação diária também é derivada quando a fonte fornece preço e variação absoluta, mas omite o percentual.
-- Normalizada a leitura de logotipos: aceita URLs e objetos `logo.small`/`logo.big`; ativos sem logo válido mostram iniciais em vez de imagem quebrada.
-- O card “Proventos recebidos” considera pagamentos cuja data de pagamento seja hoje ou anterior, independentemente de o status salvo ainda estar desatualizado. Pagamentos futuros permanecem em “A receber”.
-- A classificação de eventos na sincronização e a lista de pagamentos futuros usam a data de pagamento como critério principal.
-- Gráfico de distribuição de compras/vendas agora mostra nomes amigáveis das classes, como “Ação”, “FIIs”, “Renda fixa”, “Tesouro Direto” e “ETFs”, em vez dos códigos internos.
-- O cache do dashboard inclui a data local, evitando que a virada do dia mantenha totais de proventos desatualizados.
-
-## Atualização 4.3.1
-
-- Corrigido o título do gráfico de lançamentos para diferenciar compras e vendas; a consolidação mensal agora usa “Saldo líquido”, mais preciso para compras menos vendas.
-- Corrigida a leitura da estrutura `results[TICKER]` da HG Brasil.
-- Corrigido o uso do fallback quando a cotação principal não fornece variação diária, sem misturar dados de provedores diferentes. Quando o provedor entrega preço e fechamento anterior, a variação é calculada a partir desses dois dados da mesma fonte.
-- Revisados os testes de conexão da Brapi e HG Brasil, incluindo respostas de erro HTTP 200 e validação da credencial.
-- Corrigida a aplicação do tema claro no elemento raiz, inclusive nas áreas externas ao conteúdo.
-- Ajustados componentes legados que mantinham cores escuras fixas, incluindo grupos de operações, saldos importados, seletores, avisos e indicadores.
-- Botão Gerenciar API com destaque vermelho claro nos dois temas.
-- Modo de privacidade ampliado para observar conteúdo e dicas inseridos dinamicamente, além de ocultar valores em cards, tabelas, gráficos, textos SVG e modais.
-- Migração de permissões do volume Docker agora falha de forma segura quando não consegue ajustar propriedade, sem deixar um marcador de migração parcial. O marcador é gravado atomicamente.
-- Rodapé agora lê a versão diretamente do arquivo `VERSION`.
 
 ## Atualização 4.3.0
 
@@ -126,7 +101,7 @@ docker compose up -d --build
 curl http://IP_DO_SERVIDOR:8085/api/health
 ```
 
-O retorno deve indicar `ok: true` e `version: 4.3.2`.
+O retorno deve indicar `ok: true` e `version: 4.3.0`.
 
 ### Atualização de uma versão anterior
 
@@ -420,7 +395,7 @@ Preserve o mapeamento persistente `/DATA/AppData/lonely-wallet/data:/data`. Faç
 
 As conexões abaixo têm níveis diferentes de integração. Credencial válida não significa cobertura de todos os tickers ou disponibilidade de todos os endpoints.
 
-- **Ativas no processamento:** brapi (cotações, histórico e proventos conforme endpoint/plano), HG Brasil (cotações e séries históricas compatíveis), Yahoo Finance (contingência não oficial), Banco Central/SGS (CDI e outras séries) e IBGE/SIDRA (consulta de inflação).
+- **Ativas no processamento:** brapi (cotações, histórico e proventos conforme endpoint/plano), HG Brasil (cotações e séries históricas compatíveis), Twelve Data e Alpha Vantage (fontes alternativas para cotações/histórico), Yahoo Finance (contingência não oficial), Banco Central/SGS (CDI e outras séries) e IBGE/SIDRA (consulta de inflação).
 - **Uso limitado:** Dados B3 fornece séries de índices; Pluggy lê os dados disponíveis nos itens MeuPluggy e importa posições/movimentações. A frequência configurada no Lonely Wallet regula a leitura/importação local, não a atualização bancária do conector.
 - **Somente catálogo/teste de credencial nesta versão:** FRED tem teste de chave, mas não alimenta os cálculos do painel. Tesouro Transparente, CVM Dados Abertos e APIs oficiais B3 são links de referência; não há sincronização automatizada por essas fontes. A importação B3 disponível é por planilha.
 

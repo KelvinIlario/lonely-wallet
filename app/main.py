@@ -35,7 +35,7 @@ def _dashboard_cache_signature():
     conexão após um checkpoint sem que o conteúdo lógico do banco tenha mudado.
     WALs não vazios são incluídos para invalidar o cache após gravações recentes.
     """
-    records = [('local_date', datetime.now(TZ).date().isoformat(), 0)]
+    records = []
     for path in (DB_PATH, TOKEN_DB_PATH):
         try:
             stat = os.stat(path)
@@ -523,20 +523,6 @@ prepare_database_files()
 init_db()
 migrate_api_credentials()
 
-
-def retire_removed_api_credentials():
-    """Remove apenas as credenciais dos provedores explicitamente descontinuados."""
-    connection = sqlite3.connect(TOKEN_DB_PATH, timeout=15)
-    try:
-        connection.execute('PRAGMA busy_timeout=15000')
-        connection.execute("DELETE FROM api_credentials WHERE provider IN ('twelvedata','alphavantage')")
-        connection.commit()
-    finally:
-        connection.close()
-
-
-retire_removed_api_credentials()
-
 # Persist the Flask signing key in the mounted data directory so container recreation
 # does not invalidate the PIN setup or expose a predictable development secret.
 def load_session_secret():
@@ -804,6 +790,8 @@ API_PROVIDERS = {
     'pluggy': {'name':'Pluggy', 'category':'Open Finance · contas e investimentos', 'description':'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.', 'auth':True, 'credential_type':'client_id_secret', 'url':'https://dashboard.pluggy.ai/', 'docs':'https://docs.pluggy.ai/'},
     'brapi': {'name':'brapi', 'category':'Brasil · cotações e histórico', 'description':'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. A cobertura e os limites dependem do plano.', 'auth':True, 'url':'https://brapi.dev/dashboard', 'docs':'https://brapi.dev/docs'},
     'hgbrasil': {'name':'HG Brasil', 'category':'Brasil · mercado e indicadores', 'description':'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano contratado.', 'auth':True, 'url':'https://console.hgbrasil.com/', 'docs':'https://console.hgbrasil.com/documentation/finance'},
+    'twelvedata': {'name':'Twelve Data', 'category':'Global · cotações e séries', 'description':'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura da B3 e os créditos do plano.', 'auth':True, 'url':'https://twelvedata.com/account', 'docs':'https://twelvedata.com/docs'},
+    'alphavantage': {'name':'Alpha Vantage', 'category':'Global · cotações e fundamentos', 'description':'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. A cobertura de tickers brasileiros varia por endpoint.', 'auth':True, 'url':'https://www.alphavantage.co/support/#api-key', 'docs':'https://www.alphavantage.co/documentation/'},
     'fred': {'name':'FRED', 'category':'Macroeconomia internacional', 'description':'A credencial pode ser validada nesta tela, mas o FRED ainda não alimenta cotações, gráficos ou cálculos do painel nesta versão.', 'auth':True, 'url':'https://fred.stlouisfed.org/docs/api/api_key.html', 'docs':'https://fred.stlouisfed.org/docs/api/fred/'},
     'bcb': {'name':'Banco Central · SGS', 'category':'Brasil · fonte oficial', 'description':'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.', 'auth':False, 'url':'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais', 'docs':'https://www.bcb.gov.br/gestao_site/webservices.asp'},
     'ibge': {'name':'IBGE · SIDRA', 'category':'Brasil · estatísticas e inflação', 'description':'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.', 'auth':False, 'url':'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3', 'docs':'https://apisidra.ibge.gov.br/'},
@@ -1655,7 +1643,7 @@ def api_integrations_save(provider):
     if request.method == 'DELETE':
         token_db().execute('DELETE FROM api_credentials WHERE provider=?', (provider,)); token_db().commit()
         if provider == 'pluggy': PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
-        if provider in ('brapi','hgbrasil','dadosb3','fred'):
+        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True})
     payload = request.get_json(silent=True) or {}
@@ -1666,7 +1654,7 @@ def api_integrations_save(provider):
         token_db().commit()
         if provider == 'pluggy' and not enabled:
             PLUGGY_AUTH_CACHE.update(api_key='', expires_at=0)
-        if provider in ('brapi','hgbrasil','dadosb3','fred'):
+        if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
             CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
         return jsonify({'ok':True,'enabled':bool(enabled),'configured':bool(token_db().execute('SELECT 1 FROM api_credentials WHERE provider=?',(provider,)).fetchone())})
     if provider == 'pluggy':
@@ -1688,97 +1676,58 @@ def api_integrations_save(provider):
     else:
         token_db().execute('UPDATE api_credentials SET enabled=?,updated_at=? WHERE provider=?', (1 if enabled else 0,datetime.now(TZ).isoformat(timespec='seconds'),provider))
     token_db().commit()
-    if provider in ('brapi','hgbrasil','dadosb3','fred'):
+    if provider in ('brapi','hgbrasil','dadosb3','twelvedata','alphavantage','fred'):
         CACHE.clear(); PORTFOLIO_HISTORY_CACHE.clear(); BENCHMARK_CACHE.clear(); PROVENTOS_SYNC_CACHE.update(time=0, result=None, signature=None)
     return jsonify({'ok':True,'configured':bool(_get_api_token(provider))})
 
 
 @app.route('/api/integracoes/<provider>/test', methods=['POST'])
 def api_integrations_test(provider):
-    """Valida as integrações mantidas no catálogo sem confundir autenticação e cobertura."""
     if provider not in API_PROVIDERS:
-        return jsonify({'ok': False, 'message': 'Provedor desconhecido ou removido.'}), 404
-    if provider in ('bcb', 'ibge', 'tesouro', 'cvm', 'b3', 'yahoo'):
-        return jsonify({'ok': False, 'message': 'Esta fonte não usa token cadastrado. Consulte a documentação no catálogo.'}), 400
+        return jsonify({'ok':False,'message':'Provedor desconhecido.'}), 404
+    if provider in ('bcb','ibge','tesouro','cvm','b3','yahoo'):
+        return jsonify({'ok':False,'message':'Esta fonte não usa token cadastrado. A disponibilidade e os requisitos estão descritos no catálogo.'}), 400
     if provider == 'pluggy':
         credentials = _get_pluggy_credentials()
         if not credentials.get('client_id') or not credentials.get('client_secret'):
-            return jsonify({'ok': False, 'message': 'Cadastre o Client ID e o Client Secret antes de testar.'}), 400
+            return jsonify({'ok':False,'message':'Cadastre Client ID e Client Secret antes de testar.'}), 400
         try:
-            response = requests.post('https://api.pluggy.ai/auth', json={
-                'clientId': credentials['client_id'], 'clientSecret': credentials['client_secret']
-            }, timeout=20)
-            data = response.json() if response.content else {}
-            if response.status_code >= 400 or not data.get('apiKey'):
-                return jsonify({'ok': False, 'message': 'A Pluggy recusou a autenticação. Confira o Client ID e o Client Secret.'}), 400
-            return jsonify({'ok': True, 'message': 'Credenciais autenticadas. A atualização dos itens MeuPluggy segue a agenda do próprio serviço.'})
-        except (requests.RequestException, ValueError):
-            return jsonify({'ok': False, 'message': 'Não foi possível alcançar a Pluggy. Verifique a conexão com a internet e tente novamente.'}), 502
-
+            response = requests.post('https://api.pluggy.ai/auth', json={'clientId':credentials['client_id'],'clientSecret':credentials['client_secret']}, timeout=20)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get('apiKey'):
+                raise ValueError(data.get('message') or 'A Pluggy não retornou uma API Key.')
+            return jsonify({'ok':True,'message':'Credenciais autenticadas. API Key válida; o fluxo pessoal MeuPluggy usa itemIds cadastrados manualmente.'})
+        except (requests.RequestException, ValueError) as exc:
+            return jsonify({'ok':False,'message':'Não foi possível autenticar na Pluggy. Confira as credenciais e tente novamente.'}), 400
     token = _get_api_token(provider)
     if not token:
-        return jsonify({'ok': False, 'message': 'Cadastre um token antes de testar.'}), 400
-
+        return jsonify({'ok':False,'message':'Cadastre um token antes de testar.'}), 400
     try:
         if provider == 'brapi':
-            response = requests.get('https://brapi.dev/api/v2/user/usage',
-                headers={'Authorization': f'Bearer {token}'}, timeout=15)
+            response = requests.get('https://brapi.dev/api/v2/user/usage', headers={'Authorization':f'Bearer {token}'}, timeout=15)
         elif provider == 'hgbrasil':
-            response = requests.get('https://api.hgbrasil.com/finance', params={'key': token}, timeout=15)
+            response = requests.get('https://api.hgbrasil.com/finance', params={'key':token}, timeout=15)
+        elif provider == 'twelvedata':
+            response = requests.get('https://api.twelvedata.com/time_series', params={'symbol':'AAPL','interval':'1day','outputsize':1,'apikey':token}, timeout=15)
+        elif provider == 'alphavantage':
+            response = requests.get('https://www.alphavantage.co/query', params={'function':'GLOBAL_QUOTE','symbol':'IBM','apikey':token}, timeout=15)
         elif provider == 'fred':
-            response = requests.get('https://api.stlouisfed.org/fred/series',
-                params={'series_id': 'GDP', 'api_key': token, 'file_type': 'json'}, timeout=15)
+            response = requests.get('https://api.stlouisfed.org/fred/series', params={'series_id':'GDP','api_key':token,'file_type':'json'}, timeout=15)
         elif provider == 'dadosb3':
-            response = requests.get('https://dadosb3.com/indices/IFIX/precos',
-                headers={'X-API-Key': token}, timeout=15)
-        else:
-            return jsonify({'ok': False, 'message': 'O teste desta integração ainda não está disponível.'}), 400
-
-        try:
-            data = response.json()
-        except ValueError:
-            data = {}
-        if not isinstance(data, dict):
-            data = {}
-
-        if provider == 'brapi' and (data.get('error') is True or response.status_code >= 400):
-            code = str(data.get('code') or '').upper()
-            if response.status_code == 401 or code in ('INVALID_TOKEN', 'MISSING_TOKEN'):
-                detail = 'Token da Brapi inválido ou ausente. Confira a chave cadastrada.'
-            elif response.status_code == 403:
-                detail = 'Token reconhecido, mas o plano da Brapi não libera este recurso.'
-            elif response.status_code == 429:
-                detail = 'Limite de consultas da Brapi atingido. Aguarde o prazo indicado pelo provedor.'
-            else:
-                detail = str(data.get('message') or 'A Brapi não confirmou a autenticação.')[:220]
-            return jsonify({'ok': False, 'message': detail}), 400
-        if provider == 'hgbrasil':
-            if data.get('valid_key') is False:
-                return jsonify({'ok': False, 'message': 'A HG Brasil recusou a chave cadastrada.'}), 400
-            if data.get('valid_key') is not True:
-                return jsonify({'ok': False, 'message': 'A HG Brasil não confirmou a validade da chave na resposta.'}), 400
-        if provider == 'fred' and (data.get('error_code') or data.get('error_message')):
-            return jsonify({'ok': False, 'message': 'FRED: ' + str(data.get('error_message') or 'Chave não autorizada.')[:220]}), 400
+            response = requests.get('https://dadosb3.com/indices/IFIX/precos', headers={'X-API-Key':token}, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if provider == 'twelvedata' and data.get('status') == 'error': raise ValueError(data.get('message') or 'A API retornou erro.')
+        if provider == 'alphavantage' and (data.get('Error Message') or data.get('Note') or data.get('Information')): raise ValueError(data.get('Error Message') or data.get('Note') or data.get('Information'))
+        if provider == 'hgbrasil' and data.get('valid_key') is False: raise ValueError('A chave foi recusada pela HG Brasil.')
         if provider == 'dadosb3' and (data.get('amostra') or not isinstance(data.get('serie'), list) or len(data.get('serie') or []) < 2):
-            return jsonify({'ok': False, 'message': 'A chave não liberou a série histórica completa do Dados B3. Confira a chave e o plano.'}), 400
-        if response.status_code >= 400:
-            return jsonify({'ok': False, 'message': f'{API_PROVIDERS[provider]["name"]} respondeu HTTP {response.status_code}. Confira a chave e as permissões da conta.'}), 400
-        if provider == 'brapi' and not data:
-            return jsonify({'ok': False, 'message': 'A Brapi respondeu sem os dados de uso da conta. Confira o token e tente novamente.'}), 502
+            raise ValueError('A chave ainda não liberou o histórico completo. Verifique a chave e tente novamente.')
+        return jsonify({'ok':True,'message':'Conexão autenticada. A cobertura de cada ticker e endpoint ainda depende do plano e do provedor.'})
+    except (requests.RequestException, ValueError) as exc:
+        message = 'Não foi possível validar a integração. Confira as credenciais, a disponibilidade do provedor e tente novamente.'
+        return jsonify({'ok':False,'message':message}), 400
 
-        messages = {
-            'brapi': 'Brapi autenticada. A cobertura de tickers e endpoints depende do plano.',
-            'hgbrasil': 'HG Brasil autenticada. A consulta de preço por ativo exige plano compatível (Member Premium ou superior).',
-            'fred': 'FRED autenticada. Nesta versão, a fonte é validada, mas ainda não alimenta os cálculos da carteira.',
-            'dadosb3': 'Dados B3 autenticada. Série histórica completa disponível para a chave cadastrada.'
-        }
-        return jsonify({'ok': True, 'message': messages.get(provider, 'Conexão autenticada.')})
-    except requests.Timeout:
-        return jsonify({'ok': False, 'message': f'{API_PROVIDERS[provider]["name"]}: tempo limite excedido ao testar a conexão.'}), 504
-    except requests.RequestException:
-        return jsonify({'ok': False, 'message': f'Não foi possível alcançar {API_PROVIDERS[provider]["name"]}. Verifique a conexão e tente novamente.'}), 502
-    except (ValueError, TypeError):
-        return jsonify({'ok': False, 'message': f'{API_PROVIDERS[provider]["name"]} retornou uma resposta inválida.'}), 502
 
 def _fundamental_rating(quote, asset_type=''):
     """Nota automática conservadora: pontua somente indicadores realmente recebidos da API."""
@@ -1858,27 +1807,43 @@ def _fundamental_rating(quote, asset_type=''):
 
 
 def _enrich_quote_fundamentals(ticker, quote):
-    """Normaliza fundamentos já retornados pela fonte principal, sem chamadas ocultas a APIs externas."""
+    """Complementa fundamentos com provedores conectados que oferecem dados por empresa."""
     enriched = dict(quote or {})
+    # Alpha Vantage OVERVIEW: só consulta se o usuário cadastrou e habilitou a chave.
+    token = _get_api_token('alphavantage')
+    if token:
+        try:
+            symbol = str(ticker or '').upper()
+            if symbol.endswith('.SA'):
+                symbol = symbol[:-3]
+            response = requests.get('https://www.alphavantage.co/query',
+                params={'function': 'OVERVIEW', 'symbol': symbol + '.SA', 'apikey': token}, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict) and data.get('Symbol') and not data.get('Note') and not data.get('Information'):
+                aliases = {
+                    'ReturnOnEquityTTM':'returnOnEquity','ProfitMargin':'profitMargins',
+                    'OperatingMarginTTM':'operatingMargins','DebtToEquity':'debtToEquity',
+                    'CurrentRatio':'currentRatio','DividendYield':'dividendYield',
+                    'PayoutRatio':'payoutRatio','PERatio':'priceEarnings',
+                    'PriceToBookRatio':'priceToBook','QuarterlyRevenueGrowthYOY':'revenueGrowth',
+                    'QuarterlyEarningsGrowthYOY':'earningsGrowth','52WeekHigh':'fiftyTwoWeekHigh'
+                }
+                for source, target in aliases.items():
+                    value = data.get(source)
+                    if value not in (None, '', 'None', '0') and enriched.get(target) in (None, '', 0, '0'):
+                        try: enriched[target] = float(value)
+                        except (TypeError, ValueError): pass
+                enriched['fundamentalProviders'] = sorted(set((enriched.get('fundamentalProviders') or []) + ['Alpha Vantage']))
+        except (requests.RequestException, ValueError, TypeError):
+            pass
     if enriched.get('priceEarnings') is not None or enriched.get('returnOnEquity') is not None:
-        providers = list(enriched.get('fundamentalProviders') or [])
-        provider = str(enriched.get('quoteProvider') or '').strip().lower()
-        if provider == 'brapi' and 'brapi' not in providers:
+        providers = enriched.get('fundamentalProviders') or []
+        if enriched.get('quoteProvider') == 'brapi' and 'brapi' not in providers:
             providers.append('brapi')
         enriched['fundamentalProviders'] = providers
     return enriched
 
-
-def _normalize_logo_url(value):
-    """Aceita URL simples ou objeto logo.small/logo.big; rejeita objetos e esquemas inválidos."""
-    if isinstance(value, dict):
-        value = value.get('small') or value.get('big') or value.get('url') or value.get('src')
-    if not isinstance(value, str):
-        return ''
-    candidate = value.strip()
-    if candidate.startswith(('https://', 'http://', '/static/')):
-        return candidate
-    return ''
 
 def _load_last_valid_quote(ticker):
     """Retorna a última cotação válida persistida, identificada como desatualizada."""
@@ -1949,58 +1914,9 @@ def _save_last_valid_quote(ticker, quote):
         pass
 
 
-def _derive_daily_change_from_quote(quote):
-    """Deriva a variação diária com dados da mesma fonte, sem usar custo médio."""
-    if not isinstance(quote, dict):
-        return quote
-    percent_keys = ('regularMarketChangePercent', 'changePercent', 'change_percent', 'percent_change')
-
-    def as_number(value):
-        try:
-            if value is None or value == '':
-                return None
-            parsed = float(str(value).strip().replace('%', '').replace(',', '.'))
-            return parsed if math.isfinite(parsed) else None
-        except (TypeError, ValueError, OverflowError):
-            return None
-
-    for key in percent_keys:
-        existing_value = as_number(quote.get(key))
-        if existing_value is not None:
-            quote['regularMarketChangePercent'] = existing_value
-            return quote
-    # Respostas como '-', 'N/A' ou texto inválido não podem bloquear o fallback.
-    for key in percent_keys:
-        if quote.get(key) not in (None, ''):
-            quote[key] = None
-
-    current = next((quote.get(key) for key in (
-        'regularMarketPrice', 'close', 'price', '05. price'
-    ) if quote.get(key) not in (None, '')), None)
-    previous = next((quote.get(key) for key in (
-        'regularMarketPreviousClose', 'previousClose', 'previous_close',
-        '08. previous close', 'prev_close', 'chartPreviousClose', 'previous_value'
-    ) if quote.get(key) not in (None, '')), None)
-    current_value, previous_value = as_number(current), as_number(previous)
-    if previous_value is None and current_value is not None:
-        absolute_change = next((quote.get(key) for key in (
-            'regularMarketChange', 'change_price', 'change_value', 'changeValue'
-        ) if quote.get(key) not in (None, '')), None)
-        change_value = as_number(absolute_change)
-        if change_value is not None:
-            previous_value = current_value - change_value
-    if current_value is None or previous_value is None:
-        return quote
-    if current_value <= 0 or previous_value <= 0:
-        return quote
-    quote['regularMarketChangePercent'] = round((current_value / previous_value - 1) * 100, 4)
-    return quote
-
 def cotacao(ticker, force_refresh=False):
     now = time.time()
     ticker = str(ticker or '').strip().upper()
-    if not ticker:
-        return {}
     if not force_refresh and ticker in CACHE and now - CACHE[ticker][0] < CACHE_TTL:
         return CACHE[ticker][1]
 
@@ -2010,117 +1926,130 @@ def cotacao(ticker, force_refresh=False):
     if _brapi_token():
         params['token'] = _brapi_token()
 
+    # Primeira tentativa: endpoint de cotação individual.
     try:
-        response = requests.get(f'https://brapi.dev/api/quote/{ticker}',
-            params=params, headers=headers, timeout=8)
+        response = requests.get(
+            f'https://brapi.dev/api/quote/{ticker}',
+            params=params, headers=headers, timeout=8
+        )
         response.raise_for_status()
         results = response.json().get('results') or []
         if results and isinstance(results[0], dict):
             data = {**results[0], 'quoteProvider': 'brapi'}
-    except (requests.RequestException, ValueError, TypeError, AttributeError):
+    except Exception:
         data = {}
 
-    data = _derive_daily_change_from_quote(data)
-    has_price = any(data.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price'))
-    has_daily_change = any(data.get(key) not in (None, '') for key in ('regularMarketChangePercent', 'changePercent', 'change_percent', 'percent_change'))
-
-    # Uma busca Brapi adicional pode preencher campos ausentes da cotação individual.
-    # Como é o mesmo provedor, preço, fechamento e variação continuam na mesma origem.
-    if ticker and (not has_price or not has_daily_change):
+    # Alguns tickers (principalmente FIIs/BDRs) podem não retornar preço
+    # no endpoint individual. Tenta localizar a cotação pela lista da Brapi.
+    has_price = any(
+        data.get(key) not in (None, '', 0, '0')
+        for key in ('regularMarketPrice', 'close', 'price')
+    )
+    if not has_price and ticker:
         try:
-            response = requests.get('https://brapi.dev/api/quote/list',
+            response = requests.get(
+                'https://brapi.dev/api/quote/list',
                 params={'search': ticker, 'limit': 20, 'sortBy': 'name', 'sortOrder': 'asc'},
-                headers=headers, timeout=8)
+                headers=headers, timeout=8
+            )
             response.raise_for_status()
             stocks = response.json().get('stocks') or []
-            match = next((item for item in stocks
-                if str(item.get('stock') or item.get('symbol') or '').upper() == ticker), None)
-            if isinstance(match, dict):
-                merged = dict(data)
-                for key, value in match.items():
-                    if merged.get(key) in (None, '', 0, '0') and value not in (None, '', 0, '0'):
-                        merged[key] = value
-                merged['quoteProvider'] = 'brapi'
-                data = _derive_daily_change_from_quote(merged)
-        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            match = next((
+                item for item in stocks
+                if str(item.get('stock') or item.get('symbol') or '').upper() == ticker
+            ), None)
+            if match:
+                data = {**data, **match}
+        except Exception:
             pass
 
+    # Fontes alternativas configuradas: a cotação completa vem de uma única fonte
+    # por vez para não misturar preço de um provedor com variação de outro.
     has_price = any(data.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price'))
-    has_daily_change = any(data.get(key) not in (None, '') for key in ('regularMarketChangePercent', 'changePercent', 'change_percent', 'percent_change'))
-    if not has_price or not has_daily_change:
-        original_logo = _normalize_logo_url(data.get('logourl')) or _normalize_logo_url(data.get('logo'))
-        fallback = _fallback_market_quote(ticker, require_daily_change=has_price and not has_daily_change)
-        fallback_has_price = any(fallback.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price')) if fallback else False
-        fallback_has_change = any(fallback.get(key) not in (None, '') for key in ('regularMarketChangePercent', 'changePercent', 'change_percent', 'percent_change')) if fallback else False
-        if fallback and fallback_has_price and (not has_price or (not has_daily_change and fallback_has_change)):
-            data = fallback
-            if not data.get('logo') and original_logo:
-                data['logo'] = original_logo
-
-    data = _derive_daily_change_from_quote(data)
-    logo = _normalize_logo_url(data.get('logourl')) or _normalize_logo_url(data.get('logo'))
-    if logo:
-        data['logo'] = logo
-    else:
-        data['logo'] = ''
+    if not has_price and ticker:
+        fallback = _fallback_market_quote(ticker)
+        if fallback:
+            data = {**data, **fallback}
 
     has_valid_price = any(data.get(key) not in (None, '', 0, '0') for key in ('regularMarketPrice', 'close', 'price'))
     if has_valid_price:
         data['quoteIsStale'] = False
         _save_last_valid_quote(ticker, data)
     else:
+        # Mantém a última cotação realmente observada, mas sempre a identifica como antiga.
         data = _load_last_valid_quote(ticker)
     data = _enrich_quote_fundamentals(ticker, data)
     CACHE[ticker] = (now, data)
     return data
 
-def _fallback_market_quote(ticker, require_daily_change=False):
-    """Busca preço e variação diária coerentes na HG Brasil ou Yahoo Finance."""
-    headers = {'User-Agent': 'Mozilla/5.0 LonelyWallet/4.3.2'}
-    normalized_ticker = str(ticker or '').upper().removesuffix('.SA')
-    is_b3_ticker = bool(re.fullmatch(r'[A-Z]{4,6}\d{1,2}', normalized_ticker))
 
-    token = _get_api_token('hgbrasil') if is_b3_ticker else ''
+def _fallback_market_quote(ticker):
+    """Busca cotação/variação em provedores alternativos configurados, sem combinar séries."""
+    headers = {'User-Agent': 'Mozilla/5.0 LonelyWallet/2.0.69'}
+    # HG Brasil: cobertura de ativos B3 conforme o plano.
+    token = _get_api_token('hgbrasil')
     if token:
         try:
             response = requests.get('https://api.hgbrasil.com/finance/stock_price',
-                params={'key': token, 'symbol': normalized_ticker}, headers=headers, timeout=6)
+                params={'key': token, 'symbol': ticker}, headers=headers, timeout=10)
             response.raise_for_status()
             payload = response.json()
             results = payload.get('results') or {}
-            item = results.get(normalized_ticker) or results.get(normalized_ticker.lower()) or results.get(normalized_ticker.upper()) or {}
-            if isinstance(item, dict) and not item.get('error'):
-                price = item.get('price') or item.get('close') or (item.get('quote') or {}).get('value')
-                change = item.get('change_percent')
-                market = item.get('market') or {}
-                quote_block = item.get('quote') or {}
-                change_value = item.get('change_price') or quote_block.get('change_value')
-                previous = market.get('previous_value')
-                normalized = _derive_daily_change_from_quote({
-                    'regularMarketPrice': price,
-                    'regularMarketChangePercent': change,
-                    'regularMarketChange': change_value,
-                    'regularMarketPreviousClose': previous
-                })
-                percent = normalized.get('regularMarketChangePercent')
-                if price and float(price) > 0 and (not require_daily_change or percent not in (None, '')):
-                    return {
-                        'regularMarketPrice': float(price),
-                        'regularMarketChangePercent': float(percent) if percent not in (None, '') else None,
+            stocks = results.get('stocks') or results
+            item = stocks.get(ticker) or stocks.get(ticker.upper()) or {}
+            price = item.get('price') or item.get('close')
+            change = item.get('change_percent') or item.get('changePercent')
+            if price and float(price) > 0:
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(change) if change is not None else None,
                         'longName': item.get('name') or ticker,
-                        'logo': _normalize_logo_url(item.get('logo')),
-                        'quoteProvider': 'HG Brasil'
-                    }
+                        'quoteProvider': 'HG Brasil'}
         except (requests.RequestException, ValueError, TypeError, AttributeError):
             pass
 
-    # Yahoo Finance permanece como contingência pública não oficial.
+    # Twelve Data: consulta apenas quando há chave cadastrada.
+    token = _get_api_token('twelvedata')
+    if token:
+        try:
+            response = requests.get('https://api.twelvedata.com/quote',
+                params={'symbol': ticker, 'exchange': 'BVMF', 'apikey': token},
+                headers=headers, timeout=10)
+            response.raise_for_status()
+            item = response.json()
+            price = item.get('close') or item.get('price')
+            if item.get('status') != 'error' and price and float(price) > 0:
+                change = item.get('percent_change')
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(change) if change not in (None, '') else None,
+                        'longName': item.get('name') or ticker,
+                        'quoteProvider': 'Twelve Data'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Alpha Vantage é fallback final para tickers que o endpoint reconhece.
+    token = _get_api_token('alphavantage')
+    if token:
+        try:
+            response = requests.get('https://www.alphavantage.co/query',
+                params={'function': 'GLOBAL_QUOTE', 'symbol': ticker, 'apikey': token},
+                headers=headers, timeout=10)
+            response.raise_for_status()
+            item = response.json().get('Global Quote') or {}
+            price = item.get('05. price')
+            change = item.get('10. change percent')
+            if price and float(price) > 0:
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': float(str(change or '').replace('%', '').replace(',', '.')) if change else None,
+                        'longName': ticker, 'quoteProvider': 'Alpha Vantage'}
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            pass
+
+    # Yahoo Finance sem chave permanece como contingência pública, não oficial.
     try:
-        yahoo_symbol = normalized_ticker + '.SA' if is_b3_ticker else normalized_ticker
-        encoded_symbol = requests.utils.quote(yahoo_symbol, safe='')
         response = requests.get(
-            f'https://query1.finance.yahoo.com/v8/finance/chart/{encoded_symbol}',
-            params={'range': '5d', 'interval': '1d'}, headers=headers, timeout=6)
+            f'https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(ticker, safe="")}',
+            params={'range': '5d', 'interval': '1d'},
+            headers=headers, timeout=10)
         response.raise_for_status()
         result = next(iter(response.json().get('chart', {}).get('result') or []), None)
         if result:
@@ -2128,15 +2057,15 @@ def _fallback_market_quote(ticker, require_daily_change=False):
             price = meta.get('regularMarketPrice')
             previous = meta.get('chartPreviousClose') or meta.get('previousClose')
             if price and float(price) > 0:
-                change = ((float(price) / float(previous)) - 1) * 100 if previous and float(previous) > 0 else None
-                if not require_daily_change or change is not None:
-                    return {'regularMarketPrice': float(price),
-                            'regularMarketChangePercent': change,
-                            'longName': meta.get('longName') or meta.get('shortName') or ticker,
-                            'quoteProvider': 'Yahoo Finance'}
+                change = ((float(price) / float(previous)) - 1) * 100 if previous else None
+                return {'regularMarketPrice': float(price),
+                        'regularMarketChangePercent': change,
+                        'longName': meta.get('longName') or meta.get('shortName') or ticker,
+                        'quoteProvider': 'Yahoo Finance'}
     except (requests.RequestException, ValueError, TypeError, AttributeError):
         pass
     return {}
+
 
 def _sgs_series(series_id, start_date, end_date):
     """Busca séries históricas oficiais do BCB/SGS, em janelas inferiores a 10 anos."""
@@ -2590,14 +2519,7 @@ def health():
 
 
 @app.route('/')
-def index():
-    version_path = os.path.join(os.path.dirname(__file__), '..', 'VERSION')
-    try:
-        with open(version_path, 'r', encoding='utf-8') as version_file:
-            version = version_file.read().strip() or 'desconhecida'
-    except OSError:
-        version = 'desconhecida'
-    return render_template('index.html', version=version)
+def index(): return render_template('index.html')
 
 
 @app.route('/api/operacoes/exportar', methods=['GET'])
@@ -3262,9 +3184,8 @@ def _daily_market_change(current_value, change_percent, stale=False):
     if stale or current_value is None or change_percent is None:
         return None, None
     try:
-        value = float(str(current_value).strip().replace(',', '.'))
-        percent_text = str(change_percent).strip().replace('%', '').replace(',', '.')
-        percent = float(percent_text)
+        value = float(current_value)
+        percent = float(change_percent)
         if not math.isfinite(value) or not math.isfinite(percent) or value < 0 or percent <= -100:
             return None, None
         previous_value = value / (1.0 + percent / 100.0)
@@ -3378,7 +3299,7 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
         pluggy_return = _pluggy_total_return(ticker, value, dividends) if pluggy_position else None
         invested += cost; actual += value; received += (0.0 if kind == 'renda_fixa' else dividends)
         default_name = imported.get('nome') if imported else ticker
-        daily_raw = next((quote.get(key) for key in ('regularMarketChangePercent', 'changePercent', 'change_percent', 'percent_change') if quote.get(key) not in (None, '')), None)
+        daily_raw = quote.get('regularMarketChangePercent') if quote.get('regularMarketChangePercent') is not None else quote.get('changePercent')
         daily_variation, daily_variation_value = _daily_market_change(
             value, daily_raw, stale=bool(quote.get('quoteIsStale')) or not market_quote_available or kind == 'renda_fixa'
         )
@@ -3389,7 +3310,7 @@ def carteira(use_cached_quotes=False, force_refresh_quotes=False):
         variation_pct = pluggy_return['variation_pct'] if pluggy_return else (round(variation_value/cost*100,2) if cost else 0)
         total_return_value = pluggy_return['total_value'] if pluggy_return else (variation_value + (0.0 if kind=='renda_fixa' else dividends))
         profitability_pct = pluggy_return['total_pct'] if pluggy_return else (round(total_return_value/cost*100,2) if cost else 0)
-        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_desatualizada':bool(quote.get('quoteIsStale')),'cotacao_ultima_atualizacao':quote.get('quoteLastUpdated'),'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':('/static/lonely-wallet-favicon.png' if kind=='renda_fixa' else _normalize_logo_url(quote.get('logourl') or quote.get('logo'))) ,'variacao_dia':daily_variation,'variacao_dia_valor':daily_variation_value})
+        itens.append({'ticker':ticker,'tipo':kind,'quantidade':round(qty,6),'preco_medio':round(avg,2),'preco_atual':round(price,2) if quote_available else None,'cotacao_disponivel':quote_available,'cotacao_desatualizada':bool(quote.get('quoteIsStale')),'cotacao_ultima_atualizacao':quote.get('quoteLastUpdated'),'cotacao_origem':quote_source,'investido':round(cost,2),'valor_atual':round(value,2),'lucro':round(variation_value,2),'lucro_pct':profitability_pct,'variacao_valor':round(variation_value,2),'variacao_pct':variation_pct,'pluggy_variacao_pct':pluggy_return['variation_pct'] if pluggy_return else None,'pluggy_variacao_valor':pluggy_return['variation_value'] if pluggy_return else None,'pluggy_retorno_pct':pluggy_return['total_pct'] if pluggy_return else None,'pluggy_retorno_valor':pluggy_return['total_value'] if pluggy_return else None,'pluggy_investido_historico':pluggy_return['invested'] if pluggy_return else None,'pluggy_primeira_compra':pluggy_return['first_buy'] if pluggy_return else None,'proventos':0.0 if kind=='renda_fixa' else round(dividends,2),'calculo_indexador':fixed_calc_ok if kind=='renda_fixa' else None,'aviso_calculo':fixed_calc_warning if kind=='renda_fixa' else None,'pl':quote.get('priceEarnings'),'pvp':quote.get('priceToBook') or quote.get('priceToBookRatio') or quote.get('priceToBookValue'),'avaliacao':_fundamental_rating(quote, kind),'preco_teto_bazin':round(ceiling,2) if ceiling else None,'abaixo_do_teto':bool(ceiling and price and price<=ceiling),'nome':quote.get('longName') or quote.get('shortName') or default_name or ticker,'logo':quote.get('logourl') or quote.get('logo') or ('/static/lonely-wallet-logo.png' if kind=='renda_fixa' else f'https://icons.brapi.dev/icons/{ticker}.svg'),'variacao_dia':daily_variation,'variacao_dia_valor':daily_variation_value})
     allocation={}
     for item in itens: allocation[item['tipo']]=allocation.get(item['tipo'],0)+item['valor_atual']
     return jsonify(itens=itens,resumo={'investido':round(invested,2),'atual':round(actual,2),'lucro':round(actual-invested,2),'lucro_pct':round((actual/invested-1)*100,2) if invested else 0,'proventos':round(received,2),'ativos':len(itens)},alocacao=allocation)
@@ -3532,6 +3453,53 @@ def _fetch_brapi_dividend_events(asset_type, symbols, start_date):
     return events, errors
 
 
+def _fetch_alphavantage_dividend_events(symbols, start_date):
+    """Consulta o endpoint DIVIDENDS quando há chave Alpha Vantage.
+
+    O endpoint só é usado como fonte complementar. Eventos sem data de pagamento
+    ou valor válido são descartados pelo normalizador comum, e a chave canônica
+    do evento impede que o mesmo pagamento seja contado duas vezes entre fontes.
+    """
+    token = _get_api_token('alphavantage')
+    if not token or not symbols:
+        return [], []
+    events, errors = [], []
+    for ticker in symbols:
+        # Alpha Vantage identifica ativos da B3 com sufixo .SAO em endpoints
+        # que oferecem cobertura internacional; a cobertura varia por ticker/plano.
+        symbol = ticker if '.' in ticker else ticker + '.SAO'
+        try:
+            response = requests.get('https://www.alphavantage.co/query', params={
+                'function': 'DIVIDENDS', 'symbol': symbol, 'apikey': token
+            }, timeout=18)
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
+                errors.append(f'Alpha Vantage: {ticker} sem cobertura ou limite da API')
+                continue
+            rows = payload.get('data') or payload.get('dividends') or []
+            for row in rows:
+                payment = _api_date(row.get('payment_date') or row.get('paymentDate'))
+                ex_date = _api_date(row.get('ex_dividend_date') or row.get('exDate'))
+                record = _api_date(row.get('record_date') or row.get('recordDate'))
+                declared = _api_date(row.get('declaration_date') or row.get('declarationDate'))
+                try:
+                    amount = float(row.get('amount') or row.get('dividend') or 0)
+                except (TypeError, ValueError):
+                    amount = 0
+                if amount <= 0 or not payment or (start_date and payment < start_date):
+                    continue
+                events.append({
+                    'symbol': ticker, 'rawRate': amount, 'paymentDate': payment,
+                    'lastDatePrior': record, 'exDate': ex_date,
+                    'approvedOn': declared, 'label': str(row.get('type') or 'DIVIDENDO').upper(),
+                    'remarks': 'Fonte complementar: Alpha Vantage DIVIDENDS.'
+                })
+        except (requests.RequestException, ValueError, TypeError):
+            errors.append(f'Alpha Vantage: falha ao consultar {ticker}')
+    return events, errors
+
+
 def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
     """Sincroniza proventos apenas para posições atualmente mantidas. Idempotente e limitada por cache."""
     now_ts = time.time()
@@ -3579,6 +3547,13 @@ def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
     fetched.extend((event, 'acao') for event in stock_events)
     errors.extend(stock_errors + fii_errors)
 
+    # Alpha Vantage DIVIDENDS é consultada como fonte complementar quando há
+    # token configurado. A normalização e a chave canônica abaixo deduplicam
+    # pagamentos já retornados pela brapi ou pelo fallback de cotação.
+    alpha_symbols = sorted(symbol for symbol, kind in types.items() if kind in stock_types or kind in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'})
+    alpha_events, alpha_errors = _fetch_alphavantage_dividend_events(alpha_symbols, start_date)
+    fetched.extend((event, 'fii' if types.get(event.get('symbol')) in {'fii', 'fiis', 'fundo_imobiliario', 'fundos_imobiliarios'} else 'acao') for event in alpha_events)
+    errors.extend(alpha_errors)
 
     # Fallback compatível com a cotação v1 usada pela versão estável: ela ainda
     # pode trazer eventos em dividendsData.cashDividends quando o endpoint v2
@@ -3648,7 +3623,7 @@ def sync_brapi_proventos(force=False, quote_items=None, active_items=None):
             continue
         raw_label = str(event.get('label') or ('RENDIMENTO' if source_type == 'fii' else 'PROVENTO')).strip().upper()
         label = _normalize_api_income_event_type(raw_label, source_type)
-        status = 'Pago' if payment_date and date.fromisoformat(payment_date) <= today else 'A receber'
+        status = 'Pago' if payment_date and date.fromisoformat(payment_date) < today else 'A receber'
         # Data de pagamento pode ser corrigida pela fonte; não faz parte da chave.
         event_anchor = record_date or payment_date or approved_date or 'sem-data'
         event_key = '|'.join((ticker, label, event_anchor, f'{rate:.10f}'))
@@ -3757,7 +3732,8 @@ def _received_proventos_records(active_tickers=None):
     # entram no acumulado recebido; amortizações não são renda distribuída.
     api_rows = db().execute(
         "SELECT ticker,tipo_ativo,tipo_evento,data_pagamento,valor_total,status "
-        "FROM proventos_api ORDER BY data_pagamento,event_key"
+        "FROM proventos_api WHERE lower(status) IN ('pago','recebido') "
+        "ORDER BY data_pagamento,event_key"
     ).fetchall()
     api_keys = set()
     for raw in api_rows:
@@ -4000,7 +3976,49 @@ def fetch_portfolio_price_history(operations, extra_positions=None):
             )
             response_data.update({symbol: [{**point, 'fonte': 'brapi · histórico de FIIs'} for point in points] for symbol, points in fii_found.items()})
 
-    # Sem histórico da Brapi, tenta o endpoint Yahoo complementar; não mistura fontes no mesmo ticker.
+    # Provedores alternativos autenticados: usados apenas para tickers sem série
+    # válida na brapi. Mantemos uma fonte por ativo e não concatenamos preços distintos.
+    twelve_token = _get_api_token('twelvedata')
+    alpha_token = _get_api_token('alphavantage')
+    for symbol in [item for item in symbols if item not in response_data]:
+        if twelve_token:
+            try:
+                response = requests.get('https://api.twelvedata.com/time_series',
+                    params={'symbol':symbol,'exchange':'BVMF','interval':'1day','outputsize':5000,'apikey':twelve_token},
+                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
+                response.raise_for_status()
+                payload = response.json()
+                if payload.get('status') != 'error' and isinstance(payload.get('values'),list):
+                    points=[]
+                    for row in payload.get('values') or []:
+                        try:
+                            day=date.fromisoformat(str(row.get('datetime') or '')[:10])
+                            close=float(row.get('adjusted_close') or row.get('close') or 0)
+                            if close>0: points.append({'data':day,'preco':close,'fechamento':close,'ajustado':bool(row.get('adjusted_close'))})
+                        except (TypeError,ValueError,AttributeError): continue
+                    if points: response_data[symbol]=[{**point, 'fonte':'Twelve Data · histórico diário'} for point in sorted(points,key=lambda x:x['data'])]
+            except (requests.RequestException,ValueError,TypeError,AttributeError):
+                pass
+        if symbol not in response_data and alpha_token:
+            try:
+                response = requests.get('https://www.alphavantage.co/query',
+                    params={'function':'TIME_SERIES_DAILY_ADJUSTED','symbol':symbol,'outputsize':'full','apikey':alpha_token},
+                    headers={'User-Agent':'LonelyWallet/2.0.69'},timeout=18)
+                response.raise_for_status()
+                payload=response.json()
+                rows=payload.get('Time Series (Daily)') or {}
+                points=[]
+                for day_text,row in rows.items():
+                    try:
+                        day=date.fromisoformat(day_text)
+                        close=float(row.get('5. adjusted close') or row.get('4. close') or 0)
+                        raw_close=float(row.get('4. close') or close)
+                        if close>0: points.append({'data':day,'preco':close,'fechamento':raw_close,'ajustado':bool(row.get('5. adjusted close'))})
+                    except (TypeError,ValueError,AttributeError): continue
+                if points: response_data[symbol]=[{**point, 'fonte':'Alpha Vantage · histórico diário ajustado'} for point in sorted(points,key=lambda x:x['data'])]
+            except (requests.RequestException,ValueError,TypeError,AttributeError):
+                pass
+
     # Classes sem endpoint histórico específico (ex.: renda fixa cadastrada manualmente)
     # não podem bloquear as séries de ativos negociados em bolsa. Para classes não reconhecidas,
     # tenta-se o endpoint legado individualmente.
@@ -4663,6 +4681,54 @@ def _benchmark_monthly_dadosb3(code, start_date, end_date, token=''):
     }
 
 
+def _benchmark_monthly_twelvedata(symbol, start_date, end_date, token):
+    """Série mensal ajustada quando o plano Twelve Data oferece o ativo/mercado."""
+    response = requests.get(
+        'https://api.twelvedata.com/time_series',
+        params={'symbol': symbol, 'exchange': 'BVMF', 'interval': '1month',
+                'outputsize': 5000, 'apikey': token},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('status') == 'error' or not isinstance(payload.get('values'), list):
+        return None
+    points = []
+    for row in payload.get('values') or []:
+        try:
+            day = date.fromisoformat(str(row.get('datetime') or '')[:10])
+            close = float(row.get('adjusted_close') or row.get('close') or 0)
+            if close > 0:
+                points.append((day, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return _benchmark_monthly_prices(points)
+
+
+def _benchmark_monthly_alphavantage(symbol, start_date, end_date, token):
+    """Série mensal ajustada da Alpha Vantage; contingência para IVVB11."""
+    response = requests.get(
+        'https://www.alphavantage.co/query',
+        params={'function': 'TIME_SERIES_MONTHLY_ADJUSTED', 'symbol': symbol, 'apikey': token},
+        timeout=20
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('Error Message') or payload.get('Note') or payload.get('Information'):
+        return None
+    rows = payload.get('Monthly Adjusted Time Series') or {}
+    points = []
+    for day_text, row in rows.items():
+        try:
+            day = date.fromisoformat(str(day_text)[:10])
+            close = float(row.get('5. adjusted close') or row.get('4. close') or 0)
+            if close > 0:
+                points.append((day, close))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return _benchmark_monthly_prices(points)
+
+
 def _benchmark_latest_month(points):
     return points[-1].get('mes') if points else None
 
@@ -4741,6 +4807,8 @@ def api_benchmarks():
     dadosb3_token = _get_api_token('dadosb3')
     hg_token = _get_api_token('hgbrasil')
     brapi_token = _brapi_token()
+    twelve_token = _get_api_token('twelvedata')
+    alpha_token = _get_api_token('alphavantage')
 
     yahoo_symbols = {
         'IBOV': ['^BVSP', 'IBOV.SA'],
@@ -4800,7 +4868,24 @@ def api_benchmarks():
                 except (requests.RequestException, ValueError, TypeError, KeyError):
                     continue
 
-        # IVVB11 é um ETF, não um índice. Yahoo Finance é a contingência complementar.
+        # IVVB11 é um ETF, não um índice. Provedores globais só entram como contingência.
+        if code == 'IVVB11' and twelve_token:
+            try:
+                data = _benchmark_monthly_twelvedata('IVVB11', start, end, twelve_token)
+                if data:
+                    candidates.append({'data': data, 'source': 'Twelve Data · IVVB11 ajustado (BVMF, se coberto)', 'sample': False})
+            except (requests.RequestException, ValueError, TypeError, KeyError):
+                pass
+        if code == 'IVVB11' and alpha_token:
+            for symbol in ('IVVB11.SAO', 'IVVB11.SA'):
+                try:
+                    data = _benchmark_monthly_alphavantage(symbol, start, end, alpha_token)
+                    if data:
+                        candidates.append({'data': data, 'source': f'Alpha Vantage · {symbol} ajustado', 'sample': False})
+                        break
+                except (requests.RequestException, ValueError, TypeError, KeyError):
+                    continue
+
         # Yahoo Finance permanece como contingência não oficial para cobrir períodos maiores.
         for symbol in yahoo_symbols.get(code, []):
             try:
@@ -4890,11 +4975,10 @@ def dashboard():
     ops = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='executada' ORDER BY data,id").fetchall()]
     scheduled = [dict(r) for r in db().execute("SELECT * FROM operacoes WHERE status='agendada' ORDER BY data_execucao,id").fetchall()]
     active_tickers = {str(item.get('ticker') or '').upper() for item in portfolio.get('itens', []) if item.get('ticker')}
-    today = datetime.now(TZ).date()
     received_records = _received_proventos_records(active_tickers)
     if active_tickers:
         marks = ','.join('?' for _ in active_tickers)
-        pending_rows = [dict(r) for r in db().execute("SELECT * FROM proventos_api WHERE date(data_pagamento)>date(?) AND UPPER(ticker) IN (" + marks + ") ORDER BY data_pagamento,ticker", (today.isoformat(), *tuple(sorted(active_tickers)))).fetchall()]
+        pending_rows = [dict(r) for r in db().execute("SELECT * FROM proventos_api WHERE status='A receber' AND UPPER(ticker) IN (" + marks + ") ORDER BY data_pagamento,ticker", tuple(sorted(active_tickers))).fetchall()]
         manual_rows = [dict(r) for r in db().execute('SELECT * FROM proventos WHERE UPPER(ticker) IN (' + marks + ') ORDER BY data', tuple(sorted(active_tickers))).fetchall()]
     else:
         pending_rows = []
@@ -4906,6 +4990,7 @@ def dashboard():
         sign = 1 if op['lado'] == 'compra' else -1
         monthly[month] = monthly.get(month, 0) + sign * (op['quantidade'] * op['preco'] + float(op.get('custos') or 0))
 
+    today = datetime.now(TZ).date()
     month_keys = []
     cursor = date(today.year, today.month, 1)
     for _ in range(11):
@@ -4949,7 +5034,7 @@ def dashboard():
             'ticker':row['ticker'],'tipo':row['tipo_evento'],'tipo_ativo':row['tipo_ativo'],
             'status':'A receber','data_com':row['data_com'],'data_pagamento':row['data_pagamento'],
             'quantidade':float(row['quantidade'] or 0),'valor_por_ativo':float(row['valor_por_ativo'] or 0),
-            'valor_total':float(row['valor_total'] or 0),'origem':('Histórico importado' if 'ALPHA VANTAGE' in str(row.get('remarks') or '').upper() else 'brapi'),'tipo_evento':row['tipo_evento'],
+            'valor_total':float(row['valor_total'] or 0),'origem':('Alpha Vantage' if 'Alpha Vantage' in str(row.get('remarks') or '') else 'brapi'),'tipo_evento':row['tipo_evento'],
             'remarks':row.get('remarks','')
         })
 
@@ -4976,7 +5061,7 @@ def dashboard():
         events = ((quote.get('dividendsData') or {}).get('cashDividends') or [])
         for event in events:
             payment_date = _api_date(event.get('paymentDate') or event.get('payment_date'))
-            if not payment_date or date.fromisoformat(payment_date) <= today:
+            if not payment_date or date.fromisoformat(payment_date) < today:
                 continue
             try:
                 rate = float(event.get('rawRate') or event.get('rate') or event.get('value') or 0)
