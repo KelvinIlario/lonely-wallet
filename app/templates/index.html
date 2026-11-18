@@ -2710,10 +2710,10 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
    const routes={acao:'acoes',fii:'fiis',stocks:'stocks',bdr:'bdrs',etf:'etfs',internacional:'etfs-internacionais',reit:'reits',cripto:'criptomoedas'};
    const route=routes[i.tipo],ticker=String(i.ticker||'').toLowerCase();
    const isFixedIncome=i.tipo==='renda_fixa';
-   const logoUrl=i.logo||`https://icons.brapi.dev/icons/${encodeURIComponent(i.ticker||'')}.svg`;
+   const logoUrl=typeof i.logo==='string'&&/^(https?:\/\/|\/static\/)/i.test(i.logo)?i.logo:'';
    const initials=escapeHTML(String(i.ticker||'').slice(0,2).toUpperCase());
    const fixedLogo=`<span class="asset-fixed-logo" aria-hidden="true"><svg viewBox="0 0 32 32" width="25" height="25" fill="none"><rect x="3.5" y="3.5" width="25" height="25" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M9 22V17M14 22V11M19 22V14M24 22V8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 24.5H25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>`;
-   const logo=isFixedIncome?fixedLogo:`<span class="asset-logo-wrap"><img class="asset-logo" src="${escapeHTML(logoUrl)}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="asset-logo-fallback" hidden>${initials}</span></span>`;
+   const logo=isFixedIncome?fixedLogo:(logoUrl?`<span class="asset-logo-wrap"><img class="asset-logo" src="${escapeHTML(logoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.hidden=true;this.nextElementSibling.hidden=false"><span class="asset-logo-fallback" hidden>${initials}</span></span>`:`<span class="asset-logo-wrap"><span class="asset-logo-fallback">${initials}</span></span>`);
    const name=isFixedIncome?escapeHTML(i.nome||i.ticker):(route?`<a class="asset-market-link" href="https://investidor10.com.br/${route}/${encodeURIComponent(ticker)}/" target="_blank" rel="noopener noreferrer" title="Abrir ${escapeHTML(i.ticker)} no Investidor10">${escapeHTML(i.ticker)}</a>`:escapeHTML(i.ticker));
    return `<td data-col="ticker" class="ticker"><span class="asset-name-cell">${logo}<span class="asset-name-text">${name}</span></span></td>`;
   }],
@@ -3824,6 +3824,18 @@ function setLaunchDistributionSide(side){
  document.getElementById('launchDistSellTab')?.classList.toggle('active',side==='venda');
  renderLaunchDistribution();
 }
+function launchDistributionTypeLabel(raw){
+ const key=String(raw||'outros').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[\s-]+/g,'_');
+ const names={
+  acao:'Ação',acoes:'Ação',stock:'Ações internacionais',stocks:'Ações internacionais',
+  fii:'FIIs',fiis:'FIIs',fundo_imobiliario:'FIIs',fundos_imobiliarios:'FIIs',
+  renda_fixa:'Renda fixa',rendafixa:'Renda fixa',tesouro:'Tesouro Direto',tesouro_direto:'Tesouro Direto',
+  etf:'ETFs',etfs:'ETFs',internacional:'ETFs internacionais',etf_internacional:'ETFs internacionais',
+  bdr:'BDRs',bdrs:'BDRs',reit:'REITs',reits:'REITs',cripto:'Criptomoedas',criptomoeda:'Criptomoedas',
+  fundo:'Fundos de investimento',fundos:'Fundos de investimento',outros:'Outros',outro:'Outros'
+ };
+ return names[key]||String(raw||'Outros').trim().replace(/_/g,' ').replace(/\b\w/g,char=>char.toUpperCase());
+}
 function renderLaunchDistribution(){
  const {periodKey,granularity,operations,mode}=launchDistributionState;
  const periodOps=operations.filter(op=>{
@@ -3848,7 +3860,7 @@ function renderLaunchDistribution(){
  const grouped=new Map();
  matches.forEach(op=>{
   const ticker=String(op.ticker||'Ativo sem identificação').trim()||'Ativo sem identificação';
-  const kind=String(op.tipo||'Outros').trim()||'Outros';
+  const kind=launchDistributionTypeLabel(op.tipo);
   const name=mode==='tipo'?kind:ticker;
   const amount=Number(op.quantidade||0)*Number(op.preco||0)+(side==='compra'?Number(op.custos||0):-Number(op.custos||0));
   const value=Math.max(0,amount);
@@ -4408,9 +4420,7 @@ const API_PROVIDER_FALLBACK=[
  {id:'pluggy',name:'Pluggy',connected:false,category:'Open Finance · contas e investimentos',description:'Integração principal para conectar bancos e corretoras via Open Finance. Contas, posições e transações dependem dos produtos e dados disponibilizados por cada instituição.',auth:true,credentialType:'pluggy',url:'https://dashboard.pluggy.ai/',docs:'https://docs.pluggy.ai/'},
  {id:'brapi',name:'brapi',connected:true,category:'Brasil · cotações e histórico',description:'Ações, FIIs, BDRs, ETFs, índices cobertos, dividendos, fundos, Tesouro Direto e séries macroeconômicas. Cobertura e limites variam por plano.',auth:true,url:'https://brapi.dev/dashboard',docs:'https://brapi.dev/docs'},
  {id:'hgbrasil',name:'HG Brasil',connected:true,category:'Brasil · mercado e indicadores',description:'Cotações B3, índices, moedas, juros e dados históricos. Recursos históricos e cotações por ativo dependem do plano.',auth:true,url:'https://console.hgbrasil.com/',docs:'https://console.hgbrasil.com/documentation/finance'},
- {id:'twelvedata',name:'Twelve Data',category:'Global · cotações e séries',description:'Séries históricas, cotações, ETFs, fundos, ações globais, câmbio e cripto. Verifique a cobertura B3 e os créditos do plano.',auth:true,url:'https://twelvedata.com/account',docs:'https://twelvedata.com/docs'},
- {id:'alphavantage',name:'Alpha Vantage',category:'Global · cotações e fundamentos',description:'Séries históricas, ETFs, fundos, dividendos, câmbio e indicadores econômicos. Cobertura brasileira varia por endpoint.',auth:true,url:'https://www.alphavantage.co/support/#api-key',docs:'https://www.alphavantage.co/documentation/'},
- {id:'fred',name:'FRED',category:'Macroeconomia internacional',description:'A credencial pode ser validada nesta tela, mas o FRED ainda não alimenta cotações, gráficos ou cálculos do painel nesta versão.',auth:true,url:'https://fred.stlouisfed.org/docs/api/api_key.html',docs:'https://fred.stlouisfed.org/docs/api/fred/'},
+  {id:'fred',name:'FRED',category:'Macroeconomia internacional',description:'A credencial pode ser validada nesta tela, mas o FRED ainda não alimenta cotações, gráficos ou cálculos do painel nesta versão.',auth:true,url:'https://fred.stlouisfed.org/docs/api/api_key.html',docs:'https://fred.stlouisfed.org/docs/api/fred/'},
  {id:'bcb',name:'Banco Central · SGS',connected:true,category:'Brasil · fonte oficial',description:'Séries oficiais como CDI, Selic, IPCA e outros indicadores. API pública sem token.',auth:false,url:'https://www.bcb.gov.br/gestao_site/webservices.asp',docs:'https://www.bcb.gov.br/estabilidadefinanceira/seriestemporais'},
  {id:'ibge',name:'IBGE · SIDRA',category:'Brasil · estatísticas e inflação',description:'Séries estatísticas oficiais, indicadores de preços e atividade econômica. API pública sem token; não fornece cotação de ativos.',auth:false,url:'https://servicodados.ibge.gov.br/api/docs/agregados?versao=3',docs:'https://apisidra.ibge.gov.br/'},
  {id:'tesouro',name:'Tesouro Transparente',category:'Brasil · títulos públicos',description:'Fonte de consulta e documentação. A importação automática de títulos e taxas do Tesouro ainda não está implementada nesta versão.',auth:false,url:'https://www.tesourotransparente.gov.br/temas/divida-publica-federal/tesouro-direto',docs:'https://www.tesourotransparente.gov.br/ckan/dataset'},

@@ -1,4 +1,4 @@
-"""Regression tests for Lonely Wallet 4.3.1 security, financial and API fixes."""
+"""Regression tests for Lonely Wallet 4.3.2 security, financial and API fixes."""
 import os
 import tempfile
 import unittest
@@ -171,52 +171,9 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(quote['regularMarketChangePercent'], 0.25)
 
 
-    def test_twelve_data_fallback_uses_bvmf_mic_for_b3_assets(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-            def json(self):
-                return {'symbol': 'PETR4', 'close': '38.20', 'percent_change': '1.25', 'status': 'ok'}
-        with patch.object(wallet, '_get_api_token', side_effect=lambda provider: 'td-key' if provider == 'twelvedata' else ''), \
-             patch.object(wallet.requests, 'get', return_value=FakeResponse()) as request:
-            quote = wallet._fallback_market_quote('PETR4', require_daily_change=True)
-        self.assertEqual(request.call_args.args[0], 'https://api.twelvedata.com/quote')
-        self.assertEqual(request.call_args.kwargs['params'], {'symbol': 'PETR4', 'mic_code': 'BVMF', 'apikey': 'td-key'})
-        self.assertEqual(quote['regularMarketChangePercent'], 1.25)
 
-    def test_twelve_data_fallback_derives_change_from_previous_close(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-            def json(self):
-                return {'symbol': 'PETR4', 'close': '105.00', 'previous_close': '100.00', 'status': 'ok'}
-        with patch.object(wallet, '_get_api_token', side_effect=lambda provider: 'td-key' if provider == 'twelvedata' else ''), \
-             patch.object(wallet.requests, 'get', return_value=FakeResponse()):
-            quote = wallet._fallback_market_quote('PETR4', require_daily_change=True)
-        self.assertEqual(quote['regularMarketChangePercent'], 5.0)
 
-    def test_alpha_vantage_fallback_adds_sa_only_for_b3_assets(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-            def json(self):
-                return {'Global Quote': {'05. price': '38.20', '10. change percent': '1.25%'}}
-        with patch.object(wallet, '_get_api_token', side_effect=lambda provider: 'alpha-key' if provider == 'alphavantage' else ''), \
-             patch.object(wallet.requests, 'get', return_value=FakeResponse()) as request:
-            quote = wallet._fallback_market_quote('PETR4', require_daily_change=True)
-        self.assertEqual(request.call_args.kwargs['params']['symbol'], 'PETR4.SA')
-        self.assertEqual(quote['regularMarketChangePercent'], 1.25)
 
-    def test_alpha_vantage_fallback_derives_change_from_previous_close(self):
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-            def json(self):
-                return {'Global Quote': {'05. price': '105.00', '08. previous close': '100.00'}}
-        with patch.object(wallet, '_get_api_token', side_effect=lambda provider: 'alpha-key' if provider == 'alphavantage' else ''), \
-             patch.object(wallet.requests, 'get', return_value=FakeResponse()):
-            quote = wallet._fallback_market_quote('IBM', require_daily_change=True)
-        self.assertEqual(quote['regularMarketChangePercent'], 5.0)
 
     def test_quote_uses_fallback_when_primary_price_has_no_daily_change(self):
         class FakeResponse:
@@ -244,43 +201,67 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(quote['regularMarketChangePercent'], 0.42)
         wallet.CACHE.pop('HGLG11', None)
 
-    def test_twelve_data_connection_test_uses_lightweight_price_endpoint(self):
-        class FakeResponse:
-            status_code = 200
-            content = b'{"price":"100.00"}'
-            def json(self):
-                return {'price': '100.00'}
-        with patch.object(wallet, '_get_api_token', return_value='test-key'), \
-             patch.object(wallet.requests, 'get', return_value=FakeResponse()) as request:
-            response = self.client.post('/api/integracoes/twelvedata/test', json={})
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.get_json()['ok'])
-        self.assertEqual(request.call_args.args[0], 'https://api.twelvedata.com/price')
 
-    def test_alpha_vantage_connection_test_checks_quote_payload(self):
-        class FakeResponse:
-            status_code = 200
-            content = b'{"Global Quote":{"01. symbol":"IBM","05. price":"200.00"}}'
-            def json(self):
-                return {'Global Quote': {'01. symbol': 'IBM', '05. price': '200.00'}}
-        with patch.object(wallet, '_get_api_token', return_value='test-key'), \
-             patch.object(wallet.requests, 'get', return_value=FakeResponse()) as request:
-            response = self.client.post('/api/integracoes/alphavantage/test', json={})
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.get_json()['ok'])
-        self.assertEqual(request.call_args.kwargs['params']['symbol'], 'IBM')
 
-    def test_twelve_data_connection_test_reports_invalid_key_even_on_http_200(self):
+
+    def test_removed_quote_providers_are_not_in_catalogue_or_callable(self):
+        response = self.client.get('/api/integracoes')
+        self.assertEqual(response.status_code, 200)
+        providers = {item['id'] for item in response.get_json()['providers']}
+        self.assertNotIn('twelvedata', providers)
+        self.assertNotIn('alphavantage', providers)
+        self.assertEqual(self.client.post('/api/integracoes/twelvedata/test', json={}).status_code, 404)
+        self.assertEqual(self.client.post('/api/integracoes/alphavantage/test', json={}).status_code, 404)
+
+    def test_daily_variation_can_be_derived_from_absolute_change(self):
+        quote = wallet._derive_daily_change_from_quote({
+            'regularMarketPrice': 105.0, 'regularMarketChange': 5.0
+        })
+        self.assertAlmostEqual(quote['regularMarketChangePercent'], 5.0, places=4)
+
+    def test_invalid_daily_variation_does_not_block_same_source_fallback(self):
+        quote = wallet._derive_daily_change_from_quote({
+            'regularMarketPrice': 105.0, 'regularMarketChangePercent': 'N/A'
+        })
+        self.assertIsNone(quote.get('regularMarketChangePercent'))
+
+    def test_hg_fallback_returns_logo_and_daily_variation(self):
         class FakeResponse:
-            status_code = 200
-            content = b'{"code":401,"message":"Invalid API key","status":"error"}'
+            def raise_for_status(self):
+                return None
             def json(self):
-                return {'code': '401', 'message': 'Invalid API key', 'status': 'error'}
-        with patch.object(wallet, '_get_api_token', return_value='bad-key'), \
+                return {'valid_key': True, 'results': {'HGRU11': {
+                    'symbol': 'HGRU11', 'name': 'FII HGRU', 'price': 120.0,
+                    'change_price': 0.6, 'logo': {'small': 'https://assets.hgbrasil.com/hgru11.png'}
+                }}}
+        with patch.object(wallet, '_get_api_token', side_effect=lambda provider: 'hg-key' if provider == 'hgbrasil' else ''), \
              patch.object(wallet.requests, 'get', return_value=FakeResponse()):
-            response = self.client.post('/api/integracoes/twelvedata/test', json={})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('inválido', response.get_json()['message'].lower())
+            quote = wallet._fallback_market_quote('HGRU11', require_daily_change=True)
+        self.assertEqual(quote['regularMarketChangePercent'], 0.5025)
+        self.assertEqual(quote['logo'], 'https://assets.hgbrasil.com/hgru11.png')
+
+    def test_due_today_brapi_payment_counts_as_received_even_if_status_is_pending(self):
+        ticker = 'DUETODAY11'
+        today = datetime.now(wallet.TZ).date().isoformat()
+        item_id = 'regression-due-today-item'
+        with wallet.app.app_context():
+            con = wallet.db()
+            con.execute('DELETE FROM proventos_api WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_position_snapshots WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_items WHERE item_id=?', (item_id,))
+            con.execute('INSERT INTO pluggy_items(item_id,label,connector_name,status,consent_expires_at,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
+                        (item_id,'Teste','MeuPluggy','UPDATED','',1,datetime.now(wallet.TZ).isoformat(),datetime.now(wallet.TZ).isoformat()))
+            con.execute('INSERT INTO pluggy_position_snapshots(item_id,investment_id,ticker,asset_type,quantity,amount_original,balance,snapshot_at) VALUES(?,?,?,?,?,?,?,?)',
+                        (item_id,'regression-investment',ticker,'fii',10,50,55,datetime.now(wallet.TZ).isoformat()))
+            con.execute('INSERT INTO proventos_api(event_key,ticker,tipo_ativo,tipo_evento,data_aprovacao,data_com,data_ex,data_pagamento,valor_por_ativo,quantidade,valor_total,status,remarks,sincronizado_em) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        ('due-today-'+ticker,ticker,'fii','RENDIMENTO',today,today,today,today,0.5,10,5.0,'A receber','',datetime.now(wallet.TZ).isoformat()))
+            con.commit()
+            rows = wallet._received_proventos_records([ticker])
+            self.assertEqual(sum(row['valor_total'] for row in rows), 5.0)
+            con.execute('DELETE FROM proventos_api WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_position_snapshots WHERE ticker=?', (ticker,))
+            con.execute('DELETE FROM pluggy_items WHERE item_id=?', (item_id,))
+            con.commit()
 
     def test_brapi_connection_test_rejects_error_payload_with_http_200(self):
         class FakeResponse:
