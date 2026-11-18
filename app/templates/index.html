@@ -2132,7 +2132,7 @@ body.light-theme .lw-select-option:hover,body.light-theme .lw-select-option.acti
 
 
 
-<div class="footer">Lonely Wallet v4.2.12 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
+<div class="footer">Lonely Wallet v4.2.13 · Controle pessoal de investimentos<br>Dados de cotação podem sofrer atrasos ou indisponibilidade. Este sistema é apenas informativo.</div>
 </main>
 <div class="modalback" id="launchDistributionBack" onclick="if(event.target===this)closeLaunchDistribution()"><div class="modal" style="width:min(900px,100%)"><div class="modalhead"><div><h2 id="launchDistributionTitle">Distribuição de aportes</h2><div class="sub" id="launchDistributionSubtitle">Operações do período selecionado.</div></div><button class="close" type="button" onclick="closeLaunchDistribution()">×</button></div><div class="launch-distribution-switch segmented"><button type="button" id="launchDistAssetTab" class="active" onclick="setLaunchDistributionMode('ativo')">◉ Por Ativo</button><button type="button" id="launchDistTypeTab" onclick="setLaunchDistributionMode('tipo')">◉ Por Tipo</button><span class="launch-dist-switch-spacer"></span><button type="button" id="launchDistBuyTab" class="active" onclick="setLaunchDistributionSide('compra')">Compra</button><button type="button" id="launchDistSellTab" onclick="setLaunchDistributionSide('venda')">Venda</button></div><div class="launch-distribution-layout"><div class="launch-distribution-chart"><canvas id="launchDistributionChart"></canvas></div><div class="launch-distribution-legend"><div class="launch-distribution-total"><b>Total</b><strong id="launchDistributionTotal"></strong></div><div id="launchDistributionRows"></div></div></div><div class="modalactions"><button class="ghost" type="button" onclick="closeLaunchDistribution()">Fechar</button></div></div></div>
 <div class="modalback" id="b3ImportsManagerBack" onclick="if(event.target===this)closeB3ImportsManager()"><div class="modal" style="width:min(860px,100%)"><div class="modalhead"><div><h2>Importações da B3</h2><div class="sub">Histórico das planilhas importadas. Você pode excluir uma importação recente e os registros criados exclusivamente por ela.</div></div><button class="close" onclick="closeB3ImportsManager()">×</button></div><div id="b3ImportsList" class="section mini">Carregando importações…</div><div class="modalactions"><button class="ghost" type="button" onclick="closeB3ImportsManager()">Fechar</button></div></div></div><div class="modalback utility-modal-back" id="operationManagerBack" onclick="if(event.target===this)closeOperationManager()"><div class="modal utility-modal" style="width:min(1100px,100%)"><div class="modalhead"><div><h2>Gerenciar lançamentos de ativos</h2><div class="sub">Filtre por classe e ativo para revisar ou excluir operações. A exclusão em massa é permanente.</div></div><button class="close" onclick="closeOperationManager()">×</button></div><div class="formgrid operation-manager-filters"><div class="field"><label for="operationManagerType">Classe do ativo</label><select id="operationManagerType" onchange="onOperationManagerTypeChange()"><option value="">Todas as classes</option></select></div><div class="field"><label for="operationManagerTicker">Ativo</label><select id="operationManagerTicker" onchange="renderOperationManagerRows()"><option value="">Todos os ativos</option></select></div></div><div id="operationManagerSummary" class="mini" style="margin:12px 0">Carregando lançamentos…</div><div id="operationManagerRows" class="tablewrap"></div><div class="modalactions" style="justify-content:space-between;flex-wrap:wrap"><div class="toolbar"><button class="danger" type="button" onclick="confirmDeleteManaged('ativo')">Excluir todos deste ativo</button><button class="danger" type="button" onclick="confirmDeleteManaged('todas')">Excluir todos os lançamentos</button></div><button class="ghost" type="button" onclick="closeOperationManager()">Fechar</button></div></div></div>
@@ -2744,7 +2744,7 @@ function renderPositionGroups(rows,hostId='summaryGroups',summaryMode=true){
   ['preco_graham','Preço Justo (Graham)',i=>`<td data-col="preco_graham">—</td>`],
   ['preco_teto_bazin','Preço-teto (Bazin)',i=>`<td data-col="preco_teto_bazin">${i.preco_teto_bazin?brl(i.preco_teto_bazin):'—'}</td>`],
   ['variacao_dia','Variação',i=>`<td data-col="variacao_dia">${i.variacao_dia==null?'<span class="muted">—</span>':`<span class="variation-pill ${Number(i.variacao_dia)>=0?'positive':'negative'} value-hint variation-money-trigger" data-hint="${escapeHTML(variationMoneyHint(i,i.variacao_dia))}" aria-label="${escapeHTML(variationMoneyHint(i,i.variacao_dia).replace(/\n/g,' '))}" onmouseenter="showVariationMoneyTooltip(event,this)" onmousemove="moveVariationMoneyTooltip(event,this)" onmouseleave="hideVariationMoneyTooltip()" onfocus="showVariationMoneyTooltip(event,this)" onblur="hideVariationMoneyTooltip()" tabindex="0">${Number(i.variacao_dia)>=0?'▲':'▼'} ${pct(i.variacao_dia)}</span>`}</td>`],
-  ['lucro_pct','Rentabilidade',i=>`<td data-col="lucro_pct"><span class="variation-pill ${Number(i.lucro_pct)>=0?'positive':'negative'}">${Number(i.lucro_pct)>=0?'↗':'↘'} ${pct(i.lucro_pct)}</span></td>`],
+  ['lucro_pct','Rentabilidade',i=>{const hint=profitabilityMoneyHint(i,i.lucro_pct);return `<td data-col="lucro_pct"><span class="variation-pill ${Number(i.lucro_pct)>=0?'positive':'negative'} profitability-money-trigger" data-hint="${escapeHTML(hint)}" aria-label="${escapeHTML(hint.replace(/\n/g,' '))}" onmouseenter="showVariationMoneyTooltip(event,this)" onmousemove="moveVariationMoneyTooltip(event,this)" onmouseleave="hideVariationMoneyTooltip()" onfocus="showVariationMoneyTooltip(event,this)" onblur="hideVariationMoneyTooltip()" tabindex="0">${Number(i.lucro_pct)>=0?'↗':'↘'} ${pct(i.lucro_pct)}</span></td>`;}],
   ['valor_atual','Saldo',i=>`<td data-col="valor_atual">${brl(i.valor_atual)}</td>`],
   ['buyhold','Pontuação Buy and Hold',i=>`<td data-col="buyhold">—</td>`],
   ['media_avaliacoes','Média de Avaliações',i=>`<td data-col="media_avaliacoes">—</td>`],
@@ -2862,6 +2862,22 @@ function moveIdealBalanceTooltip(event,el){
 function variationMoneyHint(item,change){
  const amount=item&&item.pluggy_variacao_valor!==null&&item.pluggy_variacao_valor!==undefined?Number(item.pluggy_variacao_valor):Number(item.variacao_valor??item.lucro??(Number(item.quantidade||0)*Number(item.preco_atual||0)*Number(change||0)/100));
  return `Quanto uma variação de ${pct(change)} representa?\n${brl(amount)}`;
+}
+
+function profitabilityMoneyHint(item,profitability){
+ // A rentabilidade total inclui ganho/perda de preço e proventos recebidos.
+ // Pluggy fornece o retorno monetário consolidado; sem esse histórico,
+ // somamos a variação de preço ao total de proventos do ativo.
+ let amount;
+ if(item&&item.pluggy_retorno_valor!==null&&item.pluggy_retorno_valor!==undefined){
+  amount=Number(item.pluggy_retorno_valor);
+ }else if(item){
+  amount=Number(item.lucro||0)+Number(item.proventos||0);
+ }else{
+  amount=0;
+ }
+ if(!Number.isFinite(amount))amount=Number(item?.investido||0)*Number(profitability||0)/100;
+ return `Quanto uma rentabilidade de ${pct(profitability)} representa?\n${brl(amount)}`;
 }
  
 window.hideVariationMoneyTooltip=function hideVariationMoneyTooltip(){
@@ -6057,6 +6073,7 @@ body.light-theme .prov-chart-period-menu .period-section{color:#202633!important
 }
 .variation-money-floating-tooltip.is-positive{border-color:var(--green,#12c98b)}
 .variation-money-floating-tooltip.is-negative{border-color:var(--red,#ff5b78)}
+.asset-category .data.proportional-assets-table td[data-col="lucro_pct"] .profitability-money-trigger{cursor:help}
 .asset-category .data.proportional-assets-table tr:hover td[data-col="variacao_dia"],
 .asset-category .data.proportional-assets-table td[data-col="variacao_dia"]:hover{
  background:transparent!important;
